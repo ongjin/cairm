@@ -19,6 +19,12 @@ enum PreviewState: Equatable {
 /// in the file list). Setting `focus` kicks off an async fetch via the engine
 /// and caches the result in an LRU (16 entries) so back-forth selection is
 /// instant after the first visit.
+///
+/// The class is marked `@MainActor` so `focus`, `state`, and the cache are
+/// mutated on the main thread consistently. FileManager I/O (directory
+/// classification) runs off-main via `Task.detached`; the Rust `preview_text`
+/// call is already detached inside `CairnEngine.previewText`.
+@MainActor
 @Observable
 final class PreviewModel {
     static let cacheCapacity = 16
@@ -35,7 +41,7 @@ final class PreviewModel {
     private var cacheKeys: [String] = []
     private var cacheValues: [String: PreviewState] = [:]
 
-    init(engine: CairnEngine) {
+    nonisolated init(engine: CairnEngine) {
         self.engine = engine
     }
 
@@ -81,7 +87,6 @@ final class PreviewModel {
         }
     }
 
-    @MainActor
     private func loadPreview(for url: URL) async {
         let next = await Self.compute(for: url, engine: engine)
         cache(state: next, for: url)
@@ -92,37 +97,57 @@ final class PreviewModel {
         }
     }
 
-    /// Decide which preview branch applies. Directories and images are decided
-    /// by path inspection; text vs binary is decided by `preview_text`.
-    private static func compute(for url: URL, engine: CairnEngine) async -> PreviewState {
+    // MARK: - Pure classification (nonisolated so it can run off-main)
+
+    private enum Classification {
+        case directory(count: Int)
+        case image
+        case needsTextProbe
+    }
+
+    /// Decide which preview branch applies. Directory + image classification
+    /// is sync FileManager I/O, hoisted onto a detached task so the main actor
+    /// stays responsive. Text vs. binary is delegated to the Rust preview
+    /// path (already detached inside CairnEngine.previewText).
+    private nonisolated static func compute(for url: URL, engine: CairnEngine) async -> PreviewState {
         let path = url.standardizedFileURL.path
 
-        // Directory?
+        let classification = await Task.detached(priority: .userInitiated) {
+            classify(path: path, url: url)
+        }.value
+
+        switch classification {
+        case .directory(let count):
+            return .directory(childCount: count)
+        case .image:
+            return .image(path: path)
+        case .needsTextProbe:
+            do {
+                let body = try await engine.previewText(url)
+                return .text(body)
+            } catch let e as PreviewError {
+                switch e {
+                case .Binary: return .binary
+                case .NotFound: return .failed("File not found.")
+                case .PermissionDenied: return .failed("Permission denied.")
+                case .Io(let msg): return .failed("I/O error: \(msg.toString())")
+                }
+            } catch {
+                return .failed(String(describing: error))
+            }
+        }
+    }
+
+    private nonisolated static func classify(path: String, url: URL) -> Classification {
         var isDir: ObjCBool = false
         if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
             let children = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
-            return .directory(childCount: children.count)
+            return .directory(count: children.count)
         }
-
-        // Image?
         let ext = url.pathExtension.lowercased()
         if ["png", "jpg", "jpeg", "gif", "bmp", "tiff", "heic", "webp"].contains(ext) {
-            return .image(path: path)
+            return .image
         }
-
-        // Text via Rust.
-        do {
-            let body = try await engine.previewText(url)
-            return .text(body)
-        } catch let e as PreviewError {
-            switch e {
-            case .Binary: return .binary
-            case .NotFound: return .failed("File not found.")
-            case .PermissionDenied: return .failed("Permission denied.")
-            case .Io(let msg): return .failed("I/O error: \(msg.toString())")
-            }
-        } catch {
-            return .failed(String(describing: error))
-        }
+        return .needsTextProbe
     }
 }

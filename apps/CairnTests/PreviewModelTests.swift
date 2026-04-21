@@ -1,6 +1,7 @@
 import XCTest
 @testable import Cairn
 
+@MainActor
 final class PreviewModelTests: XCTestCase {
     func test_initial_state_is_idle() {
         let engine = CairnEngine()
