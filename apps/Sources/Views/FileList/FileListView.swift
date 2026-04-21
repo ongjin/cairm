@@ -123,4 +123,5 @@ extension NSUserInterfaceItemIdentifier {
     static let name = NSUserInterfaceItemIdentifier("col.name")
     static let size = NSUserInterfaceItemIdentifier("col.size")
     static let modified = NSUserInterfaceItemIdentifier("col.modified")
+    static let folder = NSUserInterfaceItemIdentifier("col.folder")
 }

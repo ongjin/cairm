@@ -84,10 +84,32 @@ final class FileListCoordinator: NSObject,
         self.searchRoot = searchRoot
     }
 
-    /// Dynamic Folder column (Task 12 wires the NSTableColumn add/remove).
-    /// Task 11 only stores the flag.
+    /// Toggles the "Folder" column used by subtree search results. Called by
+    /// `FileListView.updateNSView`; idempotent on repeated calls.
     func setFolderColumnVisible(_ visible: Bool) {
-        self.folderColumnVisible = visible
+        guard let table = self.table else {
+            folderColumnVisible = visible
+            return
+        }
+        let existing = table.tableColumns.first(where: { $0.identifier == .folder })
+        if visible, existing == nil {
+            let col = NSTableColumn(identifier: .folder)
+            col.title = "Folder"
+            col.minWidth = 80
+            col.width = 180
+            // Insert immediately after the Name column so the user sees the
+            // relative-path context next to the file name.
+            table.addTableColumn(col)
+            if let nameIdx = table.tableColumns.firstIndex(where: { $0.identifier == .name }) {
+                let lastIdx = table.tableColumns.count - 1
+                if lastIdx != nameIdx + 1 {
+                    table.moveColumn(lastIdx, toColumn: nameIdx + 1)
+                }
+            }
+        } else if !visible, let col = existing {
+            table.removeTableColumn(col)
+        }
+        folderColumnVisible = visible
     }
 
     // MARK: - Snapshot application (called from updateNSView)
@@ -152,6 +174,21 @@ final class FileListCoordinator: NSObject,
             let date = Date(timeIntervalSince1970: TimeInterval(entry.modified_unix))
             cell.textField?.stringValue = entry.modified_unix == 0 ? "—" : dateFormatter.string(from: date)
             cell.textField?.alignment = .right
+        case .folder:
+            cell.imageView?.image = nil
+            let full = entry.path.toString()
+            let rel: String
+            if let rootPath = searchRoot?.standardizedFileURL.path, full.hasPrefix(rootPath) {
+                var r = String(full.dropFirst(rootPath.count))
+                if r.hasPrefix("/") { r.removeFirst() }
+                // Strip filename — only show the parent folder relative to search root.
+                rel = (r as NSString).deletingLastPathComponent
+            } else {
+                // Fallback for entries outside searchRoot (shouldn't happen in practice).
+                rel = (full as NSString).deletingLastPathComponent
+            }
+            cell.textField?.stringValue = rel.isEmpty ? "—" : rel
+            cell.textField?.alignment = .left
         default:
             cell.textField?.stringValue = ""
         }
