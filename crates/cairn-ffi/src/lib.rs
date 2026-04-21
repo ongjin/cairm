@@ -77,6 +77,26 @@ mod ffi {
         fn len(&self) -> usize;
         fn entry(&self, index: usize) -> FileEntry;
     }
+
+    extern "Rust" {
+        type SearchBatch;
+
+        #[swift_bridge(swift_name = "isEnd")]
+        fn is_end(&self) -> bool;
+        fn len(&self) -> usize;
+        fn entry(&self, index: usize) -> FileEntry;
+    }
+
+    extern "Rust" {
+        #[swift_bridge(swift_name = "searchStart")]
+        fn search_start(root_path: String, query: String, subtree: bool, show_hidden: bool) -> u64;
+
+        #[swift_bridge(swift_name = "searchNextBatch")]
+        fn search_next_batch(handle: u64) -> SearchBatch;
+
+        #[swift_bridge(swift_name = "searchCancel")]
+        fn search_cancel(handle: u64);
+    }
 }
 
 // ---- Engine + FileListing (opaque) ------------------------------------------
@@ -125,6 +145,67 @@ impl FileListing {
     fn entry(&self, index: usize) -> ffi::FileEntry {
         wire_file_entry(self.entries[index].clone())
     }
+}
+
+// ---- SearchBatch (opaque) ---------------------------------------------------
+
+/// A single batch returned by `search_next_batch`. When `end` is true, the
+/// session is exhausted (done / capped / cancelled) and the caller should
+/// stop polling. An `end: false` batch with `entries.is_empty()` means
+/// "keep-alive" — walker still running, no new matches in the last ~100ms.
+pub struct SearchBatch {
+    entries: Vec<cairn_walker::FileEntry>,
+    end: bool,
+}
+
+impl SearchBatch {
+    fn is_end(&self) -> bool {
+        self.end
+    }
+
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Panics if `index >= len()`. Swift wrapper iterates `0..len`.
+    fn entry(&self, index: usize) -> ffi::FileEntry {
+        wire_file_entry(self.entries[index].clone())
+    }
+}
+
+fn search_start(root_path: String, query: String, subtree: bool, show_hidden: bool) -> u64 {
+    use cairn_search::{start, SearchMode, SearchOptions};
+    let opts = SearchOptions {
+        query,
+        mode: if subtree {
+            SearchMode::Subtree
+        } else {
+            SearchMode::Folder
+        },
+        show_hidden,
+        ..Default::default()
+    };
+    let handle = start(Path::new(&root_path), opts);
+    handle.0
+}
+
+fn search_next_batch(handle: u64) -> SearchBatch {
+    use cairn_search::{next_batch, SearchHandle};
+    match next_batch(SearchHandle(handle)) {
+        Some(entries) => SearchBatch {
+            entries,
+            end: false,
+        },
+        None => SearchBatch {
+            entries: Vec::new(),
+            end: true,
+        },
+    }
+}
+
+fn search_cancel(handle: u64) {
+    use cairn_search::{cancel, SearchHandle};
+    cancel(SearchHandle(handle));
 }
 
 // ---- Wire-type conversions --------------------------------------------------

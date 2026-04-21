@@ -58,12 +58,30 @@ void* __swift_bridge__$Vec_FileListing$get_mut(void* vec_ptr, uintptr_t index);
 uintptr_t __swift_bridge__$Vec_FileListing$len(void* vec_ptr);
 void* __swift_bridge__$Vec_FileListing$as_ptr(void* vec_ptr);
 
+typedef struct SearchBatch SearchBatch;
+void __swift_bridge__$SearchBatch$_free(void* self);
+
+void* __swift_bridge__$Vec_SearchBatch$new(void);
+void __swift_bridge__$Vec_SearchBatch$drop(void* vec_ptr);
+void __swift_bridge__$Vec_SearchBatch$push(void* vec_ptr, void* item_ptr);
+void* __swift_bridge__$Vec_SearchBatch$pop(void* vec_ptr);
+void* __swift_bridge__$Vec_SearchBatch$get(void* vec_ptr, uintptr_t index);
+void* __swift_bridge__$Vec_SearchBatch$get_mut(void* vec_ptr, uintptr_t index);
+uintptr_t __swift_bridge__$Vec_SearchBatch$len(void* vec_ptr);
+void* __swift_bridge__$Vec_SearchBatch$as_ptr(void* vec_ptr);
+
 void* __swift_bridge__$new_engine(void);
 struct __swift_bridge__$ResultFileListingAndWalkerError __swift_bridge__$Engine$list_directory(void* self, void* path);
 void __swift_bridge__$Engine$set_show_hidden(void* self, bool show);
 struct __swift_bridge__$ResultStringAndPreviewError __swift_bridge__$Engine$preview_text(void* self, void* path);
 uintptr_t __swift_bridge__$FileListing$len(void* self);
 struct __swift_bridge__$FileEntry __swift_bridge__$FileListing$entry(void* self, uintptr_t index);
+bool __swift_bridge__$SearchBatch$is_end(void* self);
+uintptr_t __swift_bridge__$SearchBatch$len(void* self);
+struct __swift_bridge__$FileEntry __swift_bridge__$SearchBatch$entry(void* self, uintptr_t index);
+uint64_t __swift_bridge__$search_start(void* root_path, void* query, bool subtree, bool show_hidden);
+void* __swift_bridge__$search_next_batch(uint64_t handle);
+void __swift_bridge__$search_cancel(uint64_t handle);
 typedef enum __swift_bridge__$ResultFileListingAndWalkerError$Tag {__swift_bridge__$ResultFileListingAndWalkerError$ResultOk, __swift_bridge__$ResultFileListingAndWalkerError$ResultErr} __swift_bridge__$ResultFileListingAndWalkerError$Tag;
 union __swift_bridge__$ResultFileListingAndWalkerError$Fields {void* ok; struct __swift_bridge__$WalkerError err;};
 typedef struct __swift_bridge__$ResultFileListingAndWalkerError{__swift_bridge__$ResultFileListingAndWalkerError$Tag tag; union __swift_bridge__$ResultFileListingAndWalkerError$Fields payload;} __swift_bridge__$ResultFileListingAndWalkerError;

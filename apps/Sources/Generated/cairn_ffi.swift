@@ -1,6 +1,15 @@
 public func new_engine() -> Engine {
     Engine(ptr: __swift_bridge__$new_engine())
 }
+public func searchStart<GenericIntoRustString: IntoRustString>(_ root_path: GenericIntoRustString, _ query: GenericIntoRustString, _ subtree: Bool, _ show_hidden: Bool) -> UInt64 {
+    __swift_bridge__$search_start({ let rustString = root_path.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), { let rustString = query.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), subtree, show_hidden)
+}
+public func searchNextBatch(_ handle: UInt64) -> SearchBatch {
+    SearchBatch(ptr: __swift_bridge__$search_next_batch(handle))
+}
+public func searchCancel(_ handle: UInt64) {
+    __swift_bridge__$search_cancel(handle)
+}
 public enum FileKind {
     case Directory
     case Regular
@@ -462,6 +471,94 @@ extension FileListing: Vectorizable {
 
     public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
         __swift_bridge__$Vec_FileListing$len(vecPtr)
+    }
+}
+
+
+public class SearchBatch: SearchBatchRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$SearchBatch$_free(ptr)
+        }
+    }
+}
+public class SearchBatchRefMut: SearchBatchRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class SearchBatchRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension SearchBatchRef {
+    public func isEnd() -> Bool {
+        __swift_bridge__$SearchBatch$is_end(ptr)
+    }
+
+    public func len() -> UInt {
+        __swift_bridge__$SearchBatch$len(ptr)
+    }
+
+    public func entry(_ index: UInt) -> FileEntry {
+        __swift_bridge__$SearchBatch$entry(ptr, index).intoSwiftRepr()
+    }
+}
+extension SearchBatch: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_SearchBatch$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_SearchBatch$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: SearchBatch) {
+        __swift_bridge__$Vec_SearchBatch$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_SearchBatch$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (SearchBatch(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SearchBatchRef> {
+        let pointer = __swift_bridge__$Vec_SearchBatch$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SearchBatchRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SearchBatchRefMut> {
+        let pointer = __swift_bridge__$Vec_SearchBatch$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SearchBatchRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<SearchBatchRef> {
+        UnsafePointer<SearchBatchRef>(OpaquePointer(__swift_bridge__$Vec_SearchBatch$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_SearchBatch$len(vecPtr)
     }
 }
 
