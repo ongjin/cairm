@@ -1,5 +1,9 @@
-use cairn_search::{next_batch, start, status, SearchMode, SearchOptions, SearchStatus};
+use cairn_search::{
+    cancel, next_batch, start, status, SearchHandle, SearchMode, SearchOptions, SearchStatus,
+};
 use std::fs;
+use std::thread::sleep;
+use std::time::Duration;
 use tempfile::tempdir;
 
 fn collect_all(h: cairn_search::SearchHandle) -> Vec<String> {
@@ -132,4 +136,108 @@ fn subtree_hidden_files_off_skips_dotfiles() {
     let names = collect_all(h);
     assert!(!names.contains(&".hidden.txt".to_string()));
     assert!(names.contains(&"visible.txt".to_string()));
+}
+
+#[test]
+fn cancel_mid_walk() {
+    let tmp = tempdir().unwrap();
+    // Make a wide tree so the walker doesn't finish instantly.
+    for i in 0..200 {
+        fs::write(tmp.path().join(format!("f{i}.txt")), b"").unwrap();
+    }
+
+    let h = start(
+        tmp.path(),
+        SearchOptions {
+            query: "".into(),
+            mode: SearchMode::Subtree,
+            batch_size: 16, // force multiple batches
+            ..Default::default()
+        },
+    );
+    // Let the walker produce one batch, then cancel.
+    sleep(Duration::from_millis(20));
+    cancel(h);
+
+    // Drain whatever is still coming. Must terminate (no hang).
+    let mut total = 0;
+    while let Some(b) = next_batch(h) {
+        total += b.len();
+        if total > 200 {
+            break; // safety net
+        }
+    }
+    assert!(total <= 200);
+}
+
+#[test]
+fn cap_enforcement() {
+    let tmp = tempdir().unwrap();
+    for i in 0..20 {
+        fs::write(tmp.path().join(format!("hit{i}.txt")), b"").unwrap();
+    }
+
+    let h = start(
+        tmp.path(),
+        SearchOptions {
+            query: "hit".into(),
+            mode: SearchMode::Folder,
+            result_cap: 10,
+            ..Default::default()
+        },
+    );
+
+    // Pull batches until exhausted; observe status BEFORE the channel's
+    // Disconnected signal evicts the session from the registry (after which
+    // `status` would return Done unconditionally).
+    let mut names = Vec::new();
+    let mut observed_capped = false;
+    while let Some(batch) = next_batch(h) {
+        for e in batch {
+            names.push(e.name.clone());
+        }
+        if status(h) == SearchStatus::Capped {
+            observed_capped = true;
+        }
+    }
+    assert_eq!(names.len(), 10, "got {:?}", names);
+    assert!(observed_capped, "status never transitioned to Capped");
+}
+
+#[test]
+fn invalid_handle_safe() {
+    let bad = SearchHandle(999_999_999);
+    assert!(next_batch(bad).is_none());
+    assert_eq!(status(bad), SearchStatus::Done);
+    cancel(bad); // must not panic
+}
+
+#[test]
+fn concurrent_sessions_independent() {
+    let tmp1 = tempdir().unwrap();
+    fs::write(tmp1.path().join("alpha.txt"), b"").unwrap();
+    let tmp2 = tempdir().unwrap();
+    fs::write(tmp2.path().join("beta.txt"), b"").unwrap();
+
+    let h1 = start(
+        tmp1.path(),
+        SearchOptions {
+            query: "alpha".into(),
+            mode: SearchMode::Folder,
+            ..Default::default()
+        },
+    );
+    let h2 = start(
+        tmp2.path(),
+        SearchOptions {
+            query: "beta".into(),
+            mode: SearchMode::Folder,
+            ..Default::default()
+        },
+    );
+
+    let names1 = collect_all(h1);
+    let names2 = collect_all(h2);
+    assert_eq!(names1, vec!["alpha.txt"]);
+    assert_eq!(names2, vec!["beta.txt"]);
 }
