@@ -22,20 +22,14 @@
 
 ---
 
-## SwiftUI 러닝커브 노트 (참조용)
+## 기술 참조 (간단)
 
-이 M1.1 에서 처음 만나게 될 SwiftUI / AppKit 패턴:
+이 M1.1 에서 스택 간 경계를 다루는 주의점만:
 
-1. **`@Observable` 매크로 (Swift 5.9+)** — 기존 `ObservableObject + @Published` 의 후계. 프로퍼티 선언만으로 자동 관찰 가능.
-2. **`@Environment` / `@Bindable`** — 전역 상태 주입과 양방향 바인딩. 이 M1.1 엔 `@Environment` 만 씀.
-3. **`NavigationSplitView`** — macOS 13+ 권장 three-pane. Sidebar/Content/Detail 슬롯.
-4. **Security-scoped bookmarks** — 샌드박스에서 재시동 간 폴더 접근 유지하는 유일한 방법. API: `URL.bookmarkData(options: .withSecurityScope)`, `URL(resolvingBookmarkData:options:bookmarkDataIsStale:)`, `startAccessingSecurityScopedResource()`. Apple 샘플 코드: "App Sandbox Persisting Access to File System Resources".
-5. **NSOpenPanel** — NSViewRepresentable 거칠 필요 없음, macOS SwiftUI 에서 직접 호출 가능 (`await NSOpenPanel.runModal()` pattern 보다 callback 기반이 simple).
-6. **swift-bridge `Result<T, E>` 매핑** — Rust `Result<Vec<FileEntry>, WalkerError>` 가 Swift `throws` 함수로 노출. 에러 variant 는 Swift `enum Error` 로 자동 매핑.
-
-**권장 읽기 (Step 1 전에 한 번):**
-- Apple docs: "Managing your app's life cycle", "Observation", "App Sandbox Design Guide"
-- swift-bridge book: `Result` 챕터 (`~/.cargo/registry/src/.../swift-bridge-0.1.59/book/` 에 소스)
+- **swift-bridge 0.1.59 제약** — `extern "Rust"` 블록 안의 함수에 `///` doc 주석 금지 (파서 panic). `Result<T, E>` → Swift `throws` 자동 매핑. enum variant 이름은 **Rust 원본 보존** (대소문자 포함).
+- **Security-scoped bookmark 라이프사이클** — `.withSecurityScope` 은 `files.bookmarks.app-scope` entitlement 필요. resolve 시 `bookmarkDataIsStale` out-param 반드시 체크. start/stop 은 ref-count 로 관리 (플랜 Task 7 참조).
+- **NSOpenPanel** — `begin(completionHandler:)` callback 기반이 SwiftUI 와 궁합 좋음 (`runModal()` 은 메인 스레드 블로킹).
+- **Swift `@Observable` (Swift 5.9+)** — Phase 0 의 entitlements 미설정 상태에서 작동 확인됨. 이번 M1.1 에서 샌드박스 켜져도 동작은 동일.
 
 ---
 
