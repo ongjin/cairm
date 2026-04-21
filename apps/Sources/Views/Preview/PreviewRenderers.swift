@@ -67,6 +67,8 @@ struct ImagePreview: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: path) {
+            // Reset immediately so stale image doesn't linger during decode.
+            image = nil
             let p = path
             let decoded = await Task.detached { NSImage(contentsOf: URL(fileURLWithPath: p)) }.value
             image = decoded
