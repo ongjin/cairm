@@ -27,3 +27,7 @@ apps/Sources/Generated/
 
 # swift-bridge build cache
 generated/
+
+# DMG build artifacts (make-dmg.sh)
+*.dmg
+.dmg-build/
