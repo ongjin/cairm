@@ -6,6 +6,7 @@ import Foundation
 /// empty state visually quiet.
 struct PreviewPaneView: View {
     @Bindable var preview: PreviewModel
+    @Environment(\.cairnTheme) private var theme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,6 +17,13 @@ struct PreviewPaneView: View {
             renderer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            ZStack {
+                VisualEffectBlur(material: .contentBackground)
+                theme.panelTint.opacity(0.4)
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private var isIdle: Bool {
@@ -46,17 +54,17 @@ struct PreviewPaneView: View {
     private func header(for url: URL) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(url.lastPathComponent)
-                .font(.system(size: 12, weight: .medium))
+                .font(theme.bodyFont.weight(.medium))
                 .lineLimit(1)
                 .truncationMode(.middle)
             Text(url.deletingLastPathComponent().path)
-                .font(.system(size: 10))
+                .font(theme.headerFont)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.head)
             if let size = fileSize(for: url) {
                 Text(size)
-                    .font(.system(size: 10))
+                    .font(theme.headerFont)
                     .foregroundStyle(.tertiary)
             }
         }
