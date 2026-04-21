@@ -77,11 +77,49 @@ final class SearchModel {
             return
         }
 
-        // Subtree mode wired in Task 9; for now, leave idle so the UI doesn't
-        // flash a running state we can't satisfy.
-        results = []
+        // Subtree mode — 200ms debounce, async walker, running-sort per batch.
+        phase = .running
         hitCount = 0
-        phase = .idle
+        results = []
+        let q = query
+        guard let rootURL = root else {
+            phase = .idle
+            return
+        }
+        let rootPath = rootURL.path
+        let hidden = showHidden
+        let cmp = FolderModel.comparator(for: sort)
+        let eng = engine
+
+        task = Task { [weak self] in
+            // Debounce — cancellation during the sleep drops this whole task.
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+
+            let handle = await eng.startSearch(
+                root: rootPath, query: q, subtree: true, showHidden: hidden)
+            await MainActor.run { self?.activeHandle = handle }
+
+            while !Task.isCancelled {
+                guard let batch = await eng.fetchSearchBatch(handle: handle) else { break }
+                if batch.isEmpty { continue } // keep-alive tick
+                await MainActor.run {
+                    guard let self else { return }
+                    self.results.append(contentsOf: batch)
+                    self.results.sort(by: cmp)
+                    self.hitCount = self.results.count
+                    if self.results.count >= 5_000 {
+                        self.phase = .capped
+                    }
+                }
+            }
+
+            await MainActor.run {
+                guard let self else { return }
+                if case .running = self.phase { self.phase = .done }
+                if self.activeHandle == handle { self.activeHandle = nil }
+            }
+        }
     }
 
     /// Abort any in-flight search and drop all results. Called on Escape /

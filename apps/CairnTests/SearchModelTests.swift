@@ -91,4 +91,40 @@ final class SearchModelTests: XCTestCase {
         // Directory bubbles to top regardless; files in case-insensitive name asc.
         XCTAssertEqual(names, ["tests", "beta_test.md", "test.txt"])
     }
+
+    func test_cancel_clears_task_and_handle() {
+        let m = SearchModel(engine: engine())
+        m.query = "x"
+        m.scope = .subtree
+        m.refresh(
+            root: URL(fileURLWithPath: "/tmp"),
+            showHidden: false,
+            sort: defaultSort(),
+            folderEntries: []
+        )
+        // Task is spawned; cancel before it finishes the 200ms debounce.
+        m.cancel()
+        XCTAssertNil(m.activeHandle)
+        XCTAssertEqual(m.phase, .idle)
+    }
+
+    func test_scope_toggle_does_not_crash() {
+        let m = SearchModel(engine: engine())
+        m.query = "x"
+        m.scope = .folder
+        m.refresh(
+            root: URL(fileURLWithPath: "/"),
+            showHidden: false,
+            sort: defaultSort(),
+            folderEntries: []
+        )
+        m.scope = .subtree
+        m.refresh(
+            root: URL(fileURLWithPath: "/"),
+            showHidden: false,
+            sort: defaultSort(),
+            folderEntries: []
+        )
+        m.cancel()
+    }
 }
