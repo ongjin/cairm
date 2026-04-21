@@ -2,6 +2,18 @@ import AppKit
 import SwiftUI
 import QuickLookUI
 
+/// `representedObject` can only hold a single value, so wrap `(fileURL, appURL)`
+/// as an NSObject so the target-action path can recover both when the user
+/// clicks an app inside the "Open With" submenu.
+final class OpenWithPayload: NSObject {
+    let fileURL: URL
+    let appURL: URL
+    init(fileURL: URL, appURL: URL) {
+        self.fileURL = fileURL
+        self.appURL = appURL
+    }
+}
+
 /// Bridges FolderModel ↔ NSTableView.
 ///
 /// Single class implementing both NSTableViewDataSource and NSTableViewDelegate.
@@ -209,7 +221,67 @@ final class FileListCoordinator: NSObject,
         reveal.representedObject = entry
         menu.addItem(reveal)
 
+        // Copy Path (⌥⌘C) — stays just below Reveal so the two OS-level ops sit together.
+        let copyPath = NSMenuItem(title: "Copy Path",
+                                  action: #selector(menuCopyPath(_:)),
+                                  keyEquivalent: "c")
+        copyPath.keyEquivalentModifierMask = [.command, .option]
+        copyPath.target = self
+        copyPath.representedObject = entry
+        menu.addItem(copyPath)
+
+        // Open With submenu — non-directories only. Directories go straight to Finder.
+        if entry.kind != .Directory {
+            if let openWith = buildOpenWithSubmenu(for: entry) {
+                let openItem = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
+                openItem.submenu = openWith
+                menu.addItem(openItem)
+            }
+        }
+
+        menu.addItem(.separator())
+
+        // Move to Trash (⌘⌫) — destructive, separated by divider.
+        let trash = NSMenuItem(title: "Move to Trash",
+                               action: #selector(menuMoveToTrash(_:)),
+                               keyEquivalent: String(UnicodeScalar(NSBackspaceCharacter)!))
+        trash.keyEquivalentModifierMask = .command
+        trash.target = self
+        trash.representedObject = entry
+        menu.addItem(trash)
+
         return menu
+    }
+
+    private func buildOpenWithSubmenu(for entry: FileEntry) -> NSMenu? {
+        let fileURL = URL(fileURLWithPath: entry.path.toString())
+        let appURLs = NSWorkspace.shared.urlsForApplications(toOpen: fileURL)
+        guard !appURLs.isEmpty else { return nil }
+
+        let submenu = NSMenu()
+        let defaultApp = NSWorkspace.shared.urlForApplication(toOpen: fileURL)
+
+        // Put default app first (bold via attributedTitle), then the rest.
+        var ordered: [URL] = []
+        if let def = defaultApp {
+            ordered.append(def)
+            ordered.append(contentsOf: appURLs.filter { $0 != def })
+        } else {
+            ordered = appURLs
+        }
+
+        for appURL in ordered {
+            let name = FileManager.default.displayName(atPath: appURL.path)
+                .replacingOccurrences(of: ".app", with: "")
+            let title = (appURL == defaultApp) ? "\(name) (default)" : name
+            let item = NSMenuItem(title: title,
+                                  action: #selector(menuOpenWith(_:)),
+                                  keyEquivalent: "")
+            item.target = self
+            item.representedObject = OpenWithPayload(fileURL: fileURL, appURL: appURL)
+            submenu.addItem(item)
+        }
+        return submenu
     }
 
     @objc private func menuAddToPinned(_ sender: NSMenuItem) {
@@ -221,6 +293,34 @@ final class FileListCoordinator: NSObject,
         guard let entry = sender.representedObject as? FileEntry else { return }
         NSWorkspace.shared.selectFile(entry.path.toString(),
                                       inFileViewerRootedAtPath: "")
+    }
+
+    @objc private func menuCopyPath(_ sender: NSMenuItem) {
+        guard let entry = sender.representedObject as? FileEntry else { return }
+        let path = entry.path.toString()
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(path, forType: .string)
+    }
+
+    @objc private func menuMoveToTrash(_ sender: NSMenuItem) {
+        guard let entry = sender.representedObject as? FileEntry else { return }
+        let url = URL(fileURLWithPath: entry.path.toString())
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        } catch {
+            NSLog("cairn: Move to Trash failed — \(error.localizedDescription)")
+            NSSound.beep()
+        }
+    }
+
+    @objc private func menuOpenWith(_ sender: NSMenuItem) {
+        guard let payload = sender.representedObject as? OpenWithPayload else { return }
+        NSWorkspace.shared.open([payload.fileURL],
+                                withApplicationAt: payload.appURL,
+                                configuration: .init()) { _, error in
+            if let error { NSLog("cairn: Open With failed — \(error.localizedDescription)") }
+        }
     }
 
     // MARK: - Quick Look
