@@ -8,6 +8,7 @@ use cairn_walker::{list_directory, FileEntry, WalkerConfig, WalkerError};
 use std::path::Path;
 
 pub use cairn_walker::{FileKind, IconKind};
+pub use cairn_preview::PreviewError;
 
 pub struct Engine {
     walker_config: WalkerConfig,
@@ -22,6 +23,12 @@ impl Engine {
 
     pub fn list_directory(&self, path: &Path) -> Result<Vec<FileEntry>, WalkerError> {
         list_directory(path, &self.walker_config)
+    }
+
+    pub fn preview_text(&self, path: &Path) -> Result<String, PreviewError> {
+        // 64 KB — balances "enough to see code context" vs "snappy".
+        // Phase 2 will make this configurable + stream-based.
+        cairn_preview::preview_text(path, 64 * 1024)
     }
 
     pub fn set_show_hidden(&mut self, show: bool) {

@@ -9,3 +9,4 @@ name = "cairn_core"
 
 [dependencies]
 cairn-walker = { path = "../cairn-walker" }
+cairn-preview = { path = "../cairn-preview" }
