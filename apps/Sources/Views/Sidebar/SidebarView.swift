@@ -6,6 +6,7 @@ import AppKit
 /// "Unpin", or "Reveal in Finder" depending on the item's section.
 struct SidebarView: View {
     @Bindable var app: AppModel
+    @Environment(\.cairnTheme) private var theme
 
     var body: some View {
         List {
@@ -46,6 +47,14 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background {
+            ZStack {
+                VisualEffectBlur(material: .sidebar)
+                theme.sidebarTint.opacity(0.4)
+            }
+            .ignoresSafeArea()
+        }
         .frame(minWidth: 200)
     }
 
