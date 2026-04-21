@@ -133,7 +133,7 @@ final class PreviewModel {
                 case .Io(let msg): return .failed("I/O error: \(msg.toString())")
                 }
             } catch {
-                return .failed(String(describing: error))
+                return .failed(ErrorMessage.userFacing(error))
             }
         }
     }

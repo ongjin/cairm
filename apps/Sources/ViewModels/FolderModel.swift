@@ -68,7 +68,7 @@ final class FolderModel {
             state = .loaded
         } catch {
             entries = []
-            state = .failed(String(describing: error))
+            state = .failed(ErrorMessage.userFacing(error))
         }
     }
 
