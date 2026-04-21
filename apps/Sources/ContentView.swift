@@ -7,40 +7,55 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var app = app
-        return Group {
-            if app.currentFolder == nil {
-                OpenFolderEmptyState(app: app)
-            } else if let folder {
-                NavigationSplitView {
-                    sidebarPlaceholder
-                } content: {
-                    FileListView(folder: folder, onActivate: handleOpen)
-                } detail: {
-                    previewPlaceholder
+        return NavigationSplitView {
+            SidebarView(app: app)
+        } content: {
+            if let folder {
+                FileListView(
+                    folder: folder,
+                    onActivate: handleOpen,
+                    onAddToPinned: handleAddToPinned,
+                    isPinnedCheck: { entry in
+                        app.bookmarks.isPinned(url: URL(fileURLWithPath: entry.path.toString()))
+                    }
+                )
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        } detail: {
+            previewPlaceholder
+        }
+        .navigationTitle(app.currentFolder?.lastPathComponent ?? "Cairn")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button(action: { app.goBack() }) {
+                    Image(systemName: "chevron.left")
                 }
-                .navigationTitle(app.currentFolder?.lastPathComponent ?? "Cairn")
-                .toolbar {
-                    ToolbarItem(placement: .navigation) {
-                        Button(action: { app.goBack() }) {
-                            Image(systemName: "chevron.left")
-                        }
-                        .disabled(!app.history.canGoBack)
-                        .keyboardShortcut(.leftArrow, modifiers: [.command])
-                    }
-                    ToolbarItem(placement: .navigation) {
-                        Button(action: { app.goForward() }) {
-                            Image(systemName: "chevron.right")
-                        }
-                        .disabled(!app.history.canGoForward)
-                        .keyboardShortcut(.rightArrow, modifiers: [.command])
-                    }
-                    ToolbarItem(placement: .navigation) {
-                        Button(action: { app.goUp() }) {
-                            Image(systemName: "arrow.up")
-                        }
-                        .keyboardShortcut(.upArrow, modifiers: [.command])
-                    }
+                .disabled(!app.history.canGoBack)
+                .keyboardShortcut(.leftArrow, modifiers: [.command])
+            }
+            ToolbarItem(placement: .navigation) {
+                Button(action: { app.goForward() }) {
+                    Image(systemName: "chevron.right")
                 }
+                .disabled(!app.history.canGoForward)
+                .keyboardShortcut(.rightArrow, modifiers: [.command])
+            }
+            ToolbarItem(placement: .navigation) {
+                Button(action: { app.goUp() }) {
+                    Image(systemName: "arrow.up")
+                }
+                .keyboardShortcut(.upArrow, modifiers: [.command])
+            }
+            ToolbarItem(placement: .principal) {
+                BreadcrumbBar(app: app)
+            }
+            ToolbarItem(placement: .automatic) {
+                Button(action: { app.toggleCurrentFolderPin() }) {
+                    Image(systemName: pinIconName)
+                }
+                .help(app.currentFolder.map(app.bookmarks.isPinned) == true ? "Unpin current folder" : "Pin current folder")
+                .keyboardShortcut("d", modifiers: [.command])
             }
         }
         .task {
@@ -52,8 +67,14 @@ struct ContentView: View {
         .onChange(of: app.currentFolder) { _, new in
             ensureFolderModel()
             guard let url = new else { folder?.clear(); return }
+            app.lastFolder.save(url)
             Task { await folder?.load(url) }
         }
+    }
+
+    private var pinIconName: String {
+        guard let url = app.currentFolder else { return "pin" }
+        return app.bookmarks.isPinned(url: url) ? "pin.fill" : "pin"
     }
 
     private func ensureFolderModel() {
@@ -61,27 +82,18 @@ struct ContentView: View {
     }
 
     private func handleOpen(_ entry: FileEntry) {
-        // `.Directory` is swift-bridge's default casing (Rust variant preserved).
+        let url = URL(fileURLWithPath: entry.path.toString())
         if entry.kind == .Directory {
-            // Navigate into a subfolder of the current root — access already granted.
-            let url = URL(fileURLWithPath: entry.path.toString())
             app.history.push(url)
         } else {
-            // File open: delegate to Finder for now (Phase 2 adds in-app preview / default-app resolution).
-            NSWorkspace.shared.open(URL(fileURLWithPath: entry.path.toString()))
+            NSWorkspace.shared.open(url)
         }
     }
 
-    private var sidebarPlaceholder: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("SIDEBAR").font(.caption).foregroundStyle(.secondary)
-            Text("Pinned / Recent / Devices — M1.3")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-            Spacer()
-        }
-        .padding(12)
-        .frame(minWidth: 180)
+    private func handleAddToPinned(_ entry: FileEntry) {
+        guard entry.kind == .Directory else { return }
+        let url = URL(fileURLWithPath: entry.path.toString())
+        try? app.bookmarks.togglePin(url: url)
     }
 
     private var previewPlaceholder: some View {
