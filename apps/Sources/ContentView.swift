@@ -1,40 +1,96 @@
 import SwiftUI
+import AppKit
 
 struct ContentView: View {
-    // M1.1 workspace — full UI lands in Tasks 10–12.
-    @State private var status = "Engine not invoked yet."
+    @Environment(AppModel.self) private var app
+    @State private var folder: FolderModel?
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [.teal.opacity(0.3), .indigo.opacity(0.4)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            VStack(spacing: 12) {
-                Text("🏔️")
-                    .font(.system(size: 48))
-                Text(status)
-                    .font(.system(size: 16, design: .rounded))
-                    .foregroundStyle(.white)
-                Text("M1.1 — scaffolding")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.7))
+        @Bindable var app = app
+        return Group {
+            if app.currentFolder == nil {
+                OpenFolderEmptyState(app: app)
+            } else if let folder {
+                NavigationSplitView {
+                    sidebarPlaceholder
+                } content: {
+                    FileListSimpleView(folder: folder, onOpen: handleOpen)
+                } detail: {
+                    previewPlaceholder
+                }
+                .navigationTitle(app.currentFolder?.lastPathComponent ?? "Cairn")
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button(action: { app.goBack() }) {
+                            Image(systemName: "chevron.left")
+                        }
+                        .disabled(!app.history.canGoBack)
+                        .keyboardShortcut(.leftArrow, modifiers: [.command])
+                    }
+                    ToolbarItem(placement: .navigation) {
+                        Button(action: { app.goForward() }) {
+                            Image(systemName: "chevron.right")
+                        }
+                        .disabled(!app.history.canGoForward)
+                        .keyboardShortcut(.rightArrow, modifiers: [.command])
+                    }
+                    ToolbarItem(placement: .navigation) {
+                        Button(action: { app.goUp() }) {
+                            Image(systemName: "arrow.up")
+                        }
+                        .keyboardShortcut(.upArrow, modifiers: [.command])
+                    }
+                }
             }
-            .padding()
         }
-        .frame(minWidth: 600, minHeight: 400)
         .task {
-            let engine = CairnEngine()
-            do {
-                let home = FileManager.default.homeDirectoryForCurrentUser
-                let entries = try await engine.listDirectory(home)
-                status = "Home has \(entries.count) entries (sandboxed — likely 0 until folder is opened)"
-            } catch {
-                status = "Engine call failed: \(error)"
+            ensureFolderModel()
+            if let url = app.currentFolder {
+                await folder?.load(url)
             }
         }
+        .onChange(of: app.currentFolder) { _, new in
+            ensureFolderModel()
+            guard let url = new else { folder?.clear(); return }
+            Task { await folder?.load(url) }
+        }
+    }
+
+    private func ensureFolderModel() {
+        if folder == nil { folder = FolderModel(engine: app.engine) }
+    }
+
+    private func handleOpen(_ entry: FileEntry) {
+        // `.Directory` is swift-bridge's default casing (Rust variant preserved).
+        if entry.kind == .Directory {
+            // Navigate into a subfolder of the current root — access already granted.
+            let url = URL(fileURLWithPath: entry.path.toString())
+            app.history.push(url)
+        } else {
+            // File open: delegate to Finder for now (Phase 2 adds in-app preview / default-app resolution).
+            NSWorkspace.shared.open(URL(fileURLWithPath: entry.path.toString()))
+        }
+    }
+
+    private var sidebarPlaceholder: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("SIDEBAR").font(.caption).foregroundStyle(.secondary)
+            Text("Pinned / Recent / Devices — M1.3")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            Spacer()
+        }
+        .padding(12)
+        .frame(minWidth: 180)
+    }
+
+    private var previewPlaceholder: some View {
+        VStack {
+            Text("PREVIEW")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("M1.4").font(.system(size: 11)).foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
     }
 }
