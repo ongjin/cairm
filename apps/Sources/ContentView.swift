@@ -4,81 +4,23 @@ import AppKit
 struct ContentView: View {
     @Environment(AppModel.self) private var app
     @State private var folder: FolderModel?
+    @State private var searchModel: SearchModel?
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         @Bindable var app = app
         return NavigationSplitView {
             SidebarView(app: app)
         } content: {
-            if let folder {
-                FileListView(
-                    entries: folder.sortedEntries,
-                    folder: folder,
-                    folderColumnVisible: false,
-                    searchRoot: nil,
-                    onActivate: handleOpen,
-                    onAddToPinned: handleAddToPinned,
-                    isPinnedCheck: { entry in
-                        app.bookmarks.isPinned(url: URL(fileURLWithPath: entry.path.toString()))
-                    },
-                    onSelectionChanged: handleSelectionChanged
-                )
-            } else {
-                ProgressView().controlSize(.small)
-            }
+            contentColumn
         } detail: {
             PreviewPaneView(preview: app.preview)
         }
         .navigationTitle(app.currentFolder?.lastPathComponent ?? "Cairn")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button(action: { app.goBack() }) {
-                    Image(systemName: "chevron.left")
-                }
-                .disabled(!app.history.canGoBack)
-                .keyboardShortcut(.leftArrow, modifiers: [.command])
-            }
-            ToolbarItem(placement: .navigation) {
-                Button(action: { app.goForward() }) {
-                    Image(systemName: "chevron.right")
-                }
-                .disabled(!app.history.canGoForward)
-                .keyboardShortcut(.rightArrow, modifiers: [.command])
-            }
-            ToolbarItem(placement: .navigation) {
-                Button(action: { app.goUp() }) {
-                    Image(systemName: "arrow.up")
-                }
-                .keyboardShortcut(.upArrow, modifiers: [.command])
-            }
-            ToolbarItem(placement: .principal) {
-                BreadcrumbBar(app: app)
-            }
-            ToolbarItem(placement: .automatic) {
-                Button(action: { app.toggleCurrentFolderPin() }) {
-                    Image(systemName: pinIconName)
-                }
-                .help(app.currentFolder.map(app.bookmarks.isPinned) == true ? "Unpin current folder" : "Pin current folder")
-                .keyboardShortcut("d", modifiers: [.command])
-            }
-            ToolbarItem(placement: .automatic) {
-                Button(action: { toggleShowHidden() }) {
-                    Image(systemName: app.showHidden ? "eye" : "eye.slash")
-                }
-                .help(app.showHidden ? "Hide hidden files" : "Show hidden files")
-                .keyboardShortcut(".", modifiers: [.command, .shift])
-            }
-            ToolbarItem(placement: .automatic) {
-                Button(action: { reloadCurrentFolder() }) {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .help("Reload")
-                .keyboardShortcut("r", modifiers: [.command])
-                .disabled(app.currentFolder == nil)
-            }
-        }
+        .toolbar { mainToolbar }
         .task {
             ensureFolderModel()
+            ensureSearchModel()
             if let url = app.currentFolder {
                 await folder?.load(url)
             }
@@ -88,6 +30,136 @@ struct ContentView: View {
             guard let url = new else { folder?.clear(); return }
             app.lastFolder.save(url)
             Task { await folder?.load(url) }
+            triggerSearchRefresh()
+        }
+        .onChange(of: searchModel?.query) { _, _ in triggerSearchRefresh() }
+        .onChange(of: searchModel?.scope) { _, _ in triggerSearchRefresh() }
+        .onChange(of: folder?.sortDescriptor) { _, _ in triggerSearchRefresh() }
+        .onChange(of: app.showHidden) { _, _ in triggerSearchRefresh() }
+    }
+
+    @ViewBuilder
+    private var contentColumn: some View {
+        if let folder, let searchModel {
+            VStack(spacing: 0) {
+                if searchModel.phase == .capped {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Showing first 5,000 results — refine your query")
+                            .font(.caption)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.15))
+                }
+
+                if searchModel.isActive
+                    && searchModel.results.isEmpty
+                    && searchModel.phase != .running
+                {
+                    emptySearchState(query: searchModel.query)
+                } else {
+                    fileList(folder: folder, searchModel: searchModel)
+                }
+            }
+        } else {
+            ProgressView().controlSize(.small)
+        }
+    }
+
+    private func fileList(folder: FolderModel, searchModel: SearchModel) -> some View {
+        let isActive = searchModel.isActive
+        let entries: [FileEntry] = isActive ? searchModel.results : folder.sortedEntries
+        let showFolderCol = isActive && searchModel.scope == .subtree
+        let searchRoot: URL? = isActive ? app.currentFolder : nil
+        return FileListView(
+            entries: entries,
+            folder: folder,
+            folderColumnVisible: showFolderCol,
+            searchRoot: searchRoot,
+            onActivate: handleOpen,
+            onAddToPinned: handleAddToPinned,
+            isPinnedCheck: { entry in
+                app.bookmarks.isPinned(url: URL(fileURLWithPath: entry.path.toString()))
+            },
+            onSelectionChanged: handleSelectionChanged
+        )
+    }
+
+    @ViewBuilder
+    private func emptySearchState(query: String) -> some View {
+        VStack(spacing: 4) {
+            Spacer()
+            Image(systemName: "magnifyingglass")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+            Text("No matches for \"\(query)\"")
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ToolbarContentBuilder
+    private var mainToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button(action: { app.goBack() }) {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(!app.history.canGoBack)
+            .keyboardShortcut(.leftArrow, modifiers: [.command])
+        }
+        ToolbarItem(placement: .navigation) {
+            Button(action: { app.goForward() }) {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(!app.history.canGoForward)
+            .keyboardShortcut(.rightArrow, modifiers: [.command])
+        }
+        ToolbarItem(placement: .navigation) {
+            Button(action: { app.goUp() }) {
+                Image(systemName: "arrow.up")
+            }
+            .keyboardShortcut(.upArrow, modifiers: [.command])
+        }
+        ToolbarItem(placement: .principal) {
+            BreadcrumbBar(app: app)
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: { app.toggleCurrentFolderPin() }) {
+                Image(systemName: pinIconName)
+            }
+            .help(app.currentFolder.map(app.bookmarks.isPinned) == true ? "Unpin current folder" : "Pin current folder")
+            .keyboardShortcut("d", modifiers: [.command])
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: { toggleShowHidden() }) {
+                Image(systemName: app.showHidden ? "eye" : "eye.slash")
+            }
+            .help(app.showHidden ? "Hide hidden files" : "Show hidden files")
+            .keyboardShortcut(".", modifiers: [.command, .shift])
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: { reloadCurrentFolder() }) {
+                Image(systemName: "arrow.clockwise")
+            }
+            .help("Reload")
+            .keyboardShortcut("r", modifiers: [.command])
+            .disabled(app.currentFolder == nil)
+        }
+        ToolbarItem(placement: .automatic) {
+            if let searchModel {
+                SearchField(search: searchModel, focused: $searchFocused)
+            }
+        }
+        ToolbarItem(placement: .automatic) {
+            // Hidden button to expose the ⌘F shortcut at the app level.
+            Button(action: { searchFocused = true }) { EmptyView() }
+                .keyboardShortcut("f", modifiers: [.command])
+                .frame(width: 0, height: 0)
+                .opacity(0)
         }
     }
 
@@ -98,6 +170,10 @@ struct ContentView: View {
 
     private func ensureFolderModel() {
         if folder == nil { folder = FolderModel(engine: app.engine) }
+    }
+
+    private func ensureSearchModel() {
+        if searchModel == nil { searchModel = SearchModel(engine: app.engine) }
     }
 
     private func handleOpen(_ entry: FileEntry) {
@@ -133,5 +209,15 @@ struct ContentView: View {
     private func reloadCurrentFolder() {
         guard let url = app.currentFolder else { return }
         Task { await folder?.load(url) }
+    }
+
+    private func triggerSearchRefresh() {
+        guard let searchModel, let folder else { return }
+        searchModel.refresh(
+            root: app.currentFolder,
+            showHidden: app.showHidden,
+            sort: folder.sortDescriptor,
+            folderEntries: folder.sortedEntries
+        )
     }
 }
