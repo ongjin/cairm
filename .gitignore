@@ -18,3 +18,12 @@ DerivedData/
 
 # Brainstorming artifacts
 .superpowers/
+
+# xcodegen이 생성하는 프로젝트 파일
+apps/Cairn.xcodeproj/
+
+# swift-bridge가 생성하는 Swift 바인딩
+apps/Sources/Generated/
+
+# swift-bridge build cache
+generated/
