@@ -153,9 +153,9 @@ mod tests {
         // 한글 '가' = 0xEA 0xB0 0x80. If max_bytes slices inside it AND the remainder
         // isn't read, the output can't be valid UTF-8.
         let tmp = write_tmp("가나다".as_bytes()); // 9 bytes total
-        // max_bytes = 2: we read 2 bytes of the first 3-byte codepoint, so the
-        // assembled buffer is invalid UTF-8 → Binary. This is acceptable behavior
-        // for Phase 1; Phase 2 may refine to respect codepoint boundaries.
+                                                  // max_bytes = 2: we read 2 bytes of the first 3-byte codepoint, so the
+                                                  // assembled buffer is invalid UTF-8 → Binary. This is acceptable behavior
+                                                  // for Phase 1; Phase 2 may refine to respect codepoint boundaries.
         assert_eq!(preview_text(tmp.path(), 2), Err(PreviewError::Binary));
     }
 }

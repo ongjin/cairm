@@ -7,8 +7,8 @@
 use cairn_walker::{list_directory, FileEntry, WalkerConfig, WalkerError};
 use std::path::Path;
 
-pub use cairn_walker::{FileKind, IconKind};
 pub use cairn_preview::PreviewError;
+pub use cairn_walker::{FileKind, IconKind};
 
 pub struct Engine {
     walker_config: WalkerConfig,
