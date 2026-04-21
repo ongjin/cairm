@@ -9,14 +9,12 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
-    ARCHS: "$(ARCHS_STANDARD)"  # arm64 + x86_64
+    ARCHS: "$(ARCHS_STANDARD)"
     SWIFT_OBJC_BRIDGING_HEADER: Sources/BridgingHeader.h
-    # Rust 유니버셜 static lib 링크
     LIBRARY_SEARCH_PATHS:
       - $(SRCROOT)/../target/universal/release
     OTHER_LDFLAGS:
       - -lcairn_ffi
-    # swift-bridge는 C++ stdlib 심볼을 참조할 수 있어 명시적으로 추가
     CLANG_CXX_LIBRARY: "libc++"
 
 targets:
@@ -25,9 +23,26 @@ targets:
     platform: macOS
     sources:
       - path: Sources
+        excludes:
+          - "Cairn.entitlements"
     info:
       path: Sources/Info.plist
       properties:
         LSApplicationCategoryType: public.app-category.utilities
         NSHumanReadableCopyright: "Copyright © 2026 ongjin. MIT License."
-    # Phase 0엔 샌드박스·entitlements 불필요. v1.0 가까워지면 추가.
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Sources/Cairn.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+  CairnTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: CairnTests
+    dependencies:
+      - target: Cairn
+    settings:
+      base:
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Cairn.app/Contents/MacOS/Cairn"
