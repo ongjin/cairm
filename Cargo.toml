@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cairn-core",
+    "crates/cairn-walker",
+    "crates/cairn-search",
+    "crates/cairn-preview",
+    "crates/cairn-index",
+    "crates/cairn-ffi",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.75"
+authors = ["ongjin"]
+license = "MIT"
+repository = "https://github.com/ongjin/cairn"
+
+[workspace.dependencies]
+# Phase 0에선 거의 안 쓰임. Phase 1+에서 채워진다.
+# 여기 등록된 의존성은 하위 크레이트에서 `workspace = true`로 참조.
+anyhow = "1"
+thiserror = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
