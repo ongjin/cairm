@@ -1,6 +1,6 @@
 # Cairn Phase 0 — Foundation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Cairn 프로젝트의 end-to-end 아키텍처를 "Hello, Cairn!" 수준으로 완전 결선한다. Rust 엔진(swift-bridge로 래핑) → Swift UI(SwiftUI)로 문자열이 흘러오는 파이프라인을 증명하고, CI가 녹색이면 끝.
 
@@ -62,7 +62,7 @@
 - Create: `/Users/cyj/workspace/personal/cairn/LICENSE`
 - Modify: `/Users/cyj/workspace/personal/cairn/.gitignore`
 
-- [ ] **Step 1: README.md 작성**
+- [x] **Step 1: README.md 작성**
 
 파일 내용:
 
@@ -112,7 +112,7 @@ open apps/build/Debug/Cairn.app
 MIT — see [LICENSE](./LICENSE).
 ```
 
-- [ ] **Step 2: LICENSE 작성 (MIT 전문)**
+- [x] **Step 2: LICENSE 작성 (MIT 전문)**
 
 파일 내용:
 
@@ -140,7 +140,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-- [ ] **Step 3: .gitignore에 Xcode·생성물 추가 (기존 파일 수정)**
+- [x] **Step 3: .gitignore에 Xcode·생성물 추가 (기존 파일 수정)**
 
 기존 `.gitignore` 내용 끝에 다음을 추가하세요 (이미 있는 항목은 건드리지 말 것):
 
@@ -155,7 +155,7 @@ apps/Sources/Generated/
 generated/
 ```
 
-- [ ] **Step 4: 확인**
+- [x] **Step 4: 확인**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn
@@ -165,7 +165,7 @@ cat .gitignore | tail -10
 
 Expected: 세 파일 모두 존재. `.gitignore` 끝에 새로 추가한 항목 보임.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn
@@ -181,7 +181,7 @@ git commit -m "docs: add README and MIT LICENSE"
 - Create: `/Users/cyj/workspace/personal/cairn/Cargo.toml`
 - Create: `/Users/cyj/workspace/personal/cairn/rust-toolchain.toml`
 
-- [ ] **Step 1: Workspace `Cargo.toml` 작성**
+- [x] **Step 1: Workspace `Cargo.toml` 작성**
 
 파일 내용:
 
@@ -217,7 +217,7 @@ codegen-units = 1
 strip = true
 ```
 
-- [ ] **Step 2: `rust-toolchain.toml` 작성 (툴체인 고정)**
+- [x] **Step 2: `rust-toolchain.toml` 작성 (툴체인 고정)**
 
 파일 내용:
 
@@ -228,7 +228,7 @@ components = ["rustfmt", "clippy"]
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 ```
 
-- [ ] **Step 3: Workspace가 파싱되는지 확인 (크레이트 없어서 실패 예상)**
+- [x] **Step 3: Workspace가 파싱되는지 확인 (크레이트 없어서 실패 예상)**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn
@@ -239,7 +239,7 @@ Expected: `error: failed to load manifest for workspace member ...crates/cairn-c
 
 이 상태는 다음 태스크에서 크레이트를 만들면 풀린다.
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add Cargo.toml rust-toolchain.toml
@@ -254,7 +254,7 @@ git commit -m "build(rust): add cargo workspace root and toolchain pin"
 - Create: `/Users/cyj/workspace/personal/cairn/crates/cairn-core/Cargo.toml`
 - Create: `/Users/cyj/workspace/personal/cairn/crates/cairn-core/src/lib.rs`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: 실패하는 테스트 작성**
 
 `crates/cairn-core/Cargo.toml`:
 
@@ -292,7 +292,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: 테스트 실행 — 통과 확인**
+- [x] **Step 2: 테스트 실행 — 통과 확인**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn
@@ -303,7 +303,7 @@ Expected: `test hello_returns_expected_greeting ... ok`, `test result: ok. 1 pas
 
 (이 케이스는 함수 구현이 너무 단순해서 실패하는 단계를 건너뛴다. 의도적.)
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add crates/cairn-core
@@ -322,7 +322,7 @@ Phase 0엔 각 크레이트의 존재만 등록한다. 실제 로직은 Phase 1+
 - Create: `crates/cairn-preview/Cargo.toml` + `src/lib.rs`
 - Create: `crates/cairn-index/Cargo.toml` + `src/lib.rs`
 
-- [ ] **Step 1: `cairn-walker` 스켈레톤**
+- [x] **Step 1: `cairn-walker` 스켈레톤**
 
 `crates/cairn-walker/Cargo.toml`:
 
@@ -353,7 +353,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: `cairn-search` 스켈레톤 (동일 패턴)**
+- [x] **Step 2: `cairn-search` 스켈레톤 (동일 패턴)**
 
 `crates/cairn-search/Cargo.toml`:
 
@@ -382,7 +382,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: `cairn-preview` 스켈레톤**
+- [x] **Step 3: `cairn-preview` 스켈레톤**
 
 `crates/cairn-preview/Cargo.toml`:
 
@@ -411,7 +411,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: `cairn-index` 스켈레톤**
+- [x] **Step 4: `cairn-index` 스켈레톤**
 
 `crates/cairn-index/Cargo.toml`:
 
@@ -440,7 +440,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 5: Workspace 전체 빌드·테스트**
+- [x] **Step 5: Workspace 전체 빌드·테스트**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn
@@ -452,7 +452,7 @@ Expected:
 - `cargo build`: `Compiling cairn-core v0.0.1`, `Compiling cairn-walker v0.0.1`, ... `Finished dev [unoptimized + debuginfo] target(s)`
 - `cargo test`: `test result: ok. 1 passed` for cairn-core, `0 passed` for 나머지 4개.
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add crates/cairn-walker crates/cairn-search crates/cairn-preview crates/cairn-index
@@ -470,7 +470,7 @@ swift-bridge는 Rust proc macro로 FFI 정의를 받아 Swift 소스와 C 헤더
 - Create: `crates/cairn-ffi/build.rs`
 - Create: `crates/cairn-ffi/src/lib.rs`
 
-- [ ] **Step 1: `cairn-ffi/Cargo.toml` 작성**
+- [x] **Step 1: `cairn-ffi/Cargo.toml` 작성**
 
 ```toml
 [package]
@@ -493,7 +493,7 @@ swift-bridge = "0.1"
 swift-bridge-build = "0.1"
 ```
 
-- [ ] **Step 2: `build.rs` 작성 (바인딩 생성기)**
+- [x] **Step 2: `build.rs` 작성 (바인딩 생성기)**
 
 `crates/cairn-ffi/build.rs`:
 
@@ -515,7 +515,7 @@ fn main() {
 }
 ```
 
-- [ ] **Step 3: `src/lib.rs`에 브리지 정의 작성**
+- [x] **Step 3: `src/lib.rs`에 브리지 정의 작성**
 
 `crates/cairn-ffi/src/lib.rs`:
 
@@ -548,7 +548,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: 빌드 및 테스트**
+- [x] **Step 4: 빌드 및 테스트**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn
@@ -561,7 +561,7 @@ Expected:
 - 생성된 바인딩 확인: `ls crates/cairn-ffi/generated/cairn_ffi/` → `cairn_ffi.swift`, `cairn_ffi.h` 존재
 - `cargo test`: `test greet_wraps_core_hello ... ok`
 
-- [ ] **Step 5: 생성 파일 내용 훑어보기 (디버그용, 실수 없는지 확인)**
+- [x] **Step 5: 생성 파일 내용 훑어보기 (디버그용, 실수 없는지 확인)**
 
 ```bash
 cat crates/cairn-ffi/generated/cairn_ffi/cairn_ffi.swift | head -30
@@ -572,7 +572,7 @@ Expected:
 - `cairn_ffi.swift`: `public func greet() -> RustString { ... }` 같은 라인 보임
 - `cairn_ffi.h`: `void* __swift_bridge__$greet(void);` 같은 C 선언 보임
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add crates/cairn-ffi
@@ -589,7 +589,7 @@ arm64 (Apple Silicon) + x86_64 (Intel) 둘 다 빌드해서 `lipo`로 합쳐 하
 - Create: `scripts/build-rust.sh`
 - Create: `scripts/gen-bindings.sh`
 
-- [ ] **Step 1: `scripts/build-rust.sh` 작성**
+- [x] **Step 1: `scripts/build-rust.sh` 작성**
 
 ```bash
 #!/usr/bin/env bash
@@ -627,7 +627,7 @@ lipo -info "$OUT_DIR/$LIB"
 echo "✓ Built universal static lib: $OUT_DIR/$LIB"
 ```
 
-- [ ] **Step 2: `scripts/gen-bindings.sh` 작성 (바인딩을 Xcode가 참조하는 위치로 복사)**
+- [x] **Step 2: `scripts/gen-bindings.sh` 작성 (바인딩을 Xcode가 참조하는 위치로 복사)**
 
 ```bash
 #!/usr/bin/env bash
@@ -665,7 +665,7 @@ echo "✓ Bindings copied to $DST/"
 ls -1 "$DST"
 ```
 
-- [ ] **Step 3: 스크립트 실행 권한 부여 + 실행**
+- [x] **Step 3: 스크립트 실행 권한 부여 + 실행**
 
 ```bash
 chmod +x scripts/build-rust.sh scripts/gen-bindings.sh
@@ -681,7 +681,7 @@ Architectures in the fat file: target/universal/release/libcairn_ffi.a are: x86_
 ✓ Built universal static lib: target/universal/release/libcairn_ffi.a
 ```
 
-- [ ] **Step 4: 바인딩 복사 스크립트 실행**
+- [x] **Step 4: 바인딩 복사 스크립트 실행**
 
 ```bash
 ./scripts/gen-bindings.sh
@@ -696,7 +696,7 @@ SwiftBridgeCore.h      (swift-bridge 버전에 따라 없을 수 있음)
 SwiftBridgeCore.swift  (swift-bridge 버전에 따라 없을 수 있음)
 ```
 
-- [ ] **Step 5: 커밋 (생성된 바인딩은 gitignore이므로 스크립트만 커밋)**
+- [x] **Step 5: 커밋 (생성된 바인딩은 gitignore이므로 스크립트만 커밋)**
 
 ```bash
 git add scripts/build-rust.sh scripts/gen-bindings.sh
@@ -715,7 +715,7 @@ git commit -m "build: add rust universal build script and bindings copy script"
 - Create: `apps/Sources/ContentView.swift`
 - Create: `apps/Sources/BridgingHeader.h`
 
-- [ ] **Step 1: xcodegen 설치 확인**
+- [x] **Step 1: xcodegen 설치 확인**
 
 ```bash
 which xcodegen || brew install xcodegen
@@ -724,7 +724,7 @@ xcodegen --version
 
 Expected: 버전 번호 출력 (예: `2.39.1`).
 
-- [ ] **Step 2: `apps/Sources/CairnApp.swift` — 앱 엔트리**
+- [x] **Step 2: `apps/Sources/CairnApp.swift` — 앱 엔트리**
 
 ```swift
 import SwiftUI
@@ -742,7 +742,7 @@ struct CairnApp: App {
 }
 ```
 
-- [ ] **Step 3: `apps/Sources/ContentView.swift` — 초기 뷰 (Rust 호출 포함)**
+- [x] **Step 3: `apps/Sources/ContentView.swift` — 초기 뷰 (Rust 호출 포함)**
 
 ```swift
 import SwiftUI
@@ -784,7 +784,7 @@ struct ContentView: View {
 
 `.toString()`은 swift-bridge가 Rust `String`을 `RustString`으로 매핑하고 `.toString()`로 Swift String 변환하도록 생성하는 메서드.
 
-- [ ] **Step 4: `apps/Sources/BridgingHeader.h` — 브리지 헤더**
+- [x] **Step 4: `apps/Sources/BridgingHeader.h` — 브리지 헤더**
 
 ```c
 #ifndef BridgingHeader_h
@@ -795,7 +795,7 @@ struct ContentView: View {
 #endif /* BridgingHeader_h */
 ```
 
-- [ ] **Step 5: `apps/project.yml` — xcodegen 설정**
+- [x] **Step 5: `apps/project.yml` — xcodegen 설정**
 
 ```yaml
 name: Cairn
@@ -833,7 +833,7 @@ targets:
     # Phase 0엔 샌드박스·entitlements 불필요. v1.0 가까워지면 추가.
 ```
 
-- [ ] **Step 6: xcodegen 실행**
+- [x] **Step 6: xcodegen 실행**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn/apps
@@ -844,7 +844,7 @@ Expected: `✅ Created project at ...apps/Cairn.xcodeproj`
 
 프로젝트 파일이 생성되지만 `.gitignore`에 의해 git에서 제외됨.
 
-- [ ] **Step 7: 커밋 (Swift 소스 + project.yml만)**
+- [x] **Step 7: 커밋 (Swift 소스 + project.yml만)**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn
@@ -858,7 +858,7 @@ git commit -m "feat(app): add minimal SwiftUI scaffold with xcodegen config"
 
 지금까지 만든 Rust lib + Swift 앱을 실제로 연결해서 빌드 성공 + 실행 시 UI에 Rust 문자열이 떠야 한다.
 
-- [ ] **Step 1: 생성된 바인딩이 apps/Sources/Generated/에 있는지 재확인**
+- [x] **Step 1: 생성된 바인딩이 apps/Sources/Generated/에 있는지 재확인**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn
@@ -867,7 +867,7 @@ ls apps/Sources/Generated/
 
 Expected: `cairn_ffi.swift`, `cairn_ffi.h` (Task 6 Step 4에서 복사됨). 만약 비어있으면 `./scripts/gen-bindings.sh` 다시 실행.
 
-- [ ] **Step 2: 유니버셜 static lib 있는지 확인**
+- [x] **Step 2: 유니버셜 static lib 있는지 확인**
 
 ```bash
 ls -lh target/universal/release/libcairn_ffi.a
@@ -875,14 +875,14 @@ ls -lh target/universal/release/libcairn_ffi.a
 
 Expected: 파일 존재. 수십 MB 크기.
 
-- [ ] **Step 3: Xcode 프로젝트 재생성 (Sources/Generated 추가된 상태 반영)**
+- [x] **Step 3: Xcode 프로젝트 재생성 (Sources/Generated 추가된 상태 반영)**
 
 ```bash
 cd apps
 xcodegen generate
 ```
 
-- [ ] **Step 4: xcodebuild로 명령줄 빌드**
+- [x] **Step 4: xcodebuild로 명령줄 빌드**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn/apps
@@ -897,7 +897,7 @@ Expected: `** BUILD SUCCEEDED **`
 - `Bridging header ... not found` → `project.yml`의 `SWIFT_OBJC_BRIDGING_HEADER` 경로 확인.
 - `SWIFT_BRIDGE_CORE ... undefined` → `swift-bridge` 버전에 따라 `SwiftBridgeCore.swift`/`.h`가 필요할 수 있음. `gen-bindings.sh`가 이미 복사하지만, 실제 경로는 `find target -name 'SwiftBridgeCore.*'`로 확인 가능.
 
-- [ ] **Step 5: 앱 실행해서 UI 확인**
+- [x] **Step 5: 앱 실행해서 UI 확인**
 
 ```bash
 # 빌드 산출 위치 찾기
@@ -915,7 +915,7 @@ Phase 0 — Foundation
 
 이 문자열이 보이면 **Phase 0의 핵심 검증 성공** — Rust 엔진이 Swift UI로 데이터를 성공적으로 전달했다.
 
-- [ ] **Step 6: 스크린샷 찍기 (나중에 README에 넣을 용도)**
+- [ ] **Step 6: 스크린샷 찍기 (나중에 README에 넣을 용도)** — skipped per user (manual)
 
 ```bash
 # macOS 내장: ⌘⇧4 + space → 윈도우 클릭. 바탕화면에 저장됨.
@@ -925,7 +925,7 @@ screencapture -l $(osascript -e 'tell app "Cairn" to id of window 1') ~/Desktop/
 
 (실패해도 Phase 0 완료엔 무관. 수동으로 찍어서 README에 붙이면 됨.)
 
-- [ ] **Step 7: 커밋 불필요 — 이 태스크는 검증이 전부**
+- [x] **Step 7: 커밋 불필요 — 이 태스크는 검증이 전부**
 
 빌드 결과물(`apps/build/`, `apps/Cairn.xcodeproj/`)은 모두 gitignore.
 
@@ -938,7 +938,7 @@ Rust 테스트 + 유니버셜 빌드 + Xcode 빌드를 macos-latest 러너에서
 **Files:**
 - Create: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: `.github/workflows/ci.yml` 작성**
+- [x] **Step 1: `.github/workflows/ci.yml` 작성**
 
 ```yaml
 name: CI
@@ -1016,7 +1016,7 @@ jobs:
 
 주의: `xcbeautify`가 없으면 파이프를 떼고 원시 출력으로 두어도 OK. 러너가 작아서 별도 설치 추가 없이도 동작.
 
-- [ ] **Step 2: 빌드 명령을 완화 (xcbeautify 없이도 동작)**
+- [x] **Step 2: 빌드 명령을 완화 (xcbeautify 없이도 동작)**
 
 CI 마지막 xcodebuild 단계를 안전하게:
 
@@ -1035,7 +1035,7 @@ CI 마지막 xcodebuild 단계를 안전하게:
             build
 ```
 
-- [ ] **Step 3: 로컬에서 CI 시뮬레이션 (선택)**
+- [x] **Step 3: 로컬에서 CI 시뮬레이션 (선택)**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn
@@ -1049,14 +1049,14 @@ cargo test --workspace
 
 Expected: 전부 성공. `cargo fmt`에서 diff 있으면 `cargo fmt --all` 실행 후 재시도.
 
-- [ ] **Step 4: 커밋 + push (CI 실제 실행 확인)**
+- [x] **Step 4: 커밋 + push (CI 실제 실행 확인)**
 
 ```bash
 git add .github/workflows/ci.yml
 git commit -m "ci: add GitHub Actions workflow for rust tests and xcode build"
 ```
 
-- [ ] **Step 5: GitHub에 push (리모트 설정 안 돼있으면 추가)**
+- [ ] **Step 5: GitHub에 push (리모트 설정 안 돼있으면 추가)** — skipped per user (manual)
 
 ```bash
 # 리모트 확인
@@ -1069,7 +1069,7 @@ git remote -v
 
 (리모트 생성 + push는 유저가 수동으로 해야 함. CI 트리거는 push 이후.)
 
-- [ ] **Step 6: GitHub Actions 탭에서 녹색 확인**
+- [ ] **Step 6: GitHub Actions 탭에서 녹색 확인** — pending user push
 
 Expected: `rust` 잡 녹색, `swift` 잡 녹색. 총 7~10분 소요.
 
@@ -1077,7 +1077,7 @@ Expected: `rust` 잡 녹색, `swift` 잡 녹색. 총 7~10분 소요.
 
 ## Task 10: Phase 0 완료 체크 + 문서 업데이트
 
-- [ ] **Step 1: README에 실제 스크린샷 (선택)**
+- [ ] **Step 1: README에 실제 스크린샷 (선택)** — skipped per user (manual)
 
 Task 8 Step 6에서 찍은 스크린샷을 `docs/screenshots/phase-0.png`로 저장 후 README에 추가:
 
@@ -1099,11 +1099,11 @@ mkdir -p docs/screenshots
 
 (스크린샷 없으면 이 단계 건너뛰어도 됨. v0.1 릴리스 때 꼭 넣기.)
 
-- [ ] **Step 2: 플랜 체크리스트 갱신**
+- [x] **Step 2: 플랜 체크리스트 갱신**
 
-이 플랜 파일(`docs/superpowers/plans/2026-04-21-cairn-phase-0-foundation.md`)의 각 태스크 `- [ ]`를 `- [x]`로 마킹. 실행 스킬(executing-plans)이 자동으로 해주면 베스트.
+이 플랜 파일(`docs/superpowers/plans/2026-04-21-cairn-phase-0-foundation.md`)의 각 태스크 `- [x]`를 `- [x]`로 마킹. 실행 스킬(executing-plans)이 자동으로 해주면 베스트.
 
-- [ ] **Step 3: 최종 커밋**
+- [x] **Step 3: 최종 커밋**
 
 ```bash
 cd /Users/cyj/workspace/personal/cairn
@@ -1131,15 +1131,15 @@ docs: initial design spec for Cairn v1.0
 
 다음을 모두 만족하면 Phase 0 완료:
 
-- [ ] `cargo test --workspace` 녹색
-- [ ] `cargo clippy --workspace -- -D warnings` 녹색
-- [ ] `./scripts/build-rust.sh` 성공, 유니버셜 static lib 생성됨
-- [ ] `./scripts/gen-bindings.sh` 성공, `apps/Sources/Generated/`에 `cairn_ffi.swift`, `cairn_ffi.h` 존재
-- [ ] `xcodegen generate`로 `apps/Cairn.xcodeproj` 생성
-- [ ] `xcodebuild -scheme Cairn -configuration Debug build` 성공
-- [ ] 앱 실행 시 `Hello, Cairn! (from Rust)` 표시됨
-- [ ] GitHub Actions CI 녹색 (rust + swift 잡 둘 다)
-- [ ] README가 빌드 방법을 정확히 설명하고, 설명대로 따라하면 위 전부 재현 가능
+- [x] `cargo test --workspace` 녹색
+- [x] `cargo clippy --workspace -- -D warnings` 녹색
+- [x] `./scripts/build-rust.sh` 성공, 유니버셜 static lib 생성됨
+- [x] `./scripts/gen-bindings.sh` 성공, `apps/Sources/Generated/`에 `cairn_ffi.swift`, `cairn_ffi.h` 존재
+- [x] `xcodegen generate`로 `apps/Cairn.xcodeproj` 생성
+- [x] `xcodebuild -scheme Cairn -configuration Debug build` 성공
+- [x] 앱 실행 시 `Hello, Cairn! (from Rust)` 표시됨
+- [ ] GitHub Actions CI 녹색 (rust + swift 잡 둘 다) — pending user push
+- [x] README가 빌드 방법을 정확히 설명하고, 설명대로 따라하면 위 전부 재현 가능
 
 ## 다음 플랜 (Phase 1 — FS Walking + 기본 UI)
 
