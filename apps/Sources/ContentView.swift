@@ -1,33 +1,40 @@
 import SwiftUI
 
 struct ContentView: View {
-    // Rust에서 받아오는 초기 인사말. Phase 0 검증 지점.
-    @State private var greeting: String = "Loading..."
+    // M1.1 workspace — full UI lands in Tasks 10–12.
+    @State private var status = "Engine not invoked yet."
 
     var body: some View {
         ZStack {
-            // Theme B의 미니 프리뷰 — 방사형 컬러 그라디언트 + 다크 베이스
             LinearGradient(
-                colors: [.teal.opacity(0.4), .indigo.opacity(0.5), .pink.opacity(0.35)],
+                colors: [.teal.opacity(0.3), .indigo.opacity(0.4)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 Text("🏔️")
-                    .font(.system(size: 64))
-                Text(greeting)
-                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                    .font(.system(size: 48))
+                Text(status)
+                    .font(.system(size: 16, design: .rounded))
                     .foregroundStyle(.white)
-                Text("Phase 0 — Foundation")
-                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                Text("M1.1 — scaffolding")
+                    .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.7))
             }
-            .padding(40)
+            .padding()
         }
+        .frame(minWidth: 600, minHeight: 400)
         .task {
-            greeting = greet().toString()
+            let engine = CairnEngine()
+            do {
+                let home = FileManager.default.homeDirectoryForCurrentUser
+                let entries = try await engine.listDirectory(home)
+                status = "Home has \(entries.count) entries (sandboxed — likely 0 until folder is opened)"
+            } catch {
+                status = "Engine call failed: \(error)"
+            }
         }
     }
 }
