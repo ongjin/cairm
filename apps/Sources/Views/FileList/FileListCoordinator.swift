@@ -400,9 +400,12 @@ final class FileListCoordinator: NSObject,
         do {
             try FileManager.default.trashItem(at: url, resultingItemURL: nil)
         } catch {
-            // Task 19 (P7) will swap this for an NSAlert.
-            NSLog("cairn: Move to Trash failed — \(error.localizedDescription)")
-            NSSound.beep()
+            let alert = NSAlert()
+            alert.messageText = "Couldn't move to Trash"
+            alert.informativeText = "\(url.lastPathComponent): \(error.localizedDescription)"
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
         }
     }
 
