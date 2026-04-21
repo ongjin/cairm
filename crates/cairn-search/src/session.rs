@@ -155,13 +155,95 @@ fn run_folder(
 }
 
 fn run_subtree(
-    _root: &Path,
-    _opts: &SearchOptions,
-    _cancel: Arc<AtomicBool>,
-    _tx: SyncSender<Vec<FileEntry>>,
+    root: &Path,
+    opts: &SearchOptions,
+    cancel: Arc<AtomicBool>,
+    tx: SyncSender<Vec<FileEntry>>,
 ) -> SearchStatus {
-    // Implemented in Task 3 (ignore::WalkBuilder).
+    let needle = opts.query.to_lowercase();
+    let match_all = needle.is_empty();
+    let mut buffer: Vec<FileEntry> = Vec::with_capacity(opts.batch_size);
+    let mut matched = 0usize;
+
+    let walker = ignore::WalkBuilder::new(root)
+        .hidden(!opts.show_hidden)
+        .require_git(false)
+        .git_ignore(!opts.show_hidden)
+        .git_global(!opts.show_hidden)
+        .git_exclude(!opts.show_hidden)
+        .build();
+
+    for result in walker {
+        if cancel.load(Ordering::SeqCst) {
+            return SearchStatus::Done;
+        }
+        let entry = match result {
+            Ok(e) => e,
+            Err(_) => continue, // permission / transient errors: skip silently
+        };
+        // Skip the root itself.
+        if entry.path() == root {
+            continue;
+        }
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        if !match_all && !file_name.to_lowercase().contains(&needle) {
+            continue;
+        }
+        let Some(fe) = walk_entry_to_file_entry(&entry, file_name) else {
+            continue;
+        };
+        buffer.push(fe);
+        matched += 1;
+        if matched >= opts.result_cap {
+            let _ = tx.send(std::mem::take(&mut buffer));
+            return SearchStatus::Capped;
+        }
+        if buffer.len() >= opts.batch_size {
+            if tx.send(std::mem::take(&mut buffer)).is_err() {
+                return SearchStatus::Done;
+            }
+            buffer = Vec::with_capacity(opts.batch_size);
+        }
+    }
+    if !buffer.is_empty() {
+        let _ = tx.send(buffer);
+    }
     SearchStatus::Done
+}
+
+fn walk_entry_to_file_entry(entry: &ignore::DirEntry, name: String) -> Option<FileEntry> {
+    let meta = entry.metadata().ok()?;
+    let ft = meta.file_type();
+    let is_dir = ft.is_dir();
+    let kind = if is_dir {
+        FileKind::Directory
+    } else if ft.is_symlink() {
+        FileKind::Symlink
+    } else {
+        FileKind::Regular
+    };
+    let size = if is_dir { 0 } else { meta.len() };
+    let modified_unix = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let is_hidden = name.starts_with('.');
+    let icon_kind = if is_dir {
+        IconKind::Folder
+    } else {
+        IconKind::GenericFile
+    };
+    Some(FileEntry {
+        path: entry.path().to_path_buf(),
+        name,
+        size,
+        modified_unix,
+        kind,
+        is_hidden,
+        icon_kind,
+    })
 }
 
 fn to_file_entry(entry: &std::fs::DirEntry, name: String, is_hidden: bool) -> Option<FileEntry> {
