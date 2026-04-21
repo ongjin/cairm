@@ -13,11 +13,7 @@ extension WalkerError: Error {}
 /// Runs the FFI call on a detached Task so the UI thread stays responsive.
 /// The caller is responsible for starting security-scoped access on any URL
 /// that came from a user bookmark before invoking `listDirectory`.
-///
-/// `@Observable` was specified in the plan but requires macOS 14+ and this
-/// target deploys to 13.0; the class has no stored observable state to expose
-/// yet (Task 12 will wire AppModel), so the annotation is omitted without
-/// loss of function.
+@Observable
 final class CairnEngine {
     private let rust: Engine
 
