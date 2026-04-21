@@ -180,6 +180,9 @@ final class FileListCoordinator: NSObject,
                 : byteFormatter.string(fromByteCount: Int64(entry.size))
             cell.textField?.alignment = .right
         case .modified:
+            // Rust walker yields modified_unix == 0 when the filesystem returns
+            // no mtime (broken symlink, permission-gated metadata). Surface as
+            // "—" instead of showing 1970-01-01.
             let date = Date(timeIntervalSince1970: TimeInterval(entry.modified_unix))
             cell.textField?.stringValue = entry.modified_unix == 0 ? "—" : dateFormatter.string(from: date)
             cell.textField?.alignment = .right
@@ -206,6 +209,10 @@ final class FileListCoordinator: NSObject,
 
     // MARK: - Sort
 
+    /// AppKit fires this both from user clicks on column headers AND as a
+    /// side effect of `table.sortDescriptors = [...]` inside `applyModelSnapshot`.
+    /// The `isApplyingModelUpdate` guard prevents the second path from
+    /// re-entering and triggering a redundant model update.
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         if isApplyingModelUpdate { return }
         guard let new = tableView.sortDescriptors.first,
@@ -248,6 +255,9 @@ final class FileListCoordinator: NSObject,
     }
 
     /// Called by FileListNSTableView's keyDown when ⏎ / Enter is pressed.
+    /// When multiple rows are selected, AppKit's `selectedRow` returns the
+    /// focused row only — we activate just that one. Phase 2 may add a
+    /// bulk-activation path (open all selected in their default apps).
     func activateSelected() {
         guard let table = table else { return }
         let row = table.selectedRow
