@@ -99,6 +99,25 @@ final class BookmarkStore {
         save(kind: .pinned)
     }
 
+    /// Returns true iff a pinned entry currently points to `url` (path-based
+    /// comparison, standardized).
+    func isPinned(url: URL) -> Bool {
+        let p = url.standardizedFileURL.path
+        return pinned.contains { $0.lastKnownPath == p }
+    }
+
+    /// Pin `url` if it's not already pinned; unpin if it is. Idempotent toggle
+    /// used by `⌘D` and sidebar "Unpin" menu item. Throws if bookmark creation
+    /// fails on register.
+    func togglePin(url: URL) throws {
+        let p = url.standardizedFileURL.path
+        if let existing = pinned.first(where: { $0.lastKnownPath == p }) {
+            unpin(existing)
+        } else {
+            _ = try register(url, kind: .pinned)
+        }
+    }
+
     // MARK: - Resolution & access
 
     /// Returns the URL if the bookmark resolves cleanly. Returns nil if stale.
