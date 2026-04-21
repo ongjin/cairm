@@ -22,17 +22,9 @@ use std::path::Path;
 
 #[swift_bridge::bridge]
 mod ffi {
-    #[swift_bridge(swift_repr = "struct")]
-    struct FileEntry {
-        path: String,
-        name: String,
-        size: u64,
-        modified_unix: i64,
-        kind: FileKind,
-        is_hidden: bool,
-        icon_kind: IconKind,
-    }
-
+    // NOTE: enums must be declared before the struct that references them,
+    // because swift-bridge emits types into the C header in declaration order
+    // and C requires complete types for struct fields (no forward refs).
     enum FileKind {
         Directory,
         Regular,
@@ -43,6 +35,17 @@ mod ffi {
         Folder,
         GenericFile,
         ExtensionHint(String),
+    }
+
+    #[swift_bridge(swift_repr = "struct")]
+    struct FileEntry {
+        path: String,
+        name: String,
+        size: u64,
+        modified_unix: i64,
+        kind: FileKind,
+        is_hidden: bool,
+        icon_kind: IconKind,
     }
 
     enum WalkerError {
