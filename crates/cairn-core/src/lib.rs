@@ -1,14 +1,17 @@
 //! cairn-core — public façade for the Cairn engine.
 //!
-//! Phase 1 goal: expose a stateless `Engine` that orchestrates file listing
-//! via `cairn-walker`. Additional subsystems (preview, search, index) plug
-//! into this struct in later phases.
+//! Shared types + error surface that all Cairn Rust crates consume:
+//! `FileEntry`, `FileKind`, `IconKind`, `WalkerError`, `PreviewError`. The
+//! `Engine` orchestrates file listing via `cairn-walker` and text preview via
+//! `cairn-preview`; `cairn-search` plugs in at the FFI layer alongside this
+//! crate. Re-exports below give downstream callers a single import path for
+//! all the common types.
 
-use cairn_walker::{list_directory, FileEntry, WalkerConfig, WalkerError};
+use cairn_walker::{list_directory, FileEntry, WalkerConfig};
 use std::path::Path;
 
 pub use cairn_preview::PreviewError;
-pub use cairn_walker::{FileKind, IconKind};
+pub use cairn_walker::{FileKind, IconKind, WalkerError};
 
 pub struct Engine {
     walker_config: WalkerConfig,

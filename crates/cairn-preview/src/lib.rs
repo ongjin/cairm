@@ -36,6 +36,12 @@ pub enum PreviewError {
 /// classified error. Binary detection uses the first 8 KB — a file is binary if
 /// any byte in that window is 0x00 or the slice is not valid UTF-8.
 pub fn preview_text(path: &Path, max_bytes: usize) -> Result<String, PreviewError> {
+    // max_bytes == 0 is a degenerate request (caller explicitly asked for zero
+    // content). Return empty without reading — avoids surprising binary-classify
+    // behavior when the sniff buffer would be zero-length.
+    if max_bytes == 0 {
+        return Ok(String::new());
+    }
     let mut file = File::open(path).map_err(io_classify)?;
 
     // First 8 KB: sniff NUL + validate UTF-8.
