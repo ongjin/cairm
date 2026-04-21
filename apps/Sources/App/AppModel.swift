@@ -101,8 +101,34 @@ final class AppModel {
         history.push(parent)
     }
 
-    func goBack() { _ = history.goBack() }
-    func goForward() { _ = history.goForward() }
+    func goBack() {
+        guard let url = history.goBack() else { return }
+        resumeScopedAccessIfNeeded(for: url)
+    }
+
+    func goForward() {
+        guard let url = history.goForward() else { return }
+        resumeScopedAccessIfNeeded(for: url)
+    }
+
+    /// When history moves us to a URL that lives inside a pinned bookmark's
+    /// scope, reacquire that scope (stopping the previous one). Unscoped URLs
+    /// drop the current scope. Prevents M1.6 sandbox regression where a
+    /// bookmarked folder's access was never resumed after ⌘←/⌘→.
+    private func resumeScopedAccessIfNeeded(for url: URL) {
+        let path = url.standardizedFileURL.path
+        let match = bookmarks.pinned.first { $0.lastKnownPath == path }
+            ?? bookmarks.recent.first { $0.lastKnownPath == path }
+
+        if let prev = currentEntry, prev.id != match?.id {
+            bookmarks.stopAccessing(prev)
+            currentEntry = nil
+        }
+        if let entry = match, entry.id != currentEntry?.id {
+            _ = bookmarks.startAccessing(entry)
+            currentEntry = entry
+        }
+    }
 
     func toggleShowHidden() {
         showHidden.toggle()

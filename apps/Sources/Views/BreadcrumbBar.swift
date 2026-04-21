@@ -6,16 +6,20 @@ import SwiftUI
 struct BreadcrumbBar: View {
     @Bindable var app: AppModel
 
+    /// Cached once — `Host.current().localizedName` is a configd IPC round-trip.
+    private static let computerName: String = Host.current().localizedName ?? "Computer"
+
     var body: some View {
         if let current = app.currentFolder {
+            let segs = segments(for: current)
             HStack(spacing: 2) {
-                ForEach(Array(segments(for: current).enumerated()), id: \.offset) { pair in
+                ForEach(Array(segs.enumerated()), id: \.offset) { pair in
                     let (i, seg) = pair
                     Button(seg.label) { app.navigateUnscoped(to: seg.url) }
                         .buttonStyle(.plain)
                         .font(.system(size: 12))
-                        .foregroundStyle(i == segments(for: current).count - 1 ? Color.primary : Color.secondary)
-                    if i < segments(for: current).count - 1 {
+                        .foregroundStyle(i == segs.count - 1 ? Color.primary : Color.secondary)
+                    if i < segs.count - 1 {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
@@ -35,9 +39,7 @@ struct BreadcrumbBar: View {
             accum = accum.appendingPathComponent(c)
             out.append((c, accum))
         }
-        // Leading "/" segment — shows as "Computer".
-        let rootLabel = Host.current().localizedName ?? "Computer"
-        out.insert((rootLabel, URL(fileURLWithPath: "/")), at: 0)
+        out.insert((Self.computerName, URL(fileURLWithPath: "/")), at: 0)
         return out
     }
 }
