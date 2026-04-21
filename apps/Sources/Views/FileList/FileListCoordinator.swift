@@ -382,33 +382,40 @@ final class FileListCoordinator: NSObject,
 
     // MARK: - Quick Look
 
-    /// Snapshot of the paths currently selected at the moment QL took control.
-    /// Captured in begin to avoid races with live selection changes while the
-    /// panel is up.
-    private var quickLookURLs: [URL] {
+    /// URLs QL should preview. Captured once in `snapshotQuickLookURLs` when
+    /// the panel takes control, then read unchanged by AppKit's data-source
+    /// queries. Previously computed every call, which raced with live
+    /// selection changes while the panel was up.
+    private var quickLookSnapshot: [URL] = []
+
+    /// Called by `FileListNSTableView.beginPreviewPanelControl`. Freezes the
+    /// current selection (or the first row as fallback) so navigation inside
+    /// the panel stays stable.
+    func snapshotQuickLookURLs() {
         let selectedRows = table?.selectedRowIndexes ?? IndexSet()
         let paths: [URL] = selectedRows.compactMap { row in
             guard row < lastSnapshot.count else { return nil }
-            let p = lastSnapshot[row].path.toString()
-            return URL(fileURLWithPath: p)
+            return URL(fileURLWithPath: lastSnapshot[row].path.toString())
         }
-        // Fallback: if nothing is selected but the user pressed Space, preview
-        // the clicked / first row.
         if paths.isEmpty, !lastSnapshot.isEmpty {
-            let p = lastSnapshot[0].path.toString()
-            return [URL(fileURLWithPath: p)]
+            quickLookSnapshot = [URL(fileURLWithPath: lastSnapshot[0].path.toString())]
+        } else {
+            quickLookSnapshot = paths
         }
-        return paths
+    }
+
+    /// Called by `FileListNSTableView.endPreviewPanelControl`.
+    func clearQuickLookSnapshot() {
+        quickLookSnapshot = []
     }
 
     func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        quickLookURLs.count
+        quickLookSnapshot.count
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        let urls = quickLookURLs
-        guard index >= 0, index < urls.count else { return nil }
-        return urls[index] as NSURL
+        guard index >= 0, index < quickLookSnapshot.count else { return nil }
+        return quickLookSnapshot[index] as NSURL
     }
 
     // MARK: - Private helpers

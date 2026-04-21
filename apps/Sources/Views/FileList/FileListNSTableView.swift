@@ -45,6 +45,9 @@ final class FileListNSTableView: NSTableView {
     }
 
     override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        // Freeze the selection snapshot so panel navigation isn't destabilized
+        // by live row-selection changes happening beneath the open panel.
+        (quickLookDelegate as? FileListCoordinator)?.snapshotQuickLookURLs()
         panel.dataSource = quickLookDelegate
         panel.delegate = quickLookDelegate
     }
@@ -52,5 +55,6 @@ final class FileListNSTableView: NSTableView {
     override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
         panel.dataSource = nil
         panel.delegate = nil
+        (quickLookDelegate as? FileListCoordinator)?.clearQuickLookSnapshot()
     }
 }
