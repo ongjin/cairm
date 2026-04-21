@@ -12,7 +12,10 @@ struct ContentView: View {
         } content: {
             if let folder {
                 FileListView(
+                    entries: folder.sortedEntries,
                     folder: folder,
+                    folderColumnVisible: false,
+                    searchRoot: nil,
                     onActivate: handleOpen,
                     onAddToPinned: handleAddToPinned,
                     isPinnedCheck: { entry in

@@ -34,6 +34,10 @@ final class FileListCoordinator: NSObject,
     private var lastSnapshot: [FileEntry] = []
     private var isApplyingModelUpdate = false
 
+    private var externalEntries: [FileEntry]?
+    private(set) var searchRoot: URL?
+    private(set) var folderColumnVisible: Bool = false
+
     private let byteFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
         f.allowedUnits = [.useAll]
@@ -70,6 +74,22 @@ final class FileListCoordinator: NSObject,
         applyModelSnapshot(table: table)
     }
 
+    // MARK: - Entries injection (called by FileListView.updateNSView)
+
+    /// Replaces the default `folder.sortedEntries` with an externally-managed
+    /// entries array. Pass `nil` would keep the default; to restore the default,
+    /// pass `folder.sortedEntries` explicitly from the caller.
+    func setEntries(_ entries: [FileEntry], searchRoot: URL?) {
+        self.externalEntries = entries
+        self.searchRoot = searchRoot
+    }
+
+    /// Dynamic Folder column (Task 12 wires the NSTableColumn add/remove).
+    /// Task 11 only stores the flag.
+    func setFolderColumnVisible(_ visible: Bool) {
+        self.folderColumnVisible = visible
+    }
+
     // MARK: - Snapshot application (called from updateNSView)
 
     /// Pulls the latest sortedEntries into NSTableView and re-applies the
@@ -78,7 +98,7 @@ final class FileListCoordinator: NSObject,
         isApplyingModelUpdate = true
         defer { isApplyingModelUpdate = false }
 
-        lastSnapshot = folder.sortedEntries
+        lastSnapshot = externalEntries ?? folder.sortedEntries
         table.reloadData()
 
         // Restore selection (path-based).

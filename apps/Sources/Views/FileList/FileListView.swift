@@ -9,7 +9,24 @@ import AppKit
 ///   - NSTableView → SwiftUI: Coordinator pushes selection / sortDescriptor
 ///     changes back into FolderModel, which re-publishes via @Observable.
 struct FileListView: NSViewRepresentable {
-    @Bindable var folder: FolderModel
+    /// External entries source. ContentView passes either
+    /// `FolderModel.sortedEntries` (normal view) or `SearchModel.results`
+    /// (search active). Per-frame computed; the Coordinator snapshots it
+    /// inside `applyModelSnapshot`.
+    let entries: [FileEntry]
+    /// Still needed so the Coordinator can read `sortDescriptor`, `selection`,
+    /// and push back sort / selection changes. Read-only here — all writes go
+    /// through the Coordinator's existing `folder.setSortDescriptor` / `setSelection`
+    /// paths. Converting to `let` (was `@Bindable`) matches the actual usage.
+    let folder: FolderModel
+    /// When true, the NSTableView shows an extra "Folder" column (subtree search
+    /// results need the relative path to disambiguate same-named files). Task 12
+    /// wires the dynamic column logic in FileListCoordinator.
+    let folderColumnVisible: Bool
+    /// Root URL the Folder column truncates paths against. Nil when not in
+    /// subtree search.
+    let searchRoot: URL?
+
     /// Called when a row is activated (double-click or ⏎). The closure receives
     /// the FileEntry; the caller decides whether to push history or open in NSWorkspace.
     let onActivate: (FileEntry) -> Void
@@ -88,6 +105,8 @@ struct FileListView: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let table = scroll.documentView as? FileListNSTableView else { return }
+        context.coordinator.setEntries(entries, searchRoot: searchRoot)
+        context.coordinator.setFolderColumnVisible(folderColumnVisible)
         context.coordinator.applyModelSnapshot(table: table)
     }
 
