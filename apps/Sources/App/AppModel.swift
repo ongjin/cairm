@@ -3,25 +3,53 @@ import Observation
 import SwiftUI
 
 /// Top-level application state. Single instance injected via @Environment.
+///
+/// M1.3 additions:
+///   - `sidebar` / `mountObserver` so Views can observe via the same AppModel.
+///   - `lastFolder` to persist the current folder across launches.
+///   - `bootstrapInitialFolder()` — runs at end of init to restore lastFolder
+///     or fall back to Home. No more OpenFolderEmptyState gate.
 @Observable
 final class AppModel {
     var history = NavigationHistory()
     var showHidden: Bool = false
 
-    /// The bookmark entry currently "in use" (access started).
-    /// nil until the user opens a folder.
+    /// The bookmark entry currently "in use" (security-scoped access started).
+    /// nil when we're in Home or a volume root that doesn't need bookmarking
+    /// (dev builds bypass sandbox; under sandbox this will need a bookmark in M1.6).
     var currentEntry: BookmarkEntry?
 
     let engine: CairnEngine
     let bookmarks: BookmarkStore
+    let lastFolder: LastFolderStore
+    let mountObserver: MountObserver
+    let sidebar: SidebarModel
 
-    init(engine: CairnEngine = CairnEngine(), bookmarks: BookmarkStore = BookmarkStore()) {
+    init(engine: CairnEngine = CairnEngine(),
+         bookmarks: BookmarkStore = BookmarkStore(),
+         lastFolder: LastFolderStore = LastFolderStore()) {
         self.engine = engine
         self.bookmarks = bookmarks
+        self.lastFolder = lastFolder
+        let observer = MountObserver()
+        self.mountObserver = observer
+        self.sidebar = SidebarModel(mountObserver: observer)
+        bootstrapInitialFolder()
     }
 
     /// The URL currently displayed (equal to history.current when present).
     var currentFolder: URL? { history.current }
+
+    // MARK: - Bootstrap
+
+    /// Restores the last-viewed folder, falling back to the user's home
+    /// directory. Called once at the end of init — after this returns,
+    /// `currentFolder` is guaranteed non-nil for the lifetime of the app
+    /// (absent user action that clears history, which Phase 1 doesn't expose).
+    private func bootstrapInitialFolder() {
+        let url = lastFolder.load() ?? FileManager.default.homeDirectoryForCurrentUser
+        history.push(url)
+    }
 
     // MARK: - Navigation
 
@@ -38,30 +66,38 @@ final class AppModel {
         currentEntry = entry
         history.push(url)
 
-        // Add to recent (unless this IS a recent-selection from sidebar — Phase 2 distinguishes).
+        // Add to recent unless the user is explicitly re-selecting from the
+        // Recent section — cheap heuristic: only auto-add when entering from pin.
         if entry.kind == .pinned {
             try? bookmarks.register(url, kind: .recent)
         }
     }
 
-    /// Register a freshly-chosen folder (from NSOpenPanel) as pinned if first folder,
-    /// otherwise as recent. Then navigate to it.
+    /// Navigate to an arbitrary URL that we don't (yet) have a bookmark for.
+    /// Used by sidebar Locations items (Computer root, mounted volumes) and by
+    /// the default-landing bootstrap. Under sandbox this will fail at
+    /// listDirectory time and surface a `.failed` state — M1.6 polishes that.
+    func navigateUnscoped(to url: URL) {
+        if let prev = currentEntry {
+            bookmarks.stopAccessing(prev)
+            currentEntry = nil
+        }
+        history.push(url)
+    }
+
+    /// Register a freshly-chosen folder (from NSOpenPanel) as pinned if it's the
+    /// user's very first folder, otherwise as recent. Then navigate to it.
     func openAndNavigate(to url: URL, autoPinIfFirst: Bool = true) throws {
         let isFirst = bookmarks.pinned.isEmpty && autoPinIfFirst
         let entry = try bookmarks.register(url, kind: isFirst ? .pinned : .recent)
         navigate(to: entry)
     }
 
-    /// Move up one level (parent directory). Requires the parent to be within the current
-    /// security-scoped root — otherwise silently no-ops (Phase 1 limitation).
+    /// Move up one level. No-op at `/`.
     func goUp() {
         guard let url = currentFolder else { return }
         let parent = url.deletingLastPathComponent()
-        guard parent.path != url.path else { return } // at /
-
-        // Phase 1: only walk within the current entry's access scope. If parent escapes,
-        // user must re-open. Track is coarse — we simply let the listDirectory call fail
-        // and show the error. Here we just push.
+        guard parent.path != url.path else { return }
         history.push(parent)
     }
 
@@ -71,5 +107,14 @@ final class AppModel {
     func toggleShowHidden() {
         showHidden.toggle()
         engine.setShowHidden(showHidden)
+    }
+
+    // MARK: - Pinning
+
+    /// `⌘D` and right-click "Add to Pinned" / "Unpin" enter here.
+    /// No-op if there's no current folder (shouldn't happen after bootstrap).
+    func toggleCurrentFolderPin() {
+        guard let url = currentFolder else { return }
+        try? bookmarks.togglePin(url: url)
     }
 }
