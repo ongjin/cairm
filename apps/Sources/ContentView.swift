@@ -14,7 +14,7 @@ struct ContentView: View {
                 NavigationSplitView {
                     sidebarPlaceholder
                 } content: {
-                    FileListSimpleView(folder: folder, onOpen: handleOpen)
+                    FileListView(folder: folder, onActivate: handleOpen)
                 } detail: {
                     previewPlaceholder
                 }
