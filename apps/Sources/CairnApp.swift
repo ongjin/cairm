@@ -8,7 +8,9 @@ struct CairnApp: App {
         WindowGroup {
             ContentView()
                 .environment(app)
+                .environment(\.cairnTheme, .glass)
                 .frame(minWidth: 800, minHeight: 500)
+                .background(VisualEffectBlur(material: .hudWindow).ignoresSafeArea())
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
