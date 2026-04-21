@@ -65,6 +65,14 @@ struct ContentView: View {
                 .help(app.showHidden ? "Hide hidden files" : "Show hidden files")
                 .keyboardShortcut(".", modifiers: [.command, .shift])
             }
+            ToolbarItem(placement: .automatic) {
+                Button(action: { reloadCurrentFolder() }) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("Reload")
+                .keyboardShortcut("r", modifiers: [.command])
+                .disabled(app.currentFolder == nil)
+            }
         }
         .task {
             ensureFolderModel()
@@ -117,5 +125,10 @@ struct ContentView: View {
         if let url = app.currentFolder {
             Task { await folder?.load(url) }
         }
+    }
+
+    private func reloadCurrentFolder() {
+        guard let url = app.currentFolder else { return }
+        Task { await folder?.load(url) }
     }
 }
