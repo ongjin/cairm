@@ -5,6 +5,8 @@
 //! Phase 2 and will reuse the same types.
 
 use std::path::{Path, PathBuf};
+use std::fs;
+use std::time::UNIX_EPOCH;
 
 #[derive(Debug, Clone)]
 pub struct WalkerConfig {
@@ -72,11 +74,143 @@ pub enum WalkerError {
 }
 
 pub fn list_directory(
-    _path: &Path,
-    _config: &WalkerConfig,
+    path: &Path,
+    config: &WalkerConfig,
 ) -> Result<Vec<FileEntry>, WalkerError> {
-    // Real implementation arrives in Task 2.
-    Ok(Vec::new())
+    // Normalize & validate target.
+    let metadata = fs::metadata(path).map_err(io_to_walker_error)?;
+    if !metadata.is_dir() {
+        return Err(WalkerError::NotDirectory);
+    }
+
+    // Build a .gitignore matcher (scoped to this directory).
+    let gitignore = if config.respect_gitignore {
+        let mut builder = ignore::gitignore::GitignoreBuilder::new(path);
+        // Include a .gitignore in this folder if any.
+        let gi_file = path.join(".gitignore");
+        if gi_file.exists() {
+            builder.add(gi_file);
+        }
+        Some(builder.build().map_err(|e| WalkerError::Io(e.to_string()))?)
+    } else {
+        None
+    };
+
+    let mut out = Vec::new();
+
+    let rd = fs::read_dir(path).map_err(io_to_walker_error)?;
+    for entry in rd {
+        let entry = entry.map_err(io_to_walker_error)?;
+        let name = match entry.file_name().into_string() {
+            Ok(s) => s,
+            Err(_) => continue, // skip non-UTF-8 names — Phase 2 can revisit
+        };
+
+        // Always exclude .DS_Store regardless of config.
+        if name == ".DS_Store" {
+            continue;
+        }
+
+        let is_hidden = name.starts_with('.');
+        if is_hidden && !config.show_hidden {
+            continue;
+        }
+
+        let entry_path = entry.path();
+        let metadata = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => {
+                // Per spec: individual metadata failure is not fatal.
+                // Fall through with zeroed metadata.
+                out.push(FileEntry {
+                    path: entry_path.clone(),
+                    name: name.clone(),
+                    size: 0,
+                    modified_unix: 0,
+                    kind: FileKind::Regular,
+                    is_hidden,
+                    icon_kind: classify_icon(&name, /* is_dir= */ false),
+                });
+                continue;
+            }
+        };
+
+        // gitignore check (directories need trailing slash semantics for some matchers).
+        if let Some(gi) = &gitignore {
+            let m = gi.matched(&entry_path, metadata.is_dir());
+            if m.is_ignore() {
+                continue;
+            }
+        }
+
+        // Hardcoded exclusion patterns (simple name match).
+        if config.respect_gitignore && config.exclude_patterns.iter().any(|p| p == &name) {
+            continue;
+        }
+
+        let kind = if metadata.is_dir() {
+            FileKind::Directory
+        } else if metadata.file_type().is_symlink() {
+            FileKind::Symlink
+        } else {
+            FileKind::Regular
+        };
+
+        let size = if matches!(kind, FileKind::Directory) { 0 } else { metadata.len() };
+
+        let modified_unix = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        let icon_kind = classify_icon(&name, metadata.is_dir());
+
+        out.push(FileEntry {
+            path: entry_path,
+            name,
+            size,
+            modified_unix,
+            kind,
+            is_hidden,
+            icon_kind,
+        });
+    }
+
+    // Sort: directories first, then name asc (case-insensitive).
+    out.sort_by(|a, b| {
+        let a_is_dir = matches!(a.kind, FileKind::Directory);
+        let b_is_dir = matches!(b.kind, FileKind::Directory);
+        match (a_is_dir, b_is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        }
+    });
+
+    Ok(out)
+}
+
+fn classify_icon(name: &str, is_dir: bool) -> IconKind {
+    if is_dir {
+        return IconKind::Folder;
+    }
+    match name.rsplit_once('.') {
+        Some((_, ext)) if !ext.is_empty() && !ext.contains(' ') => {
+            IconKind::ExtensionHint(ext.to_lowercase())
+        }
+        _ => IconKind::GenericFile,
+    }
+}
+
+fn io_to_walker_error(e: std::io::Error) -> WalkerError {
+    use std::io::ErrorKind;
+    match e.kind() {
+        ErrorKind::NotFound => WalkerError::NotFound,
+        ErrorKind::PermissionDenied => WalkerError::PermissionDenied,
+        _ => WalkerError::Io(e.to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -90,10 +224,4 @@ mod tests {
         assert!(cfg.exclude_patterns.iter().any(|p| p == ".git"));
     }
 
-    #[test]
-    fn list_directory_returns_empty_stub() {
-        let tmp = std::env::temp_dir();
-        let result = list_directory(&tmp, &WalkerConfig::default()).unwrap();
-        assert!(result.is_empty());
-    }
 }
