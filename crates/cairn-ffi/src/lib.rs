@@ -55,12 +55,20 @@ mod ffi {
         Io(String),
     }
 
+    enum PreviewError {
+        Binary,
+        NotFound,
+        PermissionDenied,
+        Io(String),
+    }
+
     extern "Rust" {
         type Engine;
 
         fn new_engine() -> Engine;
         fn list_directory(&self, path: String) -> Result<FileListing, WalkerError>;
         fn set_show_hidden(&mut self, show: bool);
+        fn preview_text(&self, path: String) -> Result<String, PreviewError>;
     }
 
     extern "Rust" {
@@ -94,6 +102,12 @@ impl Engine {
             .list_directory(Path::new(&path))
             .map_err(wire_walker_error)?;
         Ok(FileListing { entries })
+    }
+
+    fn preview_text(&self, path: String) -> Result<String, ffi::PreviewError> {
+        self.inner
+            .preview_text(Path::new(&path))
+            .map_err(wire_preview_error)
     }
 
     fn set_show_hidden(&mut self, show: bool) {
@@ -153,6 +167,16 @@ fn wire_walker_error(e: cairn_walker::WalkerError) -> ffi::WalkerError {
     }
 }
 
+fn wire_preview_error(e: cairn_core::PreviewError) -> ffi::PreviewError {
+    use cairn_core::PreviewError as P;
+    match e {
+        P::Binary => ffi::PreviewError::Binary,
+        P::NotFound => ffi::PreviewError::NotFound,
+        P::PermissionDenied => ffi::PreviewError::PermissionDenied,
+        P::Io(msg) => ffi::PreviewError::Io(msg),
+    }
+}
+
 // ---- Rust-side smoke test ---------------------------------------------------
 
 #[cfg(test)]
@@ -187,6 +211,17 @@ mod tests {
         let n = listing.len();
         for i in 0..n {
             let _ = listing.entry(i);
+        }
+    }
+
+    #[test]
+    fn engine_preview_text_on_cargo_toml_roundtrips() {
+        let engine = new_engine();
+        // This crate's own Cargo.toml is always present and small.
+        let path = env!("CARGO_MANIFEST_DIR").to_string() + "/Cargo.toml";
+        match engine.preview_text(path) {
+            Ok(s) => assert!(s.contains("cairn-ffi")),
+            Err(_) => panic!("preview_text failed on Cargo.toml"),
         }
     }
 }
