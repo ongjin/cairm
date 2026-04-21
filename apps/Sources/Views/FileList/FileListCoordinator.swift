@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import QuickLookUI
 
 /// Bridges FolderModel ↔ NSTableView.
 ///
@@ -9,7 +10,11 @@ import SwiftUI
 ///   - `onActivate` (SwiftUI closure for double-click / ⏎)
 ///   - `lastSnapshot` (cached sorted view to avoid recomputing inside dataSource)
 ///   - `isApplyingModelUpdate` (re-entrancy guard during updateNSView)
-final class FileListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+final class FileListCoordinator: NSObject,
+                                 NSTableViewDataSource,
+                                 NSTableViewDelegate,
+                                 QLPreviewPanelDataSource,
+                                 QLPreviewPanelDelegate {
     private let folder: FolderModel
     private let onActivate: (FileEntry) -> Void
 
@@ -205,6 +210,37 @@ final class FileListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDel
         guard let entry = sender.representedObject as? FileEntry else { return }
         NSWorkspace.shared.selectFile(entry.path.toString(),
                                       inFileViewerRootedAtPath: "")
+    }
+
+    // MARK: - Quick Look
+
+    /// Snapshot of the paths currently selected at the moment QL took control.
+    /// Captured in begin to avoid races with live selection changes while the
+    /// panel is up.
+    private var quickLookURLs: [URL] {
+        let selectedRows = table?.selectedRowIndexes ?? IndexSet()
+        let paths: [URL] = selectedRows.compactMap { row in
+            guard row < lastSnapshot.count else { return nil }
+            let p = lastSnapshot[row].path.toString()
+            return URL(fileURLWithPath: p)
+        }
+        // Fallback: if nothing is selected but the user pressed Space, preview
+        // the clicked / first row.
+        if paths.isEmpty, !lastSnapshot.isEmpty {
+            let p = lastSnapshot[0].path.toString()
+            return [URL(fileURLWithPath: p)]
+        }
+        return paths
+    }
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        quickLookURLs.count
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        let urls = quickLookURLs
+        guard index >= 0, index < urls.count else { return nil }
+        return urls[index] as NSURL
     }
 
     // MARK: - Private helpers

@@ -77,6 +77,9 @@ struct FileListView: NSViewRepresentable {
             coord?.menu(for: event)
         }
 
+        // Quick Look (Space): route panel queries to the Coordinator.
+        table.quickLookDelegate = context.coordinator
+
         context.coordinator.attach(table: table)
         scroll.documentView = table
         return scroll
