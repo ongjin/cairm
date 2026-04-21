@@ -4,8 +4,8 @@
 //! direct children of `path`. Recursive walking (for Deep Search) lands in
 //! Phase 2 and will reuse the same types.
 
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 #[derive(Debug, Clone)]
@@ -73,10 +73,7 @@ pub enum WalkerError {
     Io(String),
 }
 
-pub fn list_directory(
-    path: &Path,
-    config: &WalkerConfig,
-) -> Result<Vec<FileEntry>, WalkerError> {
+pub fn list_directory(path: &Path, config: &WalkerConfig) -> Result<Vec<FileEntry>, WalkerError> {
     // Normalize & validate target.
     let metadata = fs::metadata(path).map_err(io_to_walker_error)?;
     if !metadata.is_dir() {
@@ -91,7 +88,11 @@ pub fn list_directory(
         if gi_file.exists() {
             builder.add(gi_file);
         }
-        Some(builder.build().map_err(|e| WalkerError::Io(e.to_string()))?)
+        Some(
+            builder
+                .build()
+                .map_err(|e| WalkerError::Io(e.to_string()))?,
+        )
     } else {
         None
     };
@@ -156,7 +157,11 @@ pub fn list_directory(
             FileKind::Regular
         };
 
-        let size = if matches!(kind, FileKind::Directory) { 0 } else { metadata.len() };
+        let size = if matches!(kind, FileKind::Directory) {
+            0
+        } else {
+            metadata.len()
+        };
 
         let modified_unix = metadata
             .modified()
@@ -223,5 +228,4 @@ mod tests {
         assert!(cfg.exclude_patterns.iter().any(|p| p == "node_modules"));
         assert!(cfg.exclude_patterns.iter().any(|p| p == ".git"));
     }
-
 }

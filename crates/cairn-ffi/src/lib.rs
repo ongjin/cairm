@@ -82,7 +82,9 @@ pub struct FileListing {
 }
 
 fn new_engine() -> Engine {
-    Engine { inner: cairn_core::Engine::new() }
+    Engine {
+        inner: cairn_core::Engine::new(),
+    }
 }
 
 impl Engine {

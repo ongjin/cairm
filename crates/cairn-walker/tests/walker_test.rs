@@ -35,22 +35,40 @@ fn lists_direct_children_only() {
     let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
     // Direct children of the tempdir: README.md and src/ (node_modules excluded,
     // .secret hidden-out, .DS_Store always excluded).
-    assert!(names.contains(&"README.md"), "expected README.md, got {names:?}");
+    assert!(
+        names.contains(&"README.md"),
+        "expected README.md, got {names:?}"
+    );
     assert!(names.contains(&"src"), "expected src/, got {names:?}");
-    assert!(!names.contains(&"node_modules"), "node_modules should be excluded");
+    assert!(
+        !names.contains(&"node_modules"),
+        "node_modules should be excluded"
+    );
     assert!(!names.contains(&".secret"), ".secret should be hidden");
-    assert!(!names.contains(&".DS_Store"), ".DS_Store should always be excluded");
+    assert!(
+        !names.contains(&".DS_Store"),
+        ".DS_Store should always be excluded"
+    );
     // Must NOT descend into src/ — this is a single-level listing.
-    assert!(!names.contains(&"lib.rs"), "lib.rs is a grandchild, not direct child");
+    assert!(
+        !names.contains(&"lib.rs"),
+        "lib.rs is a grandchild, not direct child"
+    );
 }
 
 #[test]
 fn show_hidden_includes_dotfiles() {
     let dir = mk_tempdir_with_fixtures();
-    let cfg = WalkerConfig { show_hidden: true, ..Default::default() };
+    let cfg = WalkerConfig {
+        show_hidden: true,
+        ..Default::default()
+    };
     let entries = list_directory(dir.path(), &cfg).unwrap();
     let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
-    assert!(names.contains(&".secret"), "dotfile should appear when show_hidden=true");
+    assert!(
+        names.contains(&".secret"),
+        "dotfile should appear when show_hidden=true"
+    );
     // But .DS_Store is ALWAYS excluded regardless of show_hidden.
     assert!(!names.contains(&".DS_Store"));
 }
@@ -59,7 +77,10 @@ fn show_hidden_includes_dotfiles() {
 fn directory_entries_have_zero_size_and_directory_kind() {
     let dir = mk_tempdir_with_fixtures();
     let entries = list_directory(dir.path(), &WalkerConfig::default()).unwrap();
-    let src = entries.iter().find(|e| e.name == "src").expect("src must be listed");
+    let src = entries
+        .iter()
+        .find(|e| e.name == "src")
+        .expect("src must be listed");
     assert_eq!(src.kind, FileKind::Directory);
     assert_eq!(src.size, 0);
     assert_eq!(src.icon_kind, cairn_walker::IconKind::Folder);

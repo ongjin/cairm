@@ -15,7 +15,9 @@ pub struct Engine {
 
 impl Engine {
     pub fn new() -> Self {
-        Self { walker_config: WalkerConfig::default() }
+        Self {
+            walker_config: WalkerConfig::default(),
+        }
     }
 
     pub fn list_directory(&self, path: &Path) -> Result<Vec<FileEntry>, WalkerError> {
