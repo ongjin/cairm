@@ -3,7 +3,8 @@ import AppKit
 
 /// Finder-like 4-section sidebar: Pinned / Recent / iCloud Drive / Locations.
 /// Clicking an item navigates via AppModel. Right-click gives "Add to Pinned",
-/// "Unpin", or "Reveal in Finder" depending on the item's section.
+/// "Unpin", or "Reveal in Finder" depending on the item's section. The row that
+/// matches the current folder gets a theme-accented highlight.
 struct SidebarView: View {
     @Bindable var app: AppModel
     @Environment(\.cairnTheme) private var theme
@@ -61,10 +62,12 @@ struct SidebarView: View {
     // MARK: - Rows
 
     private func pinnedRow(_ entry: BookmarkEntry) -> some View {
-        SidebarItemRow(
+        let url = URL(fileURLWithPath: entry.lastKnownPath)
+        return SidebarItemRow(
             icon: "pin.fill",
-            label: entry.label ?? URL(fileURLWithPath: entry.lastKnownPath).lastPathComponent,
-            tint: .orange
+            label: entry.label ?? url.lastPathComponent,
+            tint: .orange,
+            isSelected: isCurrent(url)
         )
         .contentShape(Rectangle())
         .onTapGesture { app.navigate(to: entry) }
@@ -78,10 +81,12 @@ struct SidebarView: View {
     }
 
     private func recentRow(_ entry: BookmarkEntry) -> some View {
-        SidebarItemRow(
+        let url = URL(fileURLWithPath: entry.lastKnownPath)
+        return SidebarItemRow(
             icon: "clock",
-            label: URL(fileURLWithPath: entry.lastKnownPath).lastPathComponent,
-            tint: nil
+            label: url.lastPathComponent,
+            tint: nil,
+            isSelected: isCurrent(url)
         )
         .contentShape(Rectangle())
         .onTapGesture { app.navigate(to: entry) }
@@ -95,7 +100,7 @@ struct SidebarView: View {
     }
 
     private func row(url: URL, icon: String, label: String, tint: Color?, canPin: Bool) -> some View {
-        SidebarItemRow(icon: icon, label: label, tint: tint)
+        SidebarItemRow(icon: icon, label: label, tint: tint, isSelected: isCurrent(url))
             .contentShape(Rectangle())
             .onTapGesture { app.navigateUnscoped(to: url) }
             .contextMenu {
@@ -118,5 +123,12 @@ struct SidebarView: View {
             return Host.current().localizedName ?? "Computer"
         }
         return url.lastPathComponent
+    }
+
+    /// Compare against `app.currentFolder` using the standardized path form so
+    /// `/tmp/foo` and `/private/tmp/foo` and `/tmp/./foo` all match one another.
+    private func isCurrent(_ url: URL) -> Bool {
+        guard let current = app.currentFolder else { return false }
+        return url.standardizedFileURL.path == current.standardizedFileURL.path
     }
 }
