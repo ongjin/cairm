@@ -17,13 +17,14 @@ struct ContentView: View {
                     onAddToPinned: handleAddToPinned,
                     isPinnedCheck: { entry in
                         app.bookmarks.isPinned(url: URL(fileURLWithPath: entry.path.toString()))
-                    }
+                    },
+                    onSelectionChanged: handleSelectionChanged
                 )
             } else {
                 ProgressView().controlSize(.small)
             }
         } detail: {
-            previewPlaceholder
+            PreviewPaneView(preview: app.preview)
         }
         .navigationTitle(app.currentFolder?.lastPathComponent ?? "Cairn")
         .toolbar {
@@ -56,6 +57,13 @@ struct ContentView: View {
                 }
                 .help(app.currentFolder.map(app.bookmarks.isPinned) == true ? "Unpin current folder" : "Pin current folder")
                 .keyboardShortcut("d", modifiers: [.command])
+            }
+            ToolbarItem(placement: .automatic) {
+                Button(action: { toggleShowHidden() }) {
+                    Image(systemName: app.showHidden ? "eye" : "eye.slash")
+                }
+                .help(app.showHidden ? "Hide hidden files" : "Show hidden files")
+                .keyboardShortcut(".", modifiers: [.command, .shift])
             }
         }
         .task {
@@ -96,13 +104,18 @@ struct ContentView: View {
         try? app.bookmarks.togglePin(url: url)
     }
 
-    private var previewPlaceholder: some View {
-        VStack {
-            Text("PREVIEW")
-                .font(.caption).foregroundStyle(.secondary)
-            Text("M1.4").font(.system(size: 11)).foregroundStyle(.tertiary)
+    private func handleSelectionChanged(_ entry: FileEntry?) {
+        if let e = entry {
+            app.preview.focus = URL(fileURLWithPath: e.path.toString())
+        } else {
+            app.preview.focus = nil
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
+    }
+
+    private func toggleShowHidden() {
+        app.toggleShowHidden()
+        if let url = app.currentFolder {
+            Task { await folder?.load(url) }
+        }
     }
 }

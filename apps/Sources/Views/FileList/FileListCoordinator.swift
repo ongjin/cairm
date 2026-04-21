@@ -37,15 +37,18 @@ final class FileListCoordinator: NSObject,
 
     private let onAddToPinned: (FileEntry) -> Void
     private let isPinnedCheck: (FileEntry) -> Bool
+    private let onSelectionChanged: (FileEntry?) -> Void
 
     init(folder: FolderModel,
          onActivate: @escaping (FileEntry) -> Void,
          onAddToPinned: @escaping (FileEntry) -> Void,
-         isPinnedCheck: @escaping (FileEntry) -> Bool) {
+         isPinnedCheck: @escaping (FileEntry) -> Bool,
+         onSelectionChanged: @escaping (FileEntry?) -> Void) {
         self.folder = folder
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
+        self.onSelectionChanged = onSelectionChanged
         super.init()
     }
 
@@ -142,11 +145,19 @@ final class FileListCoordinator: NSObject,
     func tableViewSelectionDidChange(_ notification: Notification) {
         if isApplyingModelUpdate { return }
         guard let table = notification.object as? NSTableView else { return }
-        let paths = table.selectedRowIndexes.compactMap { row -> String? in
+        let rows = table.selectedRowIndexes
+        let paths = rows.compactMap { row -> String? in
             guard row < lastSnapshot.count else { return nil }
             return lastSnapshot[row].path.toString()
         }
         folder.setSelection(Set(paths))
+
+        // Preview focus: first-selected row's entry (row-order, not Set-order).
+        let firstRow = rows.min()
+        let firstEntry: FileEntry? = firstRow.flatMap { row in
+            row < lastSnapshot.count ? lastSnapshot[row] : nil
+        }
+        onSelectionChanged(firstEntry)
     }
 
     // MARK: - Activation (double-click + ⏎)

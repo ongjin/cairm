@@ -17,6 +17,7 @@ struct FileListView: NSViewRepresentable {
     let onAddToPinned: (FileEntry) -> Void
     /// Predicate used to label the menu item "Unpin" vs "Add to Pinned".
     let isPinnedCheck: (FileEntry) -> Bool
+    let onSelectionChanged: (FileEntry?) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
@@ -94,7 +95,8 @@ struct FileListView: NSViewRepresentable {
         FileListCoordinator(folder: folder,
                             onActivate: onActivate,
                             onAddToPinned: onAddToPinned,
-                            isPinnedCheck: isPinnedCheck)
+                            isPinnedCheck: isPinnedCheck,
+                            onSelectionChanged: onSelectionChanged)
     }
 }
 

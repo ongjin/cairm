@@ -24,6 +24,7 @@ final class AppModel {
     let lastFolder: LastFolderStore
     let mountObserver: MountObserver
     let sidebar: SidebarModel
+    let preview: PreviewModel
 
     init(engine: CairnEngine = CairnEngine(),
          bookmarks: BookmarkStore = BookmarkStore(),
@@ -34,6 +35,7 @@ final class AppModel {
         let observer = MountObserver()
         self.mountObserver = observer
         self.sidebar = SidebarModel(mountObserver: observer)
+        self.preview = PreviewModel(engine: engine)
         bootstrapInitialFolder()
     }
 
