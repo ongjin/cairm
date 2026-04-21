@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust:
+    name: Rust — test & lint
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        run: |
+          rustup show          # reads rust-toolchain.toml and installs
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
+
+  swift:
+    name: Swift — build app
+    runs-on: macos-latest
+    needs: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Build Rust universal static lib
+        run: ./scripts/build-rust.sh
+
+      - name: Generate bindings
+        run: ./scripts/gen-bindings.sh
+
+      - name: Generate Xcode project
+        working-directory: apps
+        run: xcodegen generate
+
+      - name: Build Cairn.app
+        working-directory: apps
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Cairn.xcodeproj \
+            -scheme Cairn \
+            -configuration Debug \
+            -destination "platform=macOS" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
