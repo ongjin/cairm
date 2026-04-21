@@ -12,6 +12,7 @@ name = "cairn_ffi"
 
 [dependencies]
 cairn-core = { path = "../cairn-core" }
+cairn-walker = { path = "../cairn-walker" }
 swift-bridge = "0.1"
 
 [build-dependencies]
