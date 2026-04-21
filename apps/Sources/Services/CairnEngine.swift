@@ -4,6 +4,7 @@ import Foundation
 // adding it here lets `throws` work at every call site in the app. Scoped
 // narrowly to avoid leaking into Rust-side assumptions.
 extension WalkerError: Error {}
+extension PreviewError: Error {}
 
 /// Lightweight Swift wrapper around the Rust `Engine` exposed via swift-bridge.
 ///
@@ -34,6 +35,16 @@ final class CairnEngine {
                 out.append(listing.entry(UInt(i)))
             }
             return out
+        }.value
+    }
+
+    /// Returns up to 64 KB of decoded text content from `url`. Throws
+    /// `PreviewError.Binary` on binary detection, `.NotFound`/`.PermissionDenied`
+    /// on file-system errors. Caller is responsible for scoped access.
+    func previewText(_ url: URL) async throws -> String {
+        let path = url.path
+        return try await Task.detached { [rust] in
+            try rust.preview_text(path).toString()
         }.value
     }
 
