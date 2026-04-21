@@ -13,6 +13,10 @@ struct FileListView: NSViewRepresentable {
     /// Called when a row is activated (double-click or ⏎). The closure receives
     /// the FileEntry; the caller decides whether to push history or open in NSWorkspace.
     let onActivate: (FileEntry) -> Void
+    /// Called when the user picks "Add to Pinned" from the row context menu (folders only).
+    let onAddToPinned: (FileEntry) -> Void
+    /// Predicate used to label the menu item "Unpin" vs "Add to Pinned".
+    let isPinnedCheck: (FileEntry) -> Bool
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
@@ -68,6 +72,11 @@ struct FileListView: NSViewRepresentable {
             coord?.activateSelected()
         }
 
+        // Right-click menu — delegate to Coordinator.
+        table.menuHandler = { [weak coord = context.coordinator] event in
+            coord?.menu(for: event)
+        }
+
         context.coordinator.attach(table: table)
         scroll.documentView = table
         return scroll
@@ -79,7 +88,10 @@ struct FileListView: NSViewRepresentable {
     }
 
     func makeCoordinator() -> FileListCoordinator {
-        FileListCoordinator(folder: folder, onActivate: onActivate)
+        FileListCoordinator(folder: folder,
+                            onActivate: onActivate,
+                            onAddToPinned: onAddToPinned,
+                            isPinnedCheck: isPinnedCheck)
     }
 }
 

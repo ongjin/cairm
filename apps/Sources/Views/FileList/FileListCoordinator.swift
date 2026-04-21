@@ -30,9 +30,17 @@ final class FileListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDel
         return f
     }()
 
-    init(folder: FolderModel, onActivate: @escaping (FileEntry) -> Void) {
+    private let onAddToPinned: (FileEntry) -> Void
+    private let isPinnedCheck: (FileEntry) -> Bool
+
+    init(folder: FolderModel,
+         onActivate: @escaping (FileEntry) -> Void,
+         onAddToPinned: @escaping (FileEntry) -> Void,
+         isPinnedCheck: @escaping (FileEntry) -> Bool) {
         self.folder = folder
         self.onActivate = onActivate
+        self.onAddToPinned = onAddToPinned
+        self.isPinnedCheck = isPinnedCheck
         super.init()
     }
 
@@ -151,6 +159,52 @@ final class FileListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDel
         let row = table.selectedRow
         guard row >= 0, row < lastSnapshot.count else { return }
         onActivate(lastSnapshot[row])
+    }
+
+    // MARK: - Right-click menu
+
+    /// Builds a menu for the row located at the given event's window point.
+    /// Returns nil when the click misses all rows (empty area).
+    /// Called by FileListNSTableView.menu(for:) via menuHandler closure.
+    func menu(for event: NSEvent) -> NSMenu? {
+        guard let table = self.table else { return nil }
+        let point = table.convert(event.locationInWindow, from: nil)
+        let row = table.row(at: point)
+        guard row >= 0, row < lastSnapshot.count else { return nil }
+        let entry = lastSnapshot[row]
+
+        let menu = NSMenu()
+
+        if entry.kind == .Directory {
+            let item = NSMenuItem(
+                title: isPinnedCheck(entry) ? "Unpin" : "Add to Pinned",
+                action: #selector(menuAddToPinned(_:)),
+                keyEquivalent: "")
+            item.target = self
+            item.representedObject = entry
+            menu.addItem(item)
+            menu.addItem(.separator())
+        }
+
+        let reveal = NSMenuItem(title: "Reveal in Finder",
+                                action: #selector(menuRevealInFinder(_:)),
+                                keyEquivalent: "")
+        reveal.target = self
+        reveal.representedObject = entry
+        menu.addItem(reveal)
+
+        return menu
+    }
+
+    @objc private func menuAddToPinned(_ sender: NSMenuItem) {
+        guard let entry = sender.representedObject as? FileEntry else { return }
+        onAddToPinned(entry)
+    }
+
+    @objc private func menuRevealInFinder(_ sender: NSMenuItem) {
+        guard let entry = sender.representedObject as? FileEntry else { return }
+        NSWorkspace.shared.selectFile(entry.path.toString(),
+                                      inFileViewerRootedAtPath: "")
     }
 
     // MARK: - Private helpers
