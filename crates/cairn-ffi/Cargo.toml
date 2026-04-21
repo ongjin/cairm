@@ -1,0 +1,21 @@
+[package]
+name = "cairn-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# cdylib: Swift dynamic linking. staticlib: universal static 링크 (Xcode가 선호).
+# 둘 다 만들어두면 상황별로 골라 쓸 수 있다. Phase 0은 staticlib 사용.
+crate-type = ["staticlib", "rlib"]
+name = "cairn_ffi"
+
+[dependencies]
+cairn-core = { path = "../cairn-core" }
+swift-bridge = "0.1"
+
+[build-dependencies]
+swift-bridge-build = "0.1"
+# Pin tempfile to avoid getrandom 0.4.x (requires edition2024 / Cargo ≥ 1.85).
+# Remove once the workspace toolchain is updated to 1.85+.
+tempfile = "=3.14.0"
