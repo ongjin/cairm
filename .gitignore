@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Rust
+target/
+Cargo.lock.bak
+
+# Swift / Xcode
+build/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Brainstorming artifacts
+.superpowers/
