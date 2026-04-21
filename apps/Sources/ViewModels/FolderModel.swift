@@ -90,29 +90,6 @@ final class FolderModel {
     /// field applied within each group. Recomputed every access — fine for the
     /// 10K-entry ceiling. Phase 2 should cache if it ever shows up in profiles.
     var sortedEntries: [FileEntry] {
-        let dirs = entries.filter { $0.kind == .Directory }
-        let files = entries.filter { $0.kind != .Directory }
-        return Self.sort(dirs, by: sortDescriptor) + Self.sort(files, by: sortDescriptor)
-    }
-
-    private static func sort(_ list: [FileEntry], by desc: SortDescriptor) -> [FileEntry] {
-        let asc = (desc.order == .ascending)
-        switch desc.field {
-        case .name:
-            return list.sorted { lhs, rhs in
-                let l = lhs.name.toString().lowercased()
-                let r = rhs.name.toString().lowercased()
-                return asc ? (l < r) : (l > r)
-            }
-        case .size:
-            return list.sorted { lhs, rhs in
-                asc ? (lhs.size < rhs.size) : (lhs.size > rhs.size)
-            }
-        case .modified:
-            return list.sorted { lhs, rhs in
-                asc ? (lhs.modified_unix < rhs.modified_unix)
-                    : (lhs.modified_unix > rhs.modified_unix)
-            }
-        }
+        entries.sorted(by: Self.comparator(for: sortDescriptor))
     }
 }
