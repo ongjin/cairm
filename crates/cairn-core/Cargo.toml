@@ -6,3 +6,6 @@ license.workspace = true
 
 [lib]
 name = "cairn_core"
+
+[dependencies]
+cairn-walker = { path = "../cairn-walker" }
