@@ -42,9 +42,13 @@ struct FileListView: NSViewRepresentable {
         scroll.hasHorizontalScroller = false
         scroll.borderType = .noBorder
         scroll.autohidesScrollers = true
+        scroll.drawsBackground = false   // Glass 투과
 
         let table = FileListNSTableView()
-        table.usesAlternatingRowBackgroundColors = true
+        // Glass Blue 배경이 투과되도록 opaque 끄기. alt row 색상은 투명 위에서
+        // 읽기 어려우므로 비활성화.
+        table.backgroundColor = .clear
+        table.usesAlternatingRowBackgroundColors = false
         table.style = .inset
         table.allowsMultipleSelection = true
         table.allowsEmptySelection = true
