@@ -53,7 +53,12 @@ struct ContentView: View {
                 .onChange(of: tab?.search.query) { _, _ in triggerSearchRefresh() }
                 .onChange(of: tab?.search.scope) { _, _ in triggerSearchRefresh() }
                 .onChange(of: tab?.folder.sortDescriptor) { _, _ in triggerSearchRefresh() }
-                .onChange(of: app.showHidden) { _, _ in triggerSearchRefresh() }
+                .onChange(of: app.showHidden) { _, _ in
+                    if let tab, let url = tab.currentFolder {
+                        Task { await tab.folder.load(url) }
+                    }
+                    triggerSearchRefresh()
+                }
             }
 
             if palette.isOpen, let tab {
