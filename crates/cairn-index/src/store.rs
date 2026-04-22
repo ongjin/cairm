@@ -50,7 +50,7 @@ impl IndexStore {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).ok();
         }
-        let db = redb::Database::create(db_path).map_err(|e| IndexError::Db(e.into()))?;
+        let db = redb::Database::create(db_path).map_err(|e| IndexError::from(redb::Error::from(e)))?;
         let tx = db.begin_write()?;
         {
             let _ = tx.open_table(TABLE_FILES)?;
@@ -287,17 +287,43 @@ impl IndexStore {
 #[derive(Debug, thiserror::Error)]
 pub enum IndexError {
     #[error("redb: {0}")]
-    Db(#[from] redb::Error),
+    Db(Box<redb::Error>),
     #[error("redb transaction: {0}")]
-    Tx(#[from] redb::TransactionError),
+    Tx(Box<redb::TransactionError>),
     #[error("redb storage: {0}")]
-    Storage(#[from] redb::StorageError),
+    Storage(Box<redb::StorageError>),
     #[error("redb table: {0}")]
-    Table(#[from] redb::TableError),
+    Table(Box<redb::TableError>),
     #[error("redb commit: {0}")]
-    Commit(#[from] redb::CommitError),
+    Commit(Box<redb::CommitError>),
     #[error("bincode: {0}")]
     Codec(#[from] bincode::Error),
+}
+
+impl From<redb::Error> for IndexError {
+    fn from(e: redb::Error) -> Self {
+        Self::Db(Box::new(e))
+    }
+}
+impl From<redb::TransactionError> for IndexError {
+    fn from(e: redb::TransactionError) -> Self {
+        Self::Tx(Box::new(e))
+    }
+}
+impl From<redb::StorageError> for IndexError {
+    fn from(e: redb::StorageError) -> Self {
+        Self::Storage(Box::new(e))
+    }
+}
+impl From<redb::TableError> for IndexError {
+    fn from(e: redb::TableError) -> Self {
+        Self::Table(Box::new(e))
+    }
+}
+impl From<redb::CommitError> for IndexError {
+    fn from(e: redb::CommitError) -> Self {
+        Self::Commit(Box::new(e))
+    }
 }
 
 /// Compute cache path under user's cache dir.

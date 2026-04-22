@@ -50,7 +50,7 @@ pub fn preview_text(path: &Path, max_bytes: usize) -> Result<String, PreviewErro
     let n = read_up_to(&mut file, &mut sniff).map_err(io_classify)?;
     sniff.truncate(n);
 
-    if sniff.iter().any(|&b| b == 0) {
+    if sniff.contains(&0) {
         return Err(PreviewError::Binary);
     }
     if std::str::from_utf8(&sniff).is_err() {

@@ -95,7 +95,7 @@ const SKIP_DIR_NAMES: &[&str] = &[
 ];
 
 fn should_skip_dir(name: &str) -> bool {
-    SKIP_DIR_NAMES.iter().any(|s| *s == name)
+    SKIP_DIR_NAMES.contains(&name)
 }
 
 /// Cap at 8 — empirically diminishing returns past that for FS-bound work
@@ -107,8 +107,7 @@ fn walker_thread_count() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
-        .min(MAX_WALKER_THREADS)
-        .max(1)
+        .clamp(1, MAX_WALKER_THREADS)
 }
 
 /// Per-entry payload sent from worker threads to the main collector. Carries
