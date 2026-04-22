@@ -102,5 +102,8 @@ enum ClipboardPasteService {
         return rep.representation(using: .png, properties: [:])
     }
 
-    static func writeFileURLs(_ urls: [URL], to pb: NSPasteboard) { fatalError("stub") }
+    static func writeFileURLs(_ urls: [URL], to pb: NSPasteboard) {
+        pb.clearContents()
+        pb.writeObjects(urls as [NSURL])
+    }
 }

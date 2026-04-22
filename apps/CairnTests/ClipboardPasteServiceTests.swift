@@ -212,4 +212,18 @@ final class ClipboardPasteServiceTests: XCTestCase {
         XCTAssertEqual(data, fakeJpeg)
         XCTAssertEqual(ext, "jpg")
     }
+
+    // MARK: - writeFileURLs
+
+    func test_writeFileURLs_roundtripsThroughPasteboard() {
+        let a = tmp.appendingPathComponent("a.txt")
+        let b = tmp.appendingPathComponent("b.txt")
+        touch("a.txt"); touch("b.txt")
+
+        let pb = scratchPasteboard()
+        ClipboardPasteService.writeFileURLs([a, b], to: pb)
+
+        let readBack = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
+        XCTAssertEqual(readBack?.map { $0.lastPathComponent }, ["a.txt", "b.txt"])
+    }
 }
