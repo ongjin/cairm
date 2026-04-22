@@ -30,8 +30,8 @@ final class FileListCoordinator: NSObject,
                                  NSTableViewDelegate,
                                  QLPreviewPanelDataSource,
                                  QLPreviewPanelDelegate {
-    private let folder: FolderModel
-    private let onActivate: (FileEntry) -> Void
+    private var folder: FolderModel
+    private var onActivate: (FileEntry) -> Void
 
     /// Cache of Open With app lists keyed by lowercased path extension.
     /// Invalidated on `attach(table:)` (folder switch).
@@ -67,9 +67,9 @@ final class FileListCoordinator: NSObject,
         return f
     }()
 
-    private let onAddToPinned: (FileEntry) -> Void
-    private let isPinnedCheck: (FileEntry) -> Bool
-    private let onSelectionChanged: (FileEntry?) -> Void
+    private var onAddToPinned: (FileEntry) -> Void
+    private var isPinnedCheck: (FileEntry) -> Bool
+    private var onSelectionChanged: (FileEntry?) -> Void
 
     init(folder: FolderModel,
          onActivate: @escaping (FileEntry) -> Void,
@@ -90,6 +90,38 @@ final class FileListCoordinator: NSObject,
         openWithDefaultAppCache.removeAll()
         applyModelSnapshot(table: table)
     }
+
+    /// Refresh captured bindings when SwiftUI re-renders FileListView with a
+    /// different Tab. SwiftUI only calls `makeCoordinator()` once per view
+    /// identity, so without this the coordinator keeps pointing at the very
+    /// first Tab's FolderModel / navigate closure — double-clicks from a
+    /// later tab then route back to the original tab. If the FolderModel
+    /// identity changed, we also re-run attach(table:) so sort indicator and
+    /// selection state reflect the new tab's state.
+    func updateBindings(folder: FolderModel,
+                        onActivate: @escaping (FileEntry) -> Void,
+                        onAddToPinned: @escaping (FileEntry) -> Void,
+                        isPinnedCheck: @escaping (FileEntry) -> Bool,
+                        onSelectionChanged: @escaping (FileEntry?) -> Void) {
+        let folderChanged = self.folder !== folder
+        self.folder = folder
+        self.onActivate = onActivate
+        self.onAddToPinned = onAddToPinned
+        self.isPinnedCheck = isPinnedCheck
+        self.onSelectionChanged = onSelectionChanged
+        if folderChanged, let t = self.table {
+            attach(table: t)
+        }
+    }
+
+#if DEBUG
+    /// Test-only hook to invoke the current onActivate without routing
+    /// through AppKit. Keeps unit tests decoupled from NSTableView.
+    func fireActivate(entry: FileEntry) { onActivate(entry) }
+
+    /// Test-only identity probe for asserting folder swap behaviour.
+    var folderRefForTest: FolderModel { folder }
+#endif
 
     // MARK: - Entries injection (called by FileListView.updateNSView)
 

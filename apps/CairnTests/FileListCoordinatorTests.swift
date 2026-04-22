@@ -2,7 +2,80 @@ import XCTest
 @testable import Cairn
 import AppKit
 
+@MainActor
 final class FileListCoordinatorTests: XCTestCase {
+    private func mkDir(_ name: String) -> FileEntry {
+        FileEntry(
+            path: RustString("/tmp/\(name)"),
+            name: RustString(name),
+            size: 0,
+            modified_unix: 0,
+            kind: .Directory,
+            is_hidden: false,
+            icon_kind: .Folder
+        )
+    }
+
+    func test_updateBindings_swapsActivateClosure() {
+        let engine = CairnEngine()
+        let folderA = FolderModel(engine: engine)
+        let folderB = FolderModel(engine: engine)
+        let entry = mkDir("Documents")
+        folderA.setEntries([entry])
+        folderB.setEntries([entry])
+
+        var aActivated = 0
+        var bActivated = 0
+
+        let coord = FileListCoordinator(
+            folder: folderA,
+            onActivate: { _ in aActivated += 1 },
+            onAddToPinned: { _ in },
+            isPinnedCheck: { _ in false },
+            onSelectionChanged: { _ in }
+        )
+
+        coord.fireActivate(entry: entry)
+        XCTAssertEqual(aActivated, 1)
+        XCTAssertEqual(bActivated, 0)
+
+        coord.updateBindings(
+            folder: folderB,
+            onActivate: { _ in bActivated += 1 },
+            onAddToPinned: { _ in },
+            isPinnedCheck: { _ in false },
+            onSelectionChanged: { _ in }
+        )
+
+        coord.fireActivate(entry: entry)
+        XCTAssertEqual(aActivated, 1, "A must NOT fire again after updateBindings")
+        XCTAssertEqual(bActivated, 1, "B must now fire after updateBindings")
+    }
+
+    func test_updateBindings_swapsFolderReference() {
+        let engine = CairnEngine()
+        let folderA = FolderModel(engine: engine)
+        let folderB = FolderModel(engine: engine)
+
+        let coord = FileListCoordinator(
+            folder: folderA,
+            onActivate: { _ in },
+            onAddToPinned: { _ in },
+            isPinnedCheck: { _ in false },
+            onSelectionChanged: { _ in }
+        )
+        XCTAssertTrue(coord.folderRefForTest === folderA)
+
+        coord.updateBindings(
+            folder: folderB,
+            onActivate: { _ in },
+            onAddToPinned: { _ in },
+            isPinnedCheck: { _ in false },
+            onSelectionChanged: { _ in }
+        )
+        XCTAssertTrue(coord.folderRefForTest === folderB)
+    }
+
     func test_setFolderColumnVisible_adds_and_removes_column() {
         let folder = FolderModel(engine: CairnEngine())
         let coord = FileListCoordinator(

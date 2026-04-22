@@ -125,6 +125,13 @@ struct FileListView: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let table = scroll.documentView as? FileListNSTableView else { return }
+        context.coordinator.updateBindings(
+            folder: folder,
+            onActivate: onActivate,
+            onAddToPinned: onAddToPinned,
+            isPinnedCheck: isPinnedCheck,
+            onSelectionChanged: onSelectionChanged
+        )
         context.coordinator.setEntries(entries, searchRoot: searchRoot)
         context.coordinator.setFolderColumnVisible(folderColumnVisible)
         context.coordinator.setFolderRoot(folderRoot)
