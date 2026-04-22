@@ -80,7 +80,7 @@ pub fn ffi_index_query_git_dirty(handle: u64) -> Vec<ffi::FfiFileHit> {
     let entry = match reg.get(&handle) { Some(e) => e, None => return Vec::new() };
     let snap = match cairn_git::snapshot(&entry.root) { Some(s) => s, None => return Vec::new() };
     let mut out = Vec::new();
-    for p in snap.modified.iter().chain(snap.untracked.iter()).chain(snap.added.iter()) {
+    for p in snap.modified.iter().chain(snap.untracked.iter()).chain(snap.added.iter()).chain(snap.deleted.iter()) {
         out.push(ffi::FfiFileHit { path_rel: p.to_string_lossy().into_owned(), score: 0 });
     }
     out
@@ -120,10 +120,12 @@ pub fn ffi_content_start(handle: u64, pattern: String) -> u64 {
         Ok(p) => PathBuf::from(p),
         Err(_) => match which::which("rg") { Ok(p) => p, Err(_) => return 0 },
     };
-    let reg = registry().lock().unwrap();
-    let entry = match reg.get(&handle) { Some(e) => e, None => return 0 };
+    let root = {
+        let reg = registry().lock().unwrap();
+        match reg.get(&handle) { Some(e) => e.root.clone(), None => return 0 }
+    };
     let (tx, rx): (Sender<_>, Receiver<_>) = channel();
-    let search = ContentSearch::spawn(&rg_path, &entry.root, &pattern, move |hit| { let _ = tx.send(hit); });
+    let search = ContentSearch::spawn(&rg_path, &root, &pattern, move |hit| { let _ = tx.send(hit); });
     let id = next_id();
     content_sessions().lock().unwrap().insert(id, ContentSession { search, rx });
     id
