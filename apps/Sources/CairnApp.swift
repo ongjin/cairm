@@ -2,7 +2,16 @@ import SwiftUI
 
 @main
 struct CairnApp: App {
-    @State private var app = AppModel()
+    @State private var app: AppModel
+
+    init() {
+        // T18: point the FFI content-search at the bundled ripgrep before any
+        // AppModel side effect (IndexService, WindowSceneModel → Tab) spins up.
+        if let rgURL = Bundle.main.url(forResource: "rg", withExtension: nil) {
+            setenv("CAIRN_RG_PATH", rgURL.path, 1)
+        }
+        _app = State(initialValue: AppModel())
+    }
 
     var body: some Scene {
         WindowGroup {

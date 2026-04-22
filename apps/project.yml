@@ -27,6 +27,8 @@ targets:
       - path: Sources
         excludes:
           - "Cairn.entitlements"
+      - path: Resources
+        buildPhase: resources
     info:
       path: Sources/Info.plist
       properties:
