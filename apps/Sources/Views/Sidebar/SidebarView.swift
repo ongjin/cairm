@@ -1,56 +1,117 @@
 import SwiftUI
 import AppKit
 
-/// Finder-like 4-section sidebar: Pinned / Recent / iCloud Drive / Locations.
-/// Clicking an item navigates via the active Tab on the window scene.
-/// Right-click gives "Add to Pinned", "Unpin", or "Reveal in Finder" depending
-/// on the item's section. The row that matches the active tab's current folder
-/// gets a theme-accented highlight.
+/// Finder-parity sidebar: Favorites (auto + pinned) / Recent / Cloud / Locations (Home + AirDrop + Network + Trash).
+/// Footer shows active tab's git branch + dirty count when in a repo.
 struct SidebarView: View {
     @Bindable var app: AppModel
     @Bindable var scene: WindowSceneModel
     @Environment(\.cairnTheme) private var theme
 
+    private let home = FileManager.default.homeDirectoryForCurrentUser
+
+    private var autoFavorites: [(icon: String, label: String, url: URL)] {
+        [
+            ("app.badge", "Applications", URL(fileURLWithPath: "/Applications")),
+            ("menubar.dock.rectangle", "Desktop", home.appendingPathComponent("Desktop")),
+            ("doc", "Documents", home.appendingPathComponent("Documents")),
+            ("arrow.down.circle", "Downloads", home.appendingPathComponent("Downloads")),
+        ]
+    }
+
     var body: some View {
-        List {
-            if !app.bookmarks.pinned.isEmpty {
-                Section("Pinned") {
+        VStack(spacing: 0) {
+            List {
+                Section("Favorites") {
+                    ForEach(autoFavorites, id: \.url) { fav in
+                        SidebarAutoFavoriteRow(
+                            icon: fav.icon,
+                            label: fav.label,
+                            url: fav.url,
+                            isSelected: isCurrent(fav.url),
+                            onActivate: { scene.activeTab?.navigate(to: fav.url) }
+                        )
+                    }
                     ForEach(app.bookmarks.pinned) { entry in
                         pinnedRow(entry)
                     }
                 }
-            }
 
-            if !app.bookmarks.recent.isEmpty {
-                Section("Recent") {
-                    ForEach(app.bookmarks.recent) { entry in
-                        recentRow(entry)
+                if !app.bookmarks.recent.isEmpty {
+                    Section("Recent") {
+                        ForEach(app.bookmarks.recent) { entry in
+                            recentRow(entry)
+                        }
                     }
                 }
-            }
 
-            if let iCloud = app.sidebar.iCloudURL {
-                Section("iCloud") {
-                    row(url: iCloud,
-                        icon: "icloud",
-                        label: "iCloud Drive",
-                        tint: .blue,
-                        canPin: true)
+                if let iCloud = app.sidebar.iCloudURL {
+                    Section("Cloud") {
+                        row(url: iCloud,
+                            icon: "icloud",
+                            label: "iCloud Drive",
+                            tint: .blue,
+                            canPin: true)
+                    }
+                }
+
+                Section("Locations") {
+                    // Home
+                    SidebarAutoFavoriteRow(
+                        icon: "house",
+                        label: NSUserName(),
+                        url: home,
+                        isSelected: isCurrent(home),
+                        onActivate: { scene.activeTab?.navigate(to: home) }
+                    )
+
+                    ForEach(app.sidebar.locations, id: \.self) { loc in
+                        row(url: loc,
+                            icon: loc.path == "/" ? "desktopcomputer" : "externaldrive",
+                            label: locationLabel(loc),
+                            tint: nil,
+                            canPin: true)
+                    }
+
+                    // AirDrop — sends current selection; beeps if nothing selected.
+                    SidebarItemRow(icon: "dot.radiowaves.up.forward", label: "AirDrop", tint: nil, isSelected: false)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            let selected = scene.activeTab?.folder.selection ?? []
+                            let urls = selected.map { URL(fileURLWithPath: $0) }
+                            if urls.isEmpty {
+                                NSSound.beep()
+                            } else {
+                                NSSharingService(named: .sendViaAirDrop)?.perform(withItems: urls)
+                            }
+                        }
+
+                    // Network
+                    let network = URL(fileURLWithPath: "/Network")
+                    row(url: network, icon: "network", label: "Network", tint: nil, canPin: false)
+
+                    // Trash
+                    let trash = home.appendingPathComponent(".Trash")
+                    SidebarItemRow(icon: "trash", label: "Trash", tint: nil, isSelected: isCurrent(trash))
+                        .contentShape(Rectangle())
+                        .onTapGesture { scene.activeTab?.navigate(to: trash) }
+                        .contextMenu {
+                            Button("Empty Trash") {
+                                let fm = FileManager.default
+                                if let items = try? fm.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil) {
+                                    for u in items { try? fm.trashItem(at: u, resultingItemURL: nil) }
+                                }
+                            }
+                        }
                 }
             }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
 
-            Section("Locations") {
-                ForEach(app.sidebar.locations, id: \.self) { loc in
-                    row(url: loc,
-                        icon: loc.path == "/" ? "desktopcomputer" : "externaldrive",
-                        label: locationLabel(loc),
-                        tint: nil,
-                        canPin: true)
-                }
+            if let snap = scene.activeTab?.git?.snapshot, let branch = snap.branch {
+                GitBranchFooter(branch: branch, dirtyCount: snap.dirtyCount)
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
         .background {
             ZStack {
                 VisualEffectBlur(material: .sidebar)
@@ -61,7 +122,7 @@ struct SidebarView: View {
         .frame(minWidth: 200)
     }
 
-    // MARK: - Rows
+    // MARK: - Rows (existing helpers, kept intact)
 
     private func pinnedRow(_ entry: BookmarkEntry) -> some View {
         let url = URL(fileURLWithPath: entry.lastKnownPath)
