@@ -129,7 +129,7 @@ struct ContentView: View {
         .background {
             ZStack {
                 VisualEffectBlur(material: .contentBackground)
-                theme.panelTint.opacity(0.55)
+                theme.panelTint  // opacity 0.25 already baked into the token
             }
             .ignoresSafeArea()
         }

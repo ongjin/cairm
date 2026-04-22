@@ -46,9 +46,9 @@ extension CairnTheme {
     static let glass = CairnTheme(
         id: "glass",
         displayName: "Glass (Blue)",
-        windowMaterial: .hudWindow,
+        windowMaterial: .sidebar,
         sidebarTint: Color(hue: 0.62, saturation: 0.08, brightness: 0.14),
-        panelTint:   Color(hue: 0.62, saturation: 0.06, brightness: 0.12),
+        panelTint:   Color(hue: 0.60, saturation: 0.45, brightness: 0.55, opacity: 0.25),
         text:          Color(white: 0.93),
         textSecondary: Color(white: 0.60),
         textTertiary:  Color(white: 0.42),

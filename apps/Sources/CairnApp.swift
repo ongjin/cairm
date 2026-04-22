@@ -41,6 +41,6 @@ struct WindowScene: View {
             .environment(scene)
             .environment(\.cairnTheme, .glass)
             .frame(minWidth: 800, minHeight: 500)
-            .background(VisualEffectBlur(material: .hudWindow).ignoresSafeArea())
+            .background(VisualEffectBlur(material: .sidebar).ignoresSafeArea())
     }
 }
