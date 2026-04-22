@@ -398,7 +398,9 @@ final class FileListCoordinator: NSObject,
         guard let table = self.table else { return nil }
         let point = table.convert(event.locationInWindow, from: nil)
         let row = table.row(at: point)
-        guard row >= 0, row < lastSnapshot.count else { return nil }
+        if row < 0 || row >= lastSnapshot.count {
+            return emptySpaceMenu()
+        }
         let entry = lastSnapshot[row]
 
         let menu = NSMenu()
@@ -420,6 +422,16 @@ final class FileListCoordinator: NSObject,
         reveal.target = self
         reveal.representedObject = MenuPayload(entry: entry)
         menu.addItem(reveal)
+
+        // Copy (⌘C) — writes the entry's URL to the pasteboard so Finder or
+        // another Cairn tab can ⌘V the real file. Distinct from Copy Path (⌥⌘C).
+        let copyItem = NSMenuItem(title: "Copy",
+                                  action: #selector(menuCopyEntry(_:)),
+                                  keyEquivalent: "c")
+        copyItem.keyEquivalentModifierMask = [.command]
+        copyItem.target = self
+        copyItem.representedObject = MenuPayload(entry: entry)
+        menu.addItem(copyItem)
 
         // Copy Path (⌥⌘C) — stays just below Reveal so the two OS-level ops sit together.
         let copyPath = NSMenuItem(title: "Copy Path",
@@ -449,6 +461,35 @@ final class FileListCoordinator: NSObject,
         trash.target = self
         trash.representedObject = MenuPayload(entry: entry)
         menu.addItem(trash)
+
+        return menu
+    }
+
+    /// Right-click on empty space: expose Paste / Paste Item Here when the
+    /// pasteboard has content. Both items use standard Cocoa selectors so the
+    /// responder chain routes them through FileListNSTableView's overrides.
+    /// Returns nil when there's nothing to paste — no menu appears at all.
+    private func emptySpaceMenu() -> NSMenu? {
+        let pasted = ClipboardPasteService.read(from: .general)
+        guard pasted != nil else { return nil }
+
+        let menu = NSMenu()
+
+        let pasteItem = NSMenuItem(title: "Paste",
+                                   action: #selector(NSText.paste(_:)),
+                                   keyEquivalent: "v")
+        pasteItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(pasteItem)
+
+        // "Paste Item Here" only makes sense for real files — an image on the
+        // clipboard has no source to move away from.
+        if case .files = pasted {
+            let moveItem = NSMenuItem(title: "Paste Item Here",
+                                      action: #selector(CairnResponder.pasteItemHere(_:)),
+                                      keyEquivalent: "v")
+            moveItem.keyEquivalentModifierMask = [.command, .option]
+            menu.addItem(moveItem)
+        }
 
         return menu
     }
@@ -526,6 +567,12 @@ final class FileListCoordinator: NSObject,
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(path, forType: .string)
+    }
+
+    @objc private func menuCopyEntry(_ sender: NSMenuItem) {
+        guard let payload = sender.representedObject as? MenuPayload else { return }
+        let url = URL(fileURLWithPath: payload.entry.path.toString())
+        ClipboardPasteService.writeFileURLs([url], to: .general)
     }
 
     @objc private func menuMoveToTrash(_ sender: NSMenuItem) {
