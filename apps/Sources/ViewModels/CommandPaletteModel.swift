@@ -54,6 +54,45 @@ final class CommandPaletteModel {
         contentSession?.cancel()
         contentSession = nil
     }
+
+    func dispatch(tab: Tab, query raw: String, onCommand commands: [PaletteCommand]) {
+        self.query = raw
+        self.selectedIndex = 0
+        let parsed = Self.parse(raw)
+
+        switch parsed {
+        case .fuzzy(let q):
+            fileHits = tab.index?.queryFuzzy(q, limit: 50) ?? []
+            commandHits = []; contentHits = []; symbolHits = []
+            contentSession?.cancel(); contentSession = nil
+        case .command(let q):
+            commandHits = commands.filter { q.isEmpty || $0.label.localizedCaseInsensitiveContains(q) }
+            fileHits = []; contentHits = []; symbolHits = []
+            contentSession?.cancel(); contentSession = nil
+        case .content(let pat):
+            contentSession?.cancel()
+            contentHits = []
+            if !pat.isEmpty, let s = tab.index?.startContent(pattern: pat) {
+                contentSession = s
+            }
+            fileHits = []; commandHits = []; symbolHits = []
+        case .gitDirty(let q):
+            let dirty = tab.index?.queryGitDirty() ?? []
+            fileHits = q.isEmpty ? dirty : dirty.filter { $0.pathRel.localizedCaseInsensitiveContains(q) }
+            commandHits = []; contentHits = []; symbolHits = []
+            contentSession?.cancel(); contentSession = nil
+        case .symbol(let q):
+            symbolHits = tab.index?.querySymbols(q, limit: 50) ?? []
+            fileHits = []; commandHits = []; contentHits = []
+            contentSession?.cancel(); contentSession = nil
+        }
+    }
+
+    func pollContent() {
+        guard let s = contentSession else { return }
+        let new = s.poll(max: 20)
+        contentHits.append(contentsOf: new)
+    }
 }
 
 struct PaletteCommand: Identifiable, Hashable {

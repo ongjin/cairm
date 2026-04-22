@@ -12,45 +12,67 @@ struct ContentView: View {
     /// tears down (T11).
     private var tab: Tab? { scene.activeTab }
 
+    @State private var palette = CommandPaletteModel()
+
     var body: some View {
-        VStack(spacing: 0) {
-            TabBarView(scene: scene)
-            NavigationSplitView {
-                SidebarView(app: app, scene: scene)
-            } content: {
-                contentColumn
-            } detail: {
-                if let tab {
-                    PreviewPaneView(preview: tab.preview)
-                } else {
-                    Color.clear
+        ZStack {
+            VStack(spacing: 0) {
+                TabBarView(scene: scene)
+                NavigationSplitView {
+                    SidebarView(app: app, scene: scene)
+                } content: {
+                    contentColumn
+                } detail: {
+                    if let tab {
+                        PreviewPaneView(preview: tab.preview)
+                    } else {
+                        Color.clear
+                    }
                 }
-            }
-            .navigationTitle(tab?.currentFolder?.lastPathComponent ?? "Cairn")
-            .toolbar { mainToolbar }
-            .task {
-                if let tab, let url = tab.currentFolder {
-                    await tab.folder.load(url)
+                .navigationTitle(tab?.currentFolder?.lastPathComponent ?? "Cairn")
+                .toolbar { mainToolbar }
+                .task {
+                    if let tab, let url = tab.currentFolder {
+                        await tab.folder.load(url)
+                    }
                 }
+                .onChange(of: tab?.currentFolder) { _, new in
+                    guard let tab else { return }
+                    guard let url = new else { tab.folder.clear(); return }
+                    app.lastFolder.save(url)
+                    Task { await tab.folder.load(url) }
+                    triggerSearchRefresh()
+                }
+                .onChange(of: scene.activeTabID) { _, _ in
+                    // Tab switch — reload the newly-active tab's folder so its
+                    // FolderModel reflects its own currentFolder. T10 accepts the full
+                    // reload; T12+ can optimize to reuse cached entries.
+                    guard let tab, let url = tab.currentFolder else { return }
+                    Task { await tab.folder.load(url) }
+                }
+                .onChange(of: tab?.search.query) { _, _ in triggerSearchRefresh() }
+                .onChange(of: tab?.search.scope) { _, _ in triggerSearchRefresh() }
+                .onChange(of: tab?.folder.sortDescriptor) { _, _ in triggerSearchRefresh() }
+                .onChange(of: app.showHidden) { _, _ in triggerSearchRefresh() }
             }
-            .onChange(of: tab?.currentFolder) { _, new in
-                guard let tab else { return }
-                guard let url = new else { tab.folder.clear(); return }
-                app.lastFolder.save(url)
-                Task { await tab.folder.load(url) }
-                triggerSearchRefresh()
+
+            if palette.isOpen, let tab {
+                CommandPaletteView(
+                    model: palette,
+                    tab: tab,
+                    commands: builtinCommands(),
+                    onActivate: handlePaletteActivate
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
-            .onChange(of: scene.activeTabID) { _, _ in
-                // Tab switch — reload the newly-active tab's folder so its
-                // FolderModel reflects its own currentFolder. T10 accepts the full
-                // reload; T12+ can optimize to reuse cached entries.
-                guard let tab, let url = tab.currentFolder else { return }
-                Task { await tab.folder.load(url) }
+        }
+        .animation(.easeOut(duration: 0.15), value: palette.isOpen)
+        .focusedSceneValue(\.paletteModel, palette)
+        .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
+            guard palette.isOpen else { return }
+            if case .content = CommandPaletteModel.parse(palette.query) {
+                palette.pollContent()
             }
-            .onChange(of: tab?.search.query) { _, _ in triggerSearchRefresh() }
-            .onChange(of: tab?.search.scope) { _, _ in triggerSearchRefresh() }
-            .onChange(of: tab?.folder.sortDescriptor) { _, _ in triggerSearchRefresh() }
-            .onChange(of: app.showHidden) { _, _ in triggerSearchRefresh() }
         }
     }
 
@@ -164,7 +186,7 @@ struct ContentView: View {
         }
 
         ToolbarItem(placement: .primaryAction) {
-            Button(action: { /* T15: palette.open() */ }) {
+            Button(action: { palette.open() }) {
                 HStack(spacing: 4) {
                     Image(systemName: "magnifyingglass")
                     Text("⌘K")
@@ -179,7 +201,61 @@ struct ContentView: View {
                 )
             }
             .buttonStyle(.plain)
-            .help("Open Command Palette (wired in T15)")
+            .help("Open Command Palette")
+        }
+    }
+
+    private func builtinCommands() -> [PaletteCommand] {
+        guard let tab else { return [] }
+        return [
+            PaletteCommand(id: "newTab", label: "New Tab", iconSF: "plus.square", shortcutHint: "⌘T") { scene.newTab() },
+            PaletteCommand(id: "closeTab", label: "Close Tab", iconSF: "xmark.square", shortcutHint: "⌘W") {
+                if let id = scene.activeTabID { scene.closeTab(id) }
+            },
+            PaletteCommand(id: "reload", label: "Reload", iconSF: "arrow.clockwise", shortcutHint: "⌘R") {
+                if let u = tab.currentFolder { Task { await tab.folder.load(u) } }
+            },
+            PaletteCommand(id: "toggleHidden", label: "Toggle Hidden Files", iconSF: "eye", shortcutHint: "⌘⇧.") {
+                app.toggleShowHidden()
+            },
+            PaletteCommand(id: "pinFolder", label: "Pin Current Folder", iconSF: "pin", shortcutHint: "⌘D") {
+                tab.toggleCurrentFolderPin()
+            },
+            PaletteCommand(id: "goUp", label: "Go to Parent Folder", iconSF: "arrow.up", shortcutHint: "⌘↑") {
+                tab.goUp()
+            },
+        ]
+    }
+
+    private func handlePaletteActivate(_ data: PaletteRowData) {
+        switch data {
+        case .file(let f):
+            if let tab {
+                let url = tab.currentFolder?.appendingPathComponent(f.pathRel) ?? URL(fileURLWithPath: f.pathRel)
+                openURL(url, tab: tab)
+            }
+        case .command(let c):
+            c.run()
+        case .content(let h):
+            if let tab {
+                let url = tab.currentFolder?.appendingPathComponent(h.pathRel) ?? URL(fileURLWithPath: h.pathRel)
+                openURL(url, tab: tab)
+            }
+        case .symbol(let s):
+            if let tab {
+                let url = tab.currentFolder?.appendingPathComponent(s.pathRel) ?? URL(fileURLWithPath: s.pathRel)
+                openURL(url, tab: tab)
+            }
+        }
+        palette.close()
+    }
+
+    private func openURL(_ url: URL, tab: Tab) {
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+            tab.navigate(to: url)
+        } else {
+            NSWorkspace.shared.open(url)
         }
     }
 

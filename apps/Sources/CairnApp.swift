@@ -17,7 +17,7 @@ struct CairnApp: App {
             }
             NavigateCommands()
             ViewCommands()
-            // FindCommands() — T15 adds ⌘K / ⌘F palette shortcuts.
+            FindCommands()
         }
 
         // Placeholder for Settings Scene — actual UI lands in Phase 2/3.
@@ -68,6 +68,7 @@ struct WindowScene: View {
 
 private struct FocusedSceneKey: FocusedValueKey { typealias Value = WindowSceneModel }
 private struct FocusedAppKey: FocusedValueKey { typealias Value = AppModel }
+struct FocusedPaletteKey: FocusedValueKey { typealias Value = CommandPaletteModel }
 
 extension FocusedValues {
     var scene: WindowSceneModel? {
@@ -77,6 +78,10 @@ extension FocusedValues {
     var appModel: AppModel? {
         get { self[FocusedAppKey.self] }
         set { self[FocusedAppKey.self] = newValue }
+    }
+    var paletteModel: CommandPaletteModel? {
+        get { self[FocusedPaletteKey.self] }
+        set { self[FocusedPaletteKey.self] = newValue }
     }
 }
 
@@ -162,6 +167,28 @@ struct ViewCommands: Commands {
             }
             .keyboardShortcut("d", modifiers: [.command])
             .disabled(scene?.activeTab?.currentFolder == nil)
+        }
+    }
+}
+
+// MARK: - Find / Palette menu (⌘K / ⌘F)
+//
+// T15: `CommandPaletteView` is driven by a `CommandPaletteModel` published per
+// window via `@FocusedValue(\.paletteModel)`. We slot after `.textEditing` so
+// the default Find Next/Previous items remain available; the plain "Find…"
+// here is bound to ⌘F and just opens the palette (optionally biased to fuzzy
+// mode — the placeholder hint differs, not the state).
+
+struct FindCommands: Commands {
+    @FocusedValue(\.paletteModel) var palette: CommandPaletteModel?
+    var body: some Commands {
+        CommandGroup(after: .textEditing) {
+            Button("Find\u{2026}") { palette?.open(preFocusFuzzy: true) }
+                .keyboardShortcut("f", modifiers: [.command])
+                .disabled(palette == nil)
+            Button("Open Palette") { palette?.open() }
+                .keyboardShortcut("k", modifiers: [.command])
+                .disabled(palette == nil)
         }
     }
 }
