@@ -87,8 +87,15 @@ final class FileListNSTableView: NSTableView {
         switch item.action {
         case #selector(copy(_:)):
             return !selectedRowIndexes.isEmpty
-        case #selector(paste(_:)), #selector(pasteItemHere(_:)):
+        case #selector(paste(_:)):
             return ClipboardPasteService.read(from: .general) != nil
+        case #selector(pasteItemHere(_:)):
+            // "Paste Item Here" is move-only — image clipboards have no
+            // source file to relocate, so only enable when files are staged.
+            if case .files = ClipboardPasteService.read(from: .general) {
+                return true
+            }
+            return false
         default:
             return true
         }
