@@ -1,9 +1,3 @@
-//! cairn-index — incremental index cache (redb-backed).
-//!
-//! Phase 2 implementation. Skeleton for now.
+pub mod store;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn crate_compiles() {}
-}
+pub use store::{IndexStore, FileRow, FileKind, IndexError, cache_path_for};
