@@ -11,7 +11,7 @@ struct TabBarView: View {
     @Environment(\.cairnTheme) private var theme
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             ForEach(scene.tabs) { tab in
                 TabChip(
                     label: tab.currentFolder?.lastPathComponent ?? "Untitled",
@@ -19,23 +19,23 @@ struct TabBarView: View {
                     onActivate: { scene.activeTabID = tab.id },
                     onClose: { scene.closeTab(tab.id) }
                 )
+                .frame(maxWidth: .infinity)
             }
             Button(action: { scene.newTab() }) {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 28, height: 28)
                     .background(
                         RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
                             .fill(Color.secondary.opacity(0.08))
                     )
             }
             .buttonStyle(.plain)
-            Spacer()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .frame(height: 36)
+        .frame(height: 38)
         .background(.thinMaterial)
     }
 }

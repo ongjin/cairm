@@ -13,17 +13,18 @@ struct ContentView: View {
     private var tab: Tab? { scene.activeTab }
 
     @State private var palette = CommandPaletteModel()
-    @State private var detailVisibility: NavigationSplitViewVisibility = .all
+    @State private var showInspector: Bool = true
 
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
                 TabBarView(scene: scene)
-                NavigationSplitView(columnVisibility: $detailVisibility) {
+                NavigationSplitView {
                     SidebarView(app: app, scene: scene)
-                } content: {
-                    contentColumn
                 } detail: {
+                    contentColumn
+                }
+                .inspector(isPresented: $showInspector) {
                     if let tab {
                         PreviewPaneView(preview: tab.preview)
                     } else {
@@ -164,8 +165,8 @@ struct ContentView: View {
                 VisualEffectBlur(material: .headerView)
                 LinearGradient(
                     colors: [
-                        theme.panelTint.opacity(0.18),
-                        theme.panelTint.opacity(0.08)
+                        Color(red: 0.10, green: 0.18, blue: 0.32, opacity: 0.22),
+                        Color(red: 0.06, green: 0.10, blue: 0.18, opacity: 0.12)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -201,12 +202,8 @@ struct ContentView: View {
             BreadcrumbBar(tab: tab)
         }
         ToolbarItem(placement: .primaryAction) {
-            Button(action: {
-                detailVisibility = (detailVisibility == .all) ? .doubleColumn : .all
-            }) {
-                Image(systemName: detailVisibility == .all
-                      ? "sidebar.right"
-                      : "sidebar.squares.right")
+            Button(action: { showInspector.toggle() }) {
+                Image(systemName: "sidebar.right")
             }
             .help("Toggle Preview Pane")
             .keyboardShortcut("i", modifiers: [.command, .option])

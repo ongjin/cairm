@@ -117,8 +117,8 @@ struct SidebarView: View {
                 VisualEffectBlur(material: .sidebar)
                 LinearGradient(
                     colors: [
-                        theme.sidebarTint.opacity(0.70),
-                        theme.sidebarTint.opacity(0.35)
+                        Color(red: 0.20, green: 0.35, blue: 0.60, opacity: 0.50),
+                        Color(red: 0.10, green: 0.18, blue: 0.35, opacity: 0.30)
                     ],
                     startPoint: .top,
                     endPoint: .bottom

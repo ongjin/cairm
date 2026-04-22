@@ -46,11 +46,13 @@ extension CairnTheme {
     static let glass = CairnTheme(
         id: "glass",
         displayName: "Glass (Blue)",
-        windowMaterial: .hudWindow,
-        // Clearly blue, more saturated, higher brightness so the tint
-        // actually reads as a colour rather than grey.
-        sidebarTint: Color(hue: 0.60, saturation: 0.42, brightness: 0.45, opacity: 0.55),
-        panelTint:   Color(hue: 0.60, saturation: 0.30, brightness: 0.42, opacity: 0.20),
+        windowMaterial: .underWindowBackground,
+        // Tints are now richer and less opacity-driven so they read as
+        // "blue" even when the window has no vibrancy source behind it
+        // (sandbox + full-screen). The sidebar/content background stacks
+        // layer a direct-blue gradient on top for guaranteed chromatic reading.
+        sidebarTint: Color(hue: 0.60, saturation: 0.55, brightness: 0.55, opacity: 0.50),
+        panelTint:   Color(hue: 0.60, saturation: 0.35, brightness: 0.45, opacity: 0.22),
         text:          Color(white: 0.97),
         textSecondary: Color(white: 0.78),
         textTertiary:  Color(white: 0.56),

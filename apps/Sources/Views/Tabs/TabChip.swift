@@ -46,6 +46,5 @@ struct TabChip: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onActivate)
         .onHover { hovering = $0 }
-        .frame(minWidth: 120, maxWidth: 180)
     }
 }
