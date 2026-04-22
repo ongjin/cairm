@@ -34,18 +34,18 @@ struct TabChip: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(.vertical, 5)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isActive ? theme.accentMuted : Color.clear)
+            RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
+                .fill(isActive ? theme.accentMuted : Color.secondary.opacity(0.08))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(isActive ? theme.accent.opacity(0.3) : Color.secondary.opacity(0.15), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
+                .stroke(isActive ? theme.accent.opacity(0.35) : Color.clear, lineWidth: 0.5)
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: onActivate)
         .onHover { hovering = $0 }
-        .frame(maxWidth: 180)
+        .frame(minWidth: 120, maxWidth: 180)
     }
 }

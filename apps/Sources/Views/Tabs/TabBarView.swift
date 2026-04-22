@@ -10,7 +10,7 @@ struct TabBarView: View {
     @Bindable var scene: WindowSceneModel
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             ForEach(scene.tabs) { tab in
                 TabChip(
                     label: tab.currentFolder?.lastPathComponent ?? "Untitled",
@@ -21,15 +21,20 @@ struct TabBarView: View {
             }
             Button(action: { scene.newTab() }) {
                 Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.secondary.opacity(0.08))
+                    )
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 6)
             Spacer()
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .frame(height: 32)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .frame(height: 36)
         .background(.thinMaterial)
     }
 }
