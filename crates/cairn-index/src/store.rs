@@ -108,11 +108,15 @@ impl IndexStore {
             }
         }
 
-        // Slow path: rebuild from redb.
+        // Slow path: rebuild from redb. Re-sample files_gen AFTER the DB scan so
+        // the cached entry is tagged with a generation that's <= the actual DB
+        // state captured — avoids tagging a post-mutation rebuild with the
+        // pre-mutation gen we loaded at the top of this function.
         let files = self.list_all_from_db()?;
+        let store_gen = self.files_gen.load(Ordering::Acquire);
         if let Ok(mut slot) = self.files_cache.write() {
             *slot = Some(CachedFiles {
-                gen: current_gen,
+                gen: store_gen,
                 files: files.clone(),
             });
         }
