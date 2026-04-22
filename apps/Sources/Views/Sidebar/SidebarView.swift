@@ -115,7 +115,14 @@ struct SidebarView: View {
         .background {
             ZStack {
                 VisualEffectBlur(material: .sidebar)
-                theme.sidebarTint.opacity(0.4)
+                LinearGradient(
+                    colors: [
+                        theme.sidebarTint.opacity(0.55),
+                        theme.sidebarTint.opacity(0.30)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             }
             .ignoresSafeArea()
         }

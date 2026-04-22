@@ -154,8 +154,15 @@ struct ContentView: View {
         )
         .background {
             ZStack {
-                VisualEffectBlur(material: .contentBackground)
-                theme.panelTint  // opacity 0.25 already baked into the token
+                VisualEffectBlur(material: .headerView)
+                LinearGradient(
+                    colors: [
+                        theme.panelTint.opacity(0.18),
+                        theme.panelTint.opacity(0.08)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             }
             .ignoresSafeArea()
         }
