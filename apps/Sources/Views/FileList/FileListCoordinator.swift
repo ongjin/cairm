@@ -103,9 +103,10 @@ final class FileListCoordinator: NSObject,
     /// different Tab. SwiftUI only calls `makeCoordinator()` once per view
     /// identity, so without this the coordinator keeps pointing at the very
     /// first Tab's FolderModel / navigate closure — double-clicks from a
-    /// later tab then route back to the original tab. If the FolderModel
-    /// identity changed, we also re-run attach(table:) so sort indicator and
-    /// selection state reflect the new tab's state.
+    /// later tab then route back to the original tab. On a FolderModel
+    /// identity change we additionally invalidate per-folder caches; sort
+    /// indicator and selection state get re-applied by the trailing
+    /// `applyModelSnapshot(table:)` call in `FileListView.updateNSView`.
     func updateBindings(folder: FolderModel,
                         onActivate: @escaping (FileEntry) -> Void,
                         onAddToPinned: @escaping (FileEntry) -> Void,
