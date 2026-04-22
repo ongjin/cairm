@@ -106,7 +106,10 @@ pub fn ffi_index_open(root: String) -> u64 {
     let db_path = cache_path_for(&root_p);
     let store = match IndexStore::open(&db_path) {
         Ok(s) => Arc::new(s),
-        Err(_) => return 0,
+        Err(e) => {
+            eprintln!("cairn: ffi_index_open failed for {root:?} (db {db_path:?}): {e}");
+            return 0;
+        }
     };
     let _ = walk_into(&root_p, &store);
     let watcher = watch(&root_p, store.clone()).ok();

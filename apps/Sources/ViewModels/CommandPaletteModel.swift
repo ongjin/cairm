@@ -62,7 +62,11 @@ final class CommandPaletteModel {
 
         switch parsed {
         case .fuzzy(let q):
-            fileHits = tab.index?.queryFuzzy(q, limit: 50) ?? []
+            let indexed = tab.index?.queryFuzzy(q, limit: 50) ?? []
+            // Only the bare-text fuzzy branch gets a fallback; @ / # / / / > all
+            // require index-backed state (symbols, git, content, commands) that
+            // can't be synthesised from FolderModel.
+            fileHits = indexed.isEmpty ? fallbackFuzzyHits(folder: tab.folder) : indexed
             commandHits = []; contentHits = []; symbolHits = []
             contentSession?.cancel(); contentSession = nil
         case .command(let q):
@@ -85,6 +89,22 @@ final class CommandPaletteModel {
             symbolHits = tab.index?.querySymbols(q, limit: 50) ?? []
             fileHits = []; commandHits = []; contentHits = []
             contentSession?.cancel(); contentSession = nil
+        }
+    }
+
+    /// When IndexService is unavailable (e.g., ffi_index_open failed at
+    /// Tab.rebuildServices time), fuzzy queries route here so the palette
+    /// at least surfaces entries from the visible folder instead of going
+    /// empty. Plain case-insensitive substring match — good enough for
+    /// small folders, no Rust dependency on the sad path.
+    func fallbackFuzzyHits(folder: FolderModel) -> [FileHit] {
+        let raw = query.lowercased()
+        guard !raw.isEmpty else { return [] }
+        return folder.entries.compactMap { entry in
+            let name = entry.name.toString().lowercased()
+            return name.contains(raw)
+                ? FileHit(pathRel: entry.name.toString(), score: 0)
+                : nil
         }
     }
 
