@@ -75,8 +75,16 @@ struct ContentView: View {
             && folder.entries.isEmpty
         {
             EmptyStateView.emptyFolder()
-        } else if case .failed = folder.state, !searchModel.isActive {
-            EmptyStateView.permissionDenied { app.reopenCurrentFolder() }
+        } else if case .failed(let msg) = folder.state, !searchModel.isActive {
+            EmptyStateView.permissionDenied(message: msg) {
+                app.reopenCurrentFolder { url in
+                    if app.currentFolder == url {
+                        Task { await folder.load(url) }
+                    } else {
+                        app.history.push(url)
+                    }
+                }
+            }
         } else {
             fileList(folder: folder, searchModel: searchModel)
         }

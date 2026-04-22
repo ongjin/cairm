@@ -26,4 +26,9 @@ final class EmptyStateViewTests: XCTestCase {
         v.action?.perform()
         XCTAssertTrue(called)
     }
+
+    func test_permissionDenied_custom_message_sets_subtitle() {
+        let v = EmptyStateView.permissionDenied(message: "No such directory") {}
+        XCTAssertEqual(v.subtitle, "No such directory")
+    }
 }

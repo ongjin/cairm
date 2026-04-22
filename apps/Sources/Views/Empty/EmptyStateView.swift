@@ -59,11 +59,14 @@ struct EmptyStateView: View {
         )
     }
 
-    static func permissionDenied(onRetry: @escaping () -> Void) -> EmptyStateView {
+    static func permissionDenied(
+        message: String = "The system denied access.",
+        onRetry: @escaping () -> Void
+    ) -> EmptyStateView {
         EmptyStateView(
             icon: "lock",
             title: "Can't read this folder",
-            subtitle: "The system denied access.",
+            subtitle: message,
             action: Action(label: "Grant Access…", perform: onRetry)
         )
     }

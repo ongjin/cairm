@@ -90,10 +90,13 @@ final class AppModel {
 
     /// Re-prompts the user for folder access via `NSOpenPanel`. Invoked from
     /// the "Grant Access…" button in the permission-denied empty state.
-    /// If the user picks a folder (same or different), history is pushed so
-    /// FolderModel reloads via ContentView's onChange.
+    /// The caller's `onPick` decides how to consume the URL (push on history
+    /// vs. trigger a direct reload). This split is deliberate: if the user
+    /// re-selects the *same* folder, `history.push` alone does not refire
+    /// ContentView's `onChange` (same value), so the caller needs the option
+    /// to force a reload.
     @MainActor
-    func reopenCurrentFolder() {
+    func reopenCurrentFolder(onPick: @escaping @MainActor (URL) -> Void) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -101,9 +104,9 @@ final class AppModel {
         if let current = currentFolder {
             panel.directoryURL = current
         }
-        panel.begin { [weak self] response in
+        panel.begin { response in
             if response == .OK, let url = panel.url {
-                self?.history.push(url)
+                onPick(url)
             }
         }
     }
