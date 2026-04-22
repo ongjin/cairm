@@ -97,6 +97,13 @@ final class CommandPaletteModel {
     /// at least surfaces entries from the visible folder instead of going
     /// empty. Plain case-insensitive substring match — good enough for
     /// small folders, no Rust dependency on the sad path.
+    ///
+    /// The returned FileHit.pathRel is the raw filename because
+    /// `folder.entries` only ever contains the current folder's direct
+    /// children. Downstream `handlePaletteActivate` joins it with
+    /// `tab.currentFolder`, so a bare filename resolves correctly. If
+    /// FolderModel ever holds nested subtree entries, this fallback must
+    /// return an actually-relative path instead.
     func fallbackFuzzyHits(folder: FolderModel) -> [FileHit] {
         let raw = query.lowercased()
         guard !raw.isEmpty else { return [] }
