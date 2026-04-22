@@ -13,42 +13,45 @@ struct ContentView: View {
     private var tab: Tab? { scene.activeTab }
 
     var body: some View {
-        return NavigationSplitView {
-            SidebarView(app: app, scene: scene)
-        } content: {
-            contentColumn
-        } detail: {
-            if let tab {
-                PreviewPaneView(preview: tab.preview)
-            } else {
-                Color.clear
+        VStack(spacing: 0) {
+            TabBarView(scene: scene)
+            NavigationSplitView {
+                SidebarView(app: app, scene: scene)
+            } content: {
+                contentColumn
+            } detail: {
+                if let tab {
+                    PreviewPaneView(preview: tab.preview)
+                } else {
+                    Color.clear
+                }
             }
-        }
-        .navigationTitle(tab?.currentFolder?.lastPathComponent ?? "Cairn")
-        .toolbar { mainToolbar }
-        .task {
-            if let tab, let url = tab.currentFolder {
-                await tab.folder.load(url)
+            .navigationTitle(tab?.currentFolder?.lastPathComponent ?? "Cairn")
+            .toolbar { mainToolbar }
+            .task {
+                if let tab, let url = tab.currentFolder {
+                    await tab.folder.load(url)
+                }
             }
+            .onChange(of: tab?.currentFolder) { _, new in
+                guard let tab else { return }
+                guard let url = new else { tab.folder.clear(); return }
+                app.lastFolder.save(url)
+                Task { await tab.folder.load(url) }
+                triggerSearchRefresh()
+            }
+            .onChange(of: scene.activeTabID) { _, _ in
+                // Tab switch — reload the newly-active tab's folder so its
+                // FolderModel reflects its own currentFolder. T10 accepts the full
+                // reload; T12+ can optimize to reuse cached entries.
+                guard let tab, let url = tab.currentFolder else { return }
+                Task { await tab.folder.load(url) }
+            }
+            .onChange(of: tab?.search.query) { _, _ in triggerSearchRefresh() }
+            .onChange(of: tab?.search.scope) { _, _ in triggerSearchRefresh() }
+            .onChange(of: tab?.folder.sortDescriptor) { _, _ in triggerSearchRefresh() }
+            .onChange(of: app.showHidden) { _, _ in triggerSearchRefresh() }
         }
-        .onChange(of: tab?.currentFolder) { _, new in
-            guard let tab else { return }
-            guard let url = new else { tab.folder.clear(); return }
-            app.lastFolder.save(url)
-            Task { await tab.folder.load(url) }
-            triggerSearchRefresh()
-        }
-        .onChange(of: scene.activeTabID) { _, _ in
-            // Tab switch — reload the newly-active tab's folder so its
-            // FolderModel reflects its own currentFolder. T10 accepts the full
-            // reload; T12+ can optimize to reuse cached entries.
-            guard let tab, let url = tab.currentFolder else { return }
-            Task { await tab.folder.load(url) }
-        }
-        .onChange(of: tab?.search.query) { _, _ in triggerSearchRefresh() }
-        .onChange(of: tab?.search.scope) { _, _ in triggerSearchRefresh() }
-        .onChange(of: tab?.folder.sortDescriptor) { _, _ in triggerSearchRefresh() }
-        .onChange(of: app.showHidden) { _, _ in triggerSearchRefresh() }
     }
 
     @ViewBuilder
