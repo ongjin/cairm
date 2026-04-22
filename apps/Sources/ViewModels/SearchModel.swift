@@ -22,7 +22,7 @@ final class SearchModel {
     }
 
     var query: String = ""
-    var scope: Scope = .folder
+    var scope: Scope = .subtree
     private(set) var results: [FileEntry] = []
     private(set) var phase: Phase = .idle
     private(set) var hitCount: Int = 0

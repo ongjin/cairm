@@ -5,7 +5,6 @@ struct ContentView: View {
     @Environment(AppModel.self) private var app
     @Environment(WindowSceneModel.self) private var scene
     @Environment(\.cairnTheme) private var theme
-    @FocusState private var searchFocused: Bool
 
     /// Current tab shorthand. Non-nil whenever the window has any tabs — which
     /// is the normal case. Early-access guards remain defensively because
@@ -157,48 +156,28 @@ struct ContentView: View {
             }
             .keyboardShortcut(.upArrow, modifiers: [.command])
         }
-        ToolbarItem(placement: .principal) {
+        ToolbarItem(placement: .navigation) {
             BreadcrumbBar(tab: tab)
         }
-        ToolbarItem(placement: .automatic) {
-            Button(action: { tab?.toggleCurrentFolderPin() }) {
-                Image(systemName: pinIconName)
-            }
-            .help(tab?.currentFolder.map(app.bookmarks.isPinned) == true ? "Unpin current folder" : "Pin current folder")
-            .keyboardShortcut("d", modifiers: [.command])
-        }
-        ToolbarItem(placement: .automatic) {
-            Button(action: { toggleShowHidden() }) {
-                Image(systemName: app.showHidden ? "eye" : "eye.slash")
-            }
-            .help(app.showHidden ? "Hide hidden files" : "Show hidden files")
-            .keyboardShortcut(".", modifiers: [.command, .shift])
-        }
-        ToolbarItem(placement: .automatic) {
-            Button(action: { reloadCurrentFolder() }) {
-                Image(systemName: "arrow.clockwise")
-            }
-            .help("Reload")
-            .keyboardShortcut("r", modifiers: [.command])
-            .disabled(tab?.currentFolder == nil)
-        }
-        ToolbarItem(placement: .automatic) {
-            if let tab {
-                ThemedSearchField(search: tab.search, focused: $searchFocused)
-            }
-        }
-        ToolbarItem(placement: .automatic) {
-            // Hidden button to expose the ⌘F shortcut at the app level.
-            Button(action: { searchFocused = true }) { EmptyView() }
-                .keyboardShortcut("f", modifiers: [.command])
-                .frame(width: 0, height: 0)
-                .opacity(0)
-        }
-    }
 
-    private var pinIconName: String {
-        guard let url = tab?.currentFolder else { return "pin" }
-        return app.bookmarks.isPinned(url: url) ? "pin.fill" : "pin"
+        ToolbarItem(placement: .primaryAction) {
+            Button(action: { /* T15: palette.open() */ }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "magnifyingglass")
+                    Text("⌘K")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.secondary.opacity(0.12))
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Open Command Palette (wired in T15)")
+        }
     }
 
     private func handleOpen(_ entry: FileEntry, tab: Tab) {
@@ -222,18 +201,6 @@ struct ContentView: View {
         } else {
             tab.preview.focus = nil
         }
-    }
-
-    private func toggleShowHidden() {
-        app.toggleShowHidden()
-        if let tab, let url = tab.currentFolder {
-            Task { await tab.folder.load(url) }
-        }
-    }
-
-    private func reloadCurrentFolder() {
-        guard let tab, let url = tab.currentFolder else { return }
-        Task { await tab.folder.load(url) }
     }
 
     private func triggerSearchRefresh() {

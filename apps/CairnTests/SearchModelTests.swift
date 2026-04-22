@@ -55,6 +55,7 @@ final class SearchModelTests: XCTestCase {
     func test_empty_query_clears_results() {
         let m = SearchModel(engine: engine())
         m.query = "x"
+        m.scope = .folder
         m.refresh(
             root: URL(fileURLWithPath: "/"),
             showHidden: false,
@@ -77,6 +78,7 @@ final class SearchModelTests: XCTestCase {
     func test_folder_mode_preserves_dirs_first_sort() {
         let m = SearchModel(engine: engine())
         m.query = "test"
+        m.scope = .folder
         m.refresh(
             root: URL(fileURLWithPath: "/"),
             showHidden: false,
