@@ -224,7 +224,14 @@ final class FileListCoordinator: NSObject,
     // MARK: - Delegate (view-based cells)
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        FileListRowView()
+        let rowView = FileListRowView()
+        if row < lastSnapshot.count {
+            // Dim hidden entries so the user can tell them apart at a glance
+            // when ⌘⇧. is toggled on. Alpha propagates to subviews, so both
+            // the icon and text field dim together.
+            rowView.alphaValue = lastSnapshot[row].is_hidden ? 0.55 : 1.0
+        }
+        return rowView
     }
 
     func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
