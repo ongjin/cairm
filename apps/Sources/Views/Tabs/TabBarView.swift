@@ -8,6 +8,7 @@ import SwiftUI
 /// reachable and to avoid a layout jump when a second tab opens.
 struct TabBarView: View {
     @Bindable var scene: WindowSceneModel
+    @Environment(\.cairnTheme) private var theme
 
     var body: some View {
         HStack(spacing: 8) {
@@ -25,7 +26,7 @@ struct TabBarView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 24)
                     .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
                             .fill(Color.secondary.opacity(0.08))
                     )
             }
