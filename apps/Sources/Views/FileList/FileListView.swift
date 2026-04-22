@@ -135,6 +135,9 @@ struct FileListView: NSViewRepresentable {
         table.copyHandler = { [weak coord = context.coordinator] in
             coord?.copySelectedToClipboard()
         }
+        table.pasteHandler = { [weak coord = context.coordinator] op in
+            coord?.pasteFromClipboard(operation: op)
+        }
 
         // Right-click menu — delegate to Coordinator.
         table.menuHandler = { [weak coord = context.coordinator] event in

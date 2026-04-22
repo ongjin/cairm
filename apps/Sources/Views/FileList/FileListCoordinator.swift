@@ -774,6 +774,88 @@ final class FileListCoordinator: NSObject,
         guard !urls.isEmpty else { return }
         ClipboardPasteService.writeFileURLs(urls, to: .general)
     }
+
+    /// Entry point for ⌘V and ⌥⌘V. Reads the general pasteboard, dispatches
+    /// on content + operation, and registers undo for anything that lands.
+    ///
+    /// Currently handles `.files` + `.copy`. `.files` + `.move` and `.image`
+    /// branches are added in later tasks.
+    func pasteFromClipboard(operation: PasteOp) {
+        guard let dir = folder.currentFolder else { NSSound.beep(); return }
+        guard FileManager.default.isWritableFile(atPath: dir.path) else {
+            showPasteAlert("The current folder isn't writable.")
+            return
+        }
+        guard let content = ClipboardPasteService.read(from: .general) else {
+            NSSound.beep(); return
+        }
+        switch (content, operation) {
+        case (.files(let urls), .copy):
+            pasteCopy(urls: urls, into: dir)
+        default:
+            NSSound.beep()  // later tasks fill in .move and .image
+        }
+    }
+
+    private func pasteCopy(urls: [URL], into dir: URL) {
+        var created: [(src: URL, dest: URL)] = []
+        for src in urls {
+            let dest = ClipboardPasteService.uniqueDestination(
+                filename: src.lastPathComponent, in: dir, rule: .appendCopy)
+            do {
+                try FileManager.default.copyItem(at: src, to: dest)
+                created.append((src, dest))
+            } catch {
+                NSSound.beep()
+            }
+        }
+        if !created.isEmpty {
+            registerPasteCopyUndo(created)
+            onMoved()
+        }
+    }
+
+    /// Undo for a paste-copy deletes the just-created files (hard delete —
+    /// not trash — because they existed for <1s and trashing them creates
+    /// noise in `~/.Trash` the user didn't ask for).
+    /// Redo re-runs `copyItem` with the same source/destination pairs.
+    private func registerPasteCopyUndo(_ pairs: [(src: URL, dest: URL)]) {
+        guard let undoManager else { return }
+        let onMoved = self.onMoved
+        let target = self
+        undoManager.registerUndo(withTarget: target) { _ in
+            for (_, dest) in pairs {
+                try? FileManager.default.removeItem(at: dest)
+            }
+            onMoved()
+            undoManager.registerUndo(withTarget: target) { coord in
+                coord.replayPasteCopy(pairs)
+            }
+        }
+        undoManager.setActionName(pairs.count == 1 ? "Paste" : "Paste \(pairs.count) Items")
+    }
+
+    private func replayPasteCopy(_ pairs: [(src: URL, dest: URL)]) {
+        var done: [(URL, URL)] = []
+        for (src, dest) in pairs {
+            if (try? FileManager.default.copyItem(at: src, to: dest)) != nil {
+                done.append((src, dest))
+            }
+        }
+        if !done.isEmpty {
+            registerPasteCopyUndo(done)
+            onMoved()
+        }
+    }
+
+    private func showPasteAlert(_ text: String) {
+        let alert = NSAlert()
+        alert.messageText = "Couldn't paste"
+        alert.informativeText = text
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
 }
 
 // MARK: - Drag & drop (file move)

@@ -44,6 +44,10 @@ final class FolderModel {
     private(set) var sortDescriptor: SortDescriptor = .default
     /// Path strings of currently-selected entries.
     private(set) var selection: Set<String> = []
+    /// The directory `load(_:)` most recently loaded. Consumers (e.g. the
+    /// paste handler) use this as the destination for new-file operations.
+    /// nil before the first load.
+    private(set) var currentFolder: URL?
 
     private let engine: CairnEngine
 
@@ -62,6 +66,7 @@ final class FolderModel {
     @MainActor
     func load(_ url: URL) async {
         state = .loading
+        currentFolder = url
         do {
             let list = try await engine.listDirectory(url)
             entries = list
@@ -76,6 +81,7 @@ final class FolderModel {
         entries = []
         selection = []
         state = .idle
+        currentFolder = nil
     }
 
     func setSortDescriptor(_ desc: SortDescriptor) {
