@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 const TABLE_FILES: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("files");
+const TABLE_SYMBOLS: redb::TableDefinition<(&str, u32), &[u8]> = redb::TableDefinition::new("symbols");
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FileRow {
@@ -76,6 +77,43 @@ impl IndexStore {
             let (k, v) = entry?;
             let row: FileRow = bincode::deserialize(v.value())?;
             out.push((k.value().to_string(), row));
+        }
+        Ok(out)
+    }
+
+    pub fn put_symbols(&self, rel: &str, syms: &[crate::symbols::SymbolRow]) -> Result<(), IndexError> {
+        let tx = self.db.begin_write()?;
+        {
+            let mut t = tx.open_table(TABLE_SYMBOLS)?;
+            // Clear existing for this file.
+            let keys: Vec<(String, u32)> = {
+                let read = t.iter()?;
+                read.filter_map(|e| e.ok().map(|(k,_)| (k.value().0.to_string(), k.value().1))).collect()
+            };
+            for (p, idx) in keys.iter().filter(|(p, _)| p == rel) {
+                t.remove((p.as_str(), *idx))?;
+            }
+            for (i, s) in syms.iter().enumerate() {
+                let bytes = bincode::serialize(s)?;
+                t.insert((rel, i as u32), bytes.as_slice())?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn query_symbols(&self, needle: &str, limit: usize) -> Result<Vec<(String, crate::symbols::SymbolRow)>, IndexError> {
+        let tx = self.db.begin_read()?;
+        let t = tx.open_table(TABLE_SYMBOLS)?;
+        let mut out = Vec::new();
+        for entry in t.iter()? {
+            let (k, v) = entry?;
+            let (rel, _idx) = k.value();
+            let row: crate::symbols::SymbolRow = bincode::deserialize(v.value())?;
+            if needle.is_empty() || row.name.to_lowercase().contains(&needle.to_lowercase()) {
+                out.push((rel.to_string(), row));
+            }
+            if out.len() >= limit { break; }
         }
         Ok(out)
     }

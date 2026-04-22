@@ -40,6 +40,12 @@ pub fn walk_into(root: &Path, store: &IndexStore) -> Result<usize, crate::IndexE
         };
         store.put_file(&rel, &row)?;
         count += 1;
+        if matches!(kind, FileKind::Regular) {
+            let syms = crate::symbols::extract_from_file(entry.path());
+            if !syms.is_empty() {
+                store.put_symbols(&rel, &syms).ok();
+            }
+        }
     }
     Ok(count)
 }
