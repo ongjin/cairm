@@ -3,47 +3,60 @@ import AppKit
 
 struct ContentView: View {
     @Environment(AppModel.self) private var app
+    @Environment(WindowSceneModel.self) private var scene
     @Environment(\.cairnTheme) private var theme
-    @State private var folder: FolderModel?
-    @State private var searchModel: SearchModel?
     @FocusState private var searchFocused: Bool
 
+    /// Current tab shorthand. Non-nil whenever the window has any tabs — which
+    /// is the normal case. Early-access guards remain defensively because
+    /// `closeTab` can momentarily leave `activeTab == nil` while the window
+    /// tears down (T11).
+    private var tab: Tab? { scene.activeTab }
+
     var body: some View {
-        @Bindable var app = app
         return NavigationSplitView {
-            SidebarView(app: app)
+            SidebarView(app: app, scene: scene)
         } content: {
             contentColumn
         } detail: {
-            PreviewPaneView(preview: app.preview)
-        }
-        .navigationTitle(app.currentFolder?.lastPathComponent ?? "Cairn")
-        .toolbar { mainToolbar }
-        .task {
-            ensureFolderModel()
-            ensureSearchModel()
-            if let url = app.currentFolder {
-                await folder?.load(url)
+            if let tab {
+                PreviewPaneView(preview: tab.preview)
+            } else {
+                Color.clear
             }
         }
-        .onChange(of: app.currentFolder) { _, new in
-            ensureFolderModel()
-            guard let url = new else { folder?.clear(); return }
+        .navigationTitle(tab?.currentFolder?.lastPathComponent ?? "Cairn")
+        .toolbar { mainToolbar }
+        .task {
+            if let tab, let url = tab.currentFolder {
+                await tab.folder.load(url)
+            }
+        }
+        .onChange(of: tab?.currentFolder) { _, new in
+            guard let tab else { return }
+            guard let url = new else { tab.folder.clear(); return }
             app.lastFolder.save(url)
-            Task { await folder?.load(url) }
+            Task { await tab.folder.load(url) }
             triggerSearchRefresh()
         }
-        .onChange(of: searchModel?.query) { _, _ in triggerSearchRefresh() }
-        .onChange(of: searchModel?.scope) { _, _ in triggerSearchRefresh() }
-        .onChange(of: folder?.sortDescriptor) { _, _ in triggerSearchRefresh() }
+        .onChange(of: scene.activeTabID) { _, _ in
+            // Tab switch — reload the newly-active tab's folder so its
+            // FolderModel reflects its own currentFolder. T10 accepts the full
+            // reload; T12+ can optimize to reuse cached entries.
+            guard let tab, let url = tab.currentFolder else { return }
+            Task { await tab.folder.load(url) }
+        }
+        .onChange(of: tab?.search.query) { _, _ in triggerSearchRefresh() }
+        .onChange(of: tab?.search.scope) { _, _ in triggerSearchRefresh() }
+        .onChange(of: tab?.folder.sortDescriptor) { _, _ in triggerSearchRefresh() }
         .onChange(of: app.showHidden) { _, _ in triggerSearchRefresh() }
     }
 
     @ViewBuilder
     private var contentColumn: some View {
-        if let folder, let searchModel {
+        if let tab {
             VStack(spacing: 0) {
-                if searchModel.phase == .capped {
+                if tab.search.phase == .capped {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
@@ -57,16 +70,18 @@ struct ContentView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
-                contentBody(folder: folder, searchModel: searchModel)
+                contentBody(tab: tab)
             }
-            .animation(.easeInOut(duration: 0.2), value: searchModel.phase)
+            .animation(.easeInOut(duration: 0.2), value: tab.search.phase)
         } else {
             ProgressView().controlSize(.small)
         }
     }
 
     @ViewBuilder
-    private func contentBody(folder: FolderModel, searchModel: SearchModel) -> some View {
+    private func contentBody(tab: Tab) -> some View {
+        let folder = tab.folder
+        let searchModel = tab.search
         if searchModel.isActive
             && searchModel.results.isEmpty
             && searchModel.phase != .running
@@ -79,35 +94,37 @@ struct ContentView: View {
             EmptyStateView.emptyFolder()
         } else if case .failed(let msg) = folder.state, !searchModel.isActive {
             EmptyStateView.permissionDenied(message: msg) {
-                app.reopenCurrentFolder { url in
-                    if app.currentFolder == url {
+                app.reopenFolder(startingAt: tab.currentFolder) { url in
+                    if tab.currentFolder == url {
                         Task { await folder.load(url) }
                     } else {
-                        app.history.push(url)
+                        tab.navigate(to: url)
                     }
                 }
             }
         } else {
-            fileList(folder: folder, searchModel: searchModel)
+            fileList(tab: tab)
         }
     }
 
-    private func fileList(folder: FolderModel, searchModel: SearchModel) -> some View {
+    private func fileList(tab: Tab) -> some View {
+        let folder = tab.folder
+        let searchModel = tab.search
         let isActive = searchModel.isActive
         let entries: [FileEntry] = isActive ? searchModel.results : folder.sortedEntries
         let showFolderCol = isActive && searchModel.scope == .subtree
-        let searchRoot: URL? = isActive ? app.currentFolder : nil
+        let searchRoot: URL? = isActive ? tab.currentFolder : nil
         return FileListView(
             entries: entries,
             folder: folder,
             folderColumnVisible: showFolderCol,
             searchRoot: searchRoot,
-            onActivate: handleOpen,
+            onActivate: { handleOpen($0, tab: tab) },
             onAddToPinned: handleAddToPinned,
             isPinnedCheck: { entry in
                 app.bookmarks.isPinned(url: URL(fileURLWithPath: entry.path.toString()))
             },
-            onSelectionChanged: handleSelectionChanged
+            onSelectionChanged: { handleSelectionChanged($0, tab: tab) }
         )
         .background {
             ZStack {
@@ -121,33 +138,33 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var mainToolbar: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            Button(action: { app.goBack() }) {
+            Button(action: { _ = tab?.goBack() }) {
                 Image(systemName: "chevron.left")
             }
-            .disabled(!app.history.canGoBack)
+            .disabled(!(tab?.history.canGoBack ?? false))
             .keyboardShortcut(.leftArrow, modifiers: [.command])
         }
         ToolbarItem(placement: .navigation) {
-            Button(action: { app.goForward() }) {
+            Button(action: { _ = tab?.goForward() }) {
                 Image(systemName: "chevron.right")
             }
-            .disabled(!app.history.canGoForward)
+            .disabled(!(tab?.history.canGoForward ?? false))
             .keyboardShortcut(.rightArrow, modifiers: [.command])
         }
         ToolbarItem(placement: .navigation) {
-            Button(action: { app.goUp() }) {
+            Button(action: { tab?.goUp() }) {
                 Image(systemName: "arrow.up")
             }
             .keyboardShortcut(.upArrow, modifiers: [.command])
         }
         ToolbarItem(placement: .principal) {
-            BreadcrumbBar(app: app)
+            BreadcrumbBar(tab: tab)
         }
         ToolbarItem(placement: .automatic) {
-            Button(action: { app.toggleCurrentFolderPin() }) {
+            Button(action: { tab?.toggleCurrentFolderPin() }) {
                 Image(systemName: pinIconName)
             }
-            .help(app.currentFolder.map(app.bookmarks.isPinned) == true ? "Unpin current folder" : "Pin current folder")
+            .help(tab?.currentFolder.map(app.bookmarks.isPinned) == true ? "Unpin current folder" : "Pin current folder")
             .keyboardShortcut("d", modifiers: [.command])
         }
         ToolbarItem(placement: .automatic) {
@@ -163,11 +180,11 @@ struct ContentView: View {
             }
             .help("Reload")
             .keyboardShortcut("r", modifiers: [.command])
-            .disabled(app.currentFolder == nil)
+            .disabled(tab?.currentFolder == nil)
         }
         ToolbarItem(placement: .automatic) {
-            if let searchModel {
-                ThemedSearchField(search: searchModel, focused: $searchFocused)
+            if let tab {
+                ThemedSearchField(search: tab.search, focused: $searchFocused)
             }
         }
         ToolbarItem(placement: .automatic) {
@@ -180,22 +197,14 @@ struct ContentView: View {
     }
 
     private var pinIconName: String {
-        guard let url = app.currentFolder else { return "pin" }
+        guard let url = tab?.currentFolder else { return "pin" }
         return app.bookmarks.isPinned(url: url) ? "pin.fill" : "pin"
     }
 
-    private func ensureFolderModel() {
-        if folder == nil { folder = FolderModel(engine: app.engine) }
-    }
-
-    private func ensureSearchModel() {
-        if searchModel == nil { searchModel = SearchModel(engine: app.engine) }
-    }
-
-    private func handleOpen(_ entry: FileEntry) {
+    private func handleOpen(_ entry: FileEntry, tab: Tab) {
         let url = URL(fileURLWithPath: entry.path.toString())
         if entry.kind == .Directory {
-            app.history.push(url)
+            tab.navigate(to: url)
         } else {
             NSWorkspace.shared.open(url)
         }
@@ -207,33 +216,33 @@ struct ContentView: View {
         try? app.bookmarks.togglePin(url: url)
     }
 
-    private func handleSelectionChanged(_ entry: FileEntry?) {
+    private func handleSelectionChanged(_ entry: FileEntry?, tab: Tab) {
         if let e = entry {
-            app.preview.focus = URL(fileURLWithPath: e.path.toString())
+            tab.preview.focus = URL(fileURLWithPath: e.path.toString())
         } else {
-            app.preview.focus = nil
+            tab.preview.focus = nil
         }
     }
 
     private func toggleShowHidden() {
         app.toggleShowHidden()
-        if let url = app.currentFolder {
-            Task { await folder?.load(url) }
+        if let tab, let url = tab.currentFolder {
+            Task { await tab.folder.load(url) }
         }
     }
 
     private func reloadCurrentFolder() {
-        guard let url = app.currentFolder else { return }
-        Task { await folder?.load(url) }
+        guard let tab, let url = tab.currentFolder else { return }
+        Task { await tab.folder.load(url) }
     }
 
     private func triggerSearchRefresh() {
-        guard let searchModel, let folder else { return }
-        searchModel.refresh(
-            root: app.currentFolder,
+        guard let tab else { return }
+        tab.search.refresh(
+            root: tab.currentFolder,
             showHidden: app.showHidden,
-            sort: folder.sortDescriptor,
-            folderEntries: folder.sortedEntries
+            sort: tab.folder.sortDescriptor,
+            folderEntries: tab.folder.sortedEntries
         )
     }
 }

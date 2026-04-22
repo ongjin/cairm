@@ -2,11 +2,13 @@ import SwiftUI
 import AppKit
 
 /// Finder-like 4-section sidebar: Pinned / Recent / iCloud Drive / Locations.
-/// Clicking an item navigates via AppModel. Right-click gives "Add to Pinned",
-/// "Unpin", or "Reveal in Finder" depending on the item's section. The row that
-/// matches the current folder gets a theme-accented highlight.
+/// Clicking an item navigates via the active Tab on the window scene.
+/// Right-click gives "Add to Pinned", "Unpin", or "Reveal in Finder" depending
+/// on the item's section. The row that matches the active tab's current folder
+/// gets a theme-accented highlight.
 struct SidebarView: View {
     @Bindable var app: AppModel
+    @Bindable var scene: WindowSceneModel
     @Environment(\.cairnTheme) private var theme
 
     var body: some View {
@@ -70,7 +72,7 @@ struct SidebarView: View {
             isSelected: isCurrent(url)
         )
         .contentShape(Rectangle())
-        .onTapGesture { app.navigate(to: entry) }
+        .onTapGesture { scene.activeTab?.navigate(to: entry) }
         .contextMenu {
             Button("Unpin") { app.bookmarks.unpin(entry) }
             Button("Reveal in Finder") {
@@ -89,7 +91,7 @@ struct SidebarView: View {
             isSelected: isCurrent(url)
         )
         .contentShape(Rectangle())
-        .onTapGesture { app.navigate(to: entry) }
+        .onTapGesture { scene.activeTab?.navigate(to: entry) }
         .contextMenu {
             Button("Add to Pinned") { try? app.bookmarks.togglePin(url: URL(fileURLWithPath: entry.lastKnownPath)) }
             Button("Reveal in Finder") {
@@ -102,7 +104,7 @@ struct SidebarView: View {
     private func row(url: URL, icon: String, label: String, tint: Color?, canPin: Bool) -> some View {
         SidebarItemRow(icon: icon, label: label, tint: tint, isSelected: isCurrent(url))
             .contentShape(Rectangle())
-            .onTapGesture { app.navigateUnscoped(to: url) }
+            .onTapGesture { scene.activeTab?.navigate(to: url) }
             .contextMenu {
                 if canPin {
                     if app.bookmarks.isPinned(url: url) {
@@ -125,10 +127,11 @@ struct SidebarView: View {
         return url.lastPathComponent
     }
 
-    /// Compare against `app.currentFolder` using the standardized path form so
-    /// `/tmp/foo` and `/private/tmp/foo` and `/tmp/./foo` all match one another.
+    /// Compare against the active tab's `currentFolder` using the standardized
+    /// path form so `/tmp/foo` and `/private/tmp/foo` and `/tmp/./foo` all
+    /// match one another.
     private func isCurrent(_ url: URL) -> Bool {
-        guard let current = app.currentFolder else { return false }
+        guard let current = scene.activeTab?.currentFolder else { return false }
         return url.standardizedFileURL.path == current.standardizedFileURL.path
     }
 }
