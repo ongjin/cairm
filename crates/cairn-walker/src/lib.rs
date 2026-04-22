@@ -184,14 +184,17 @@ pub fn list_directory(path: &Path, config: &WalkerConfig) -> Result<Vec<FileEntr
     }
 
     // Sort: directories first, then name asc (case-insensitive).
-    out.sort_by(|a, b| {
-        let a_is_dir = matches!(a.kind, FileKind::Directory);
-        let b_is_dir = matches!(b.kind, FileKind::Directory);
-        match (a_is_dir, b_is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
+    //
+    // Naively calling `a.name.to_lowercase().cmp(&b.name.to_lowercase())`
+    // inside the comparator allocates two fresh Strings per comparison —
+    // ~N·log2(N)·2 allocations. On a 50k-entry node_modules listing that
+    // is >1.5M heap allocs just for sorting. `sort_by_cached_key` evaluates
+    // the key function exactly once per element, collapsing this to N
+    // allocations. Sort key: `(!is_dir, lower(name))` — `false` (dir) sorts
+    // before `true` (file), then ASCII-case-folded name.
+    out.sort_by_cached_key(|e| {
+        let is_dir = matches!(e.kind, FileKind::Directory);
+        (!is_dir, e.name.to_lowercase())
     });
 
     Ok(out)

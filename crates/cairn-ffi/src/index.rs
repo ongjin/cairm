@@ -365,8 +365,21 @@ pub fn ffi_content_poll(session: u64, max: u32) -> ContentHitList {
 }
 
 pub fn ffi_content_cancel(session: u64) {
-    let mut sessions = content_sessions().lock().unwrap();
-    if let Some(mut s) = sessions.remove(&session) {
+    // Remove + drop the session OUTSIDE the global mutex. `ContentSession`
+    // owns a `ContentSearch` whose `Drop` joins the worker thread; the join
+    // can take tens of ms while the worker observes the cancel flag and
+    // tears down the rg child. Holding `CONTENT_SESSIONS` through that join
+    // blocks the main-thread `ffi_content_poll` timer (and any new
+    // `ffi_content_start`) for the same window — visible as palette stalls
+    // when the user retypes a query mid-search. Signal cancel synchronously
+    // (cheap, just an atomic store), then release the lock and let `Drop`
+    // do the join unobstructed.
+    let removed = {
+        let mut sessions = content_sessions().lock().unwrap();
+        sessions.remove(&session)
+    };
+    if let Some(mut s) = removed {
         s.search.cancel();
+        drop(s); // explicit for clarity — joins the worker here.
     }
 }
