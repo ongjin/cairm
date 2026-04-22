@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 @testable import Cairn
 
 final class ClipboardPasteServiceTests: XCTestCase {
@@ -107,5 +108,31 @@ final class ClipboardPasteServiceTests: XCTestCase {
         let url = ClipboardPasteService.uniqueDestination(
             filename: "Untitled.jpg", in: tmp, rule: .appendNumber)
         XCTAssertEqual(url.lastPathComponent, "Untitled.jpg")
+    }
+
+    // MARK: - tiffToPng
+
+    func test_tiffToPng_roundtripsThroughNSImage() {
+        // 1×1 white pixel as TIFF. NSImage → tiffRepresentation is the simplest way.
+        let img = NSImage(size: NSSize(width: 1, height: 1))
+        img.lockFocus()
+        NSColor.white.setFill()
+        NSRect(x: 0, y: 0, width: 1, height: 1).fill()
+        img.unlockFocus()
+        guard let tiff = img.tiffRepresentation else {
+            return XCTFail("fixture: couldn't produce TIFF")
+        }
+
+        let png = ClipboardPasteService.tiffToPng(tiff)
+        XCTAssertNotNil(png)
+        XCTAssertGreaterThan(png?.count ?? 0, 0)
+        // PNG magic number: 89 50 4E 47 0D 0A 1A 0A
+        let expectedMagic: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        XCTAssertEqual(Array(png!.prefix(8)), expectedMagic)
+    }
+
+    func test_tiffToPng_returnsNilForGarbage() {
+        let garbage = Data([0x00, 0x01, 0x02])
+        XCTAssertNil(ClipboardPasteService.tiffToPng(garbage))
     }
 }

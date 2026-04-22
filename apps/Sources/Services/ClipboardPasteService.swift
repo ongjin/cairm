@@ -76,7 +76,10 @@ enum ClipboardPasteService {
         return (filename, "")
     }
 
-    static func tiffToPng(_ tiff: Data) -> Data? { fatalError("stub") }
+    static func tiffToPng(_ tiff: Data) -> Data? {
+        guard let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
+    }
 
     static func writeFileURLs(_ urls: [URL], to pb: NSPasteboard) { fatalError("stub") }
 }
