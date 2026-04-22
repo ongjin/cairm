@@ -46,6 +46,8 @@ final class FileListCoordinator: NSObject,
     private(set) var searchRoot: URL?
     private(set) var folderColumnVisible: Bool = false
 
+    private let iconCache = FileListIconCache()
+
     private let byteFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
         f.allowedUnits = [.useAll]
@@ -171,7 +173,6 @@ final class FileListCoordinator: NSObject,
         switch identifier {
         case .name:
             cell.imageView?.image = systemImage(for: entry)
-            cell.imageView?.contentTintColor = entry.kind == .Directory ? .systemBlue : .secondaryLabelColor
             cell.textField?.stringValue = entry.name.toString()
             cell.textField?.alignment = .left
         case .size:
@@ -510,15 +511,8 @@ final class FileListCoordinator: NSObject,
     }
 
     private func systemImage(for entry: FileEntry) -> NSImage? {
-        let symbolName: String
-        if entry.kind == .Directory {
-            symbolName = "folder.fill"
-        } else if entry.kind == .Symlink {
-            symbolName = "arrow.up.right.square"
-        } else {
-            symbolName = "doc"
-        }
-        return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        iconCache.icon(forPath: entry.path.toString(),
+                       isDirectory: entry.kind == .Directory)
     }
 
     private func keyString(for field: FolderModel.SortField) -> String {
