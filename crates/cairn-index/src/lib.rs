@@ -13,3 +13,6 @@ pub use symbols::{SymbolRow, SymbolKind};
 
 pub mod content;
 pub use content::{ContentSearch, ContentHit};
+
+pub mod watch;
+pub use watch::{watch, Watcher};
