@@ -33,6 +33,8 @@ struct FileListView: NSViewRepresentable {
     /// Latest GitService snapshot for the tab's folder. Nil when the folder
     /// isn't a git repo; the Git column renders "—" in that case.
     let gitSnapshot: GitService.Snapshot?
+    /// When false the Git column is hidden entirely. Controlled via Settings.
+    let showGitColumn: Bool
 
     /// Called when a row is activated (double-click or ⏎). The closure receives
     /// the FileEntry; the caller decides whether to push history or open in NSWorkspace.
@@ -85,14 +87,16 @@ struct FileListView: NSViewRepresentable {
         modCol.sortDescriptorPrototype = NSSortDescriptor(key: "modified", ascending: false)
         table.addTableColumn(modCol)
 
-        // Git column — always registered so the header position is stable across
-        // tabs; cell renders "—" in non-repo folders. No sortDescriptorPrototype:
-        // sorting by git status isn't useful in M1.8.
-        let gitCol = NSTableColumn(identifier: .git)
-        gitCol.title = "Git"
-        gitCol.minWidth = 28
-        gitCol.width = 40
-        table.addTableColumn(gitCol)
+        // Git column — registered only when showGitColumn is true; cell renders
+        // "—" in non-repo folders. No sortDescriptorPrototype: sorting by git
+        // status isn't useful in M1.8.
+        if showGitColumn {
+            let gitCol = NSTableColumn(identifier: .git)
+            gitCol.title = "Git"
+            gitCol.minWidth = 28
+            gitCol.width = 40
+            table.addTableColumn(gitCol)
+        }
 
         // Coordinator wears both hats.
         table.dataSource = context.coordinator
@@ -132,6 +136,17 @@ struct FileListView: NSViewRepresentable {
             isPinnedCheck: isPinnedCheck,
             onSelectionChanged: onSelectionChanged
         )
+        // Sync Git column presence with the current setting.
+        let hasGit = table.tableColumn(withIdentifier: .git) != nil
+        if showGitColumn && !hasGit {
+            let gitCol = NSTableColumn(identifier: .git)
+            gitCol.title = "Git"
+            gitCol.minWidth = 28
+            gitCol.width = 40
+            table.addTableColumn(gitCol)
+        } else if !showGitColumn && hasGit, let col = table.tableColumn(withIdentifier: .git) {
+            table.removeTableColumn(col)
+        }
         context.coordinator.setEntries(entries, searchRoot: searchRoot)
         context.coordinator.setFolderColumnVisible(folderColumnVisible)
         context.coordinator.setFolderRoot(folderRoot)

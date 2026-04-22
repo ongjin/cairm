@@ -15,23 +15,29 @@ import SwiftUI
 ///     `WindowScene` when it builds the scene's first Tab.
 @Observable
 final class AppModel {
-    var showHidden: Bool = false
+    var showHidden: Bool
 
     let engine: CairnEngine
     let bookmarks: BookmarkStore
     let lastFolder: LastFolderStore
+    let settings: SettingsStore
     let mountObserver: MountObserver
     let sidebar: SidebarModel
 
     init(engine: CairnEngine = CairnEngine(),
          bookmarks: BookmarkStore = BookmarkStore(),
-         lastFolder: LastFolderStore = LastFolderStore()) {
+         lastFolder: LastFolderStore = LastFolderStore(),
+         settings: SettingsStore = SettingsStore()) {
         self.engine = engine
         self.bookmarks = bookmarks
         self.lastFolder = lastFolder
+        self.settings = settings
         let observer = MountObserver()
         self.mountObserver = observer
         self.sidebar = SidebarModel(mountObserver: observer)
+        // Seed hidden-files default from settings; keeps Rust engine in sync.
+        self.showHidden = settings.showHiddenByDefault
+        engine.setShowHidden(settings.showHiddenByDefault)
     }
 
     // MARK: - Bootstrap
@@ -39,7 +45,12 @@ final class AppModel {
     /// Starting URL for a freshly-opened window. Falls back to `$HOME` if the
     /// persisted path no longer exists (handled inside LastFolderStore).
     func bootstrapInitialURL() -> URL {
-        lastFolder.load() ?? FileManager.default.homeDirectoryForCurrentUser
+        switch settings.startFolder {
+        case .home:
+            return FileManager.default.homeDirectoryForCurrentUser
+        case .lastUsed:
+            return lastFolder.load() ?? FileManager.default.homeDirectoryForCurrentUser
+        }
     }
 
     // MARK: - Show hidden

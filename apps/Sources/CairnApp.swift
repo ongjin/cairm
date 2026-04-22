@@ -29,7 +29,11 @@ struct CairnApp: App {
             FindCommands()
         }
 
-        // Placeholder for Settings Scene — actual UI lands in Phase 2/3.
+        Settings {
+            CairnSettingsView()
+                .environment(app)
+                .environment(\.cairnTheme, .glass)
+        }
     }
 }
 

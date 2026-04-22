@@ -151,6 +151,7 @@ struct ContentView: View {
             searchRoot: searchRoot,
             folderRoot: tab.currentFolder,
             gitSnapshot: tab.git?.snapshot,
+            showGitColumn: app.settings.showGitColumn,
             onActivate: { handleOpen($0, tab: tab) },
             onAddToPinned: handleAddToPinned,
             isPinnedCheck: { entry in
