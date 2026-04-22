@@ -20,6 +20,7 @@ final class GitService {
         refresh()
     }
 
+    /// Synchronous — libgit2 under the hood. Call from main, debounced by caller.
     func refresh() {
         let s = ffi_git_snapshot(root.path)
         guard let s else { self.snapshot = nil; return }
