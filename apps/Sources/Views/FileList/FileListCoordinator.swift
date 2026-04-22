@@ -792,8 +792,10 @@ final class FileListCoordinator: NSObject,
         switch (content, operation) {
         case (.files(let urls), .copy):
             pasteCopy(urls: urls, into: dir)
+        case (.files(let urls), .move):
+            pasteMove(urls: urls, into: dir)
         default:
-            NSSound.beep()  // later tasks fill in .move and .image
+            NSSound.beep()  // .image branches handled in Task 10
         }
     }
 
@@ -811,6 +813,34 @@ final class FileListCoordinator: NSObject,
         }
         if !created.isEmpty {
             registerPasteCopyUndo(created)
+            onMoved()
+        }
+    }
+
+    private func pasteMove(urls: [URL], into dir: URL) {
+        var moved: [(URL, URL)] = []
+        for src in urls {
+            let dest = dir.appendingPathComponent(src.lastPathComponent)
+            // Matches existing drag-drop policy: beep + skip on name collision.
+            if FileManager.default.fileExists(atPath: dest.path) {
+                NSSound.beep(); continue
+            }
+            // Source == dest (pasting a file inside its own folder) → skip.
+            if src.standardizedFileURL.path == dest.standardizedFileURL.path {
+                continue
+            }
+            do {
+                try FileManager.default.moveItem(at: src, to: dest)
+                moved.append((src, dest))
+            } catch {
+                NSSound.beep()
+            }
+        }
+        if !moved.isEmpty {
+            // registerMoveUndo is the existing drag-drop undo path —
+            // it already sets action name "Move" / "Move N Items", which is
+            // exactly right for ⌥⌘V too.
+            registerMoveUndo(moved)
             onMoved()
         }
     }
