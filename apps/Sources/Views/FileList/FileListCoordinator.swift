@@ -84,10 +84,18 @@ final class FileListCoordinator: NSObject,
         super.init()
     }
 
-    func attach(table: FileListNSTableView) {
-        self.table = table
+    /// Invalidate per-folder caches without touching the NSTableView.
+    /// Called from updateBindings when the FolderModel identity changes;
+    /// the subsequent applyModelSnapshot in updateNSView reloads the data
+    /// with the new folder's entries in a single pass.
+    private func resetPerFolderCaches() {
         openWithAppsCache.removeAll()
         openWithDefaultAppCache.removeAll()
+    }
+
+    func attach(table: FileListNSTableView) {
+        self.table = table
+        resetPerFolderCaches()
         applyModelSnapshot(table: table)
     }
 
@@ -109,8 +117,11 @@ final class FileListCoordinator: NSObject,
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
         self.onSelectionChanged = onSelectionChanged
-        if folderChanged, let t = self.table {
-            attach(table: t)
+        if folderChanged {
+            resetPerFolderCaches()
+            // Deliberately skip applyModelSnapshot here — updateNSView will call
+            // it right after setEntries() has installed the new folder's data,
+            // avoiding a redundant reload with stale externalEntries.
         }
     }
 
