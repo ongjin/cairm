@@ -13,12 +13,13 @@ struct ContentView: View {
     private var tab: Tab? { scene.activeTab }
 
     @State private var palette = CommandPaletteModel()
+    @State private var detailVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
                 TabBarView(scene: scene)
-                NavigationSplitView {
+                NavigationSplitView(columnVisibility: $detailVisibility) {
                     SidebarView(app: app, scene: scene)
                 } content: {
                     contentColumn
@@ -197,6 +198,17 @@ struct ContentView: View {
         }
         ToolbarItem(placement: .navigation) {
             BreadcrumbBar(tab: tab)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button(action: {
+                detailVisibility = (detailVisibility == .all) ? .doubleColumn : .all
+            }) {
+                Image(systemName: detailVisibility == .all
+                      ? "sidebar.right"
+                      : "sidebar.squares.right")
+            }
+            .help("Toggle Preview Pane")
+            .keyboardShortcut("i", modifiers: [.command, .option])
         }
     }
 
