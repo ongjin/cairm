@@ -28,8 +28,29 @@ enum CollisionRule {
 /// No AppKit view state, no main-thread requirements — everything here is safe
 /// to unit test in isolation.
 enum ClipboardPasteService {
-    // Implementations added in later tasks.
-    static func read(from pb: NSPasteboard) -> PasteContent? { fatalError("stub") }
+    static func read(from pb: NSPasteboard) -> PasteContent? {
+        // 1. File URLs — Finder's ⌘C stages this; Cairn drag-drop uses it too.
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+           !urls.isEmpty {
+            return .files(urls)
+        }
+        // 2. PNG — what macOS screencapture puts on the clipboard.
+        if let data = pb.data(forType: .png) {
+            return .image(data: data, ext: "png")
+        }
+        // 3. TIFF — "Copy Image" in some browsers. Normalize to PNG so the
+        //    saved file is compact and universally recognized.
+        if let tiff = pb.data(forType: .tiff),
+           let png = tiffToPng(tiff) {
+            return .image(data: png, ext: "png")
+        }
+        // 4. JPEG — some screenshot utilities stage this directly. Passthrough.
+        let jpegType = NSPasteboard.PasteboardType("public.jpeg")
+        if let data = pb.data(forType: jpegType) {
+            return .image(data: data, ext: "jpg")
+        }
+        return nil
+    }
 
     static func uniqueDestination(filename: String,
                                   in dir: URL,
