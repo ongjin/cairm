@@ -25,6 +25,11 @@ final class Tab: Identifiable {
 
     var history = NavigationHistory()
 
+    /// In-flight detached task that opens IndexService + GitService. Cancelled
+    /// on a newer navigation so stale results never overwrite the current tab
+    /// state.
+    private var servicesTask: Task<Void, Never>?
+
     /// The bookmark entry currently "in use" (security-scoped access started).
     /// nil when we're in Home, a volume root, or an unscoped parent navigation.
     private(set) var currentEntry: BookmarkEntry?
@@ -43,6 +48,7 @@ final class Tab: Identifiable {
     }
 
     deinit {
+        servicesTask?.cancel()
         if let entry = currentEntry { bookmarks.stopAccessing(entry) }
     }
 
@@ -140,11 +146,31 @@ final class Tab: Identifiable {
 
     // MARK: - Services
 
-    /// IndexService + GitService are per-root — rebuild them when the tab
-    /// points at a new folder. Note: `IndexService.init?` is synchronous and
-    /// can block the main thread for large folders (M1.8 T19+ optimization).
+    /// Rebuilds per-folder services. IndexService and GitService both make
+    /// synchronous FFI calls (tantivy open / libgit2 scan) that can take
+    /// seconds on a large root — running them off the main thread keeps the
+    /// UI responsive during navigation.
+    ///
+    /// Cancels any previous in-flight rebuild and guards against stale results
+    /// by checking `currentFolder` equals the URL we opened before committing.
     private func rebuildServices(for url: URL) {
-        index = IndexService(root: url)
-        git = GitService(root: url)
+        servicesTask?.cancel()
+        index = nil
+        git = nil
+
+        let target = url.standardizedFileURL
+        servicesTask = Task.detached { [weak self] in
+            let idx = IndexService(root: url)
+            let gitSvc = GitService(root: url)
+            if Task.isCancelled { return }
+            await MainActor.run {
+                guard let self else { return }
+                guard self.currentFolder?.standardizedFileURL.path == target.path else {
+                    return
+                }
+                self.index = idx
+                self.git = gitSvc
+            }
+        }
     }
 }
