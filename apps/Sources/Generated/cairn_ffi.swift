@@ -984,6 +984,9 @@ public func ffi_git_deleted_paths<GenericIntoRustString: IntoRustString>(_ root:
 public func ffi_git_untracked_paths<GenericIntoRustString: IntoRustString>(_ root: GenericIntoRustString) -> GitPathList {
     GitPathList(ptr: __swift_bridge__$ffi_git_untracked_paths({ let rustString = root.intoRustString(); rustString.isOwned = false; return rustString.ptr }()))
 }
+public func ffi_git_full_snapshot<GenericIntoRustString: IntoRustString>(_ root: GenericIntoRustString) -> Optional<GitFullSnapshot> {
+    { let val = __swift_bridge__$ffi_git_full_snapshot({ let rustString = root.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); if val != nil { return GitFullSnapshot(ptr: val!) } else { return nil } }()
+}
 public struct FfiGitSnapshot {
     public var branch: RustString
     public var modified_count: UInt32
@@ -1110,6 +1113,134 @@ extension GitPathList: Vectorizable {
 
     public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
         __swift_bridge__$Vec_GitPathList$len(vecPtr)
+    }
+}
+
+
+public class GitFullSnapshot: GitFullSnapshotRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$GitFullSnapshot$_free(ptr)
+        }
+    }
+}
+public class GitFullSnapshotRefMut: GitFullSnapshotRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class GitFullSnapshotRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension GitFullSnapshotRef {
+    public func branch() -> RustString {
+        RustString(ptr: __swift_bridge__$GitFullSnapshot$branch(ptr))
+    }
+
+    public func modified_count() -> UInt32 {
+        __swift_bridge__$GitFullSnapshot$modified_count(ptr)
+    }
+
+    public func added_count() -> UInt32 {
+        __swift_bridge__$GitFullSnapshot$added_count(ptr)
+    }
+
+    public func deleted_count() -> UInt32 {
+        __swift_bridge__$GitFullSnapshot$deleted_count(ptr)
+    }
+
+    public func untracked_count() -> UInt32 {
+        __swift_bridge__$GitFullSnapshot$untracked_count(ptr)
+    }
+
+    public func modified_len() -> UInt {
+        __swift_bridge__$GitFullSnapshot$modified_len(ptr)
+    }
+
+    public func modified_at(_ index: UInt) -> RustString {
+        RustString(ptr: __swift_bridge__$GitFullSnapshot$modified_at(ptr, index))
+    }
+
+    public func added_len() -> UInt {
+        __swift_bridge__$GitFullSnapshot$added_len(ptr)
+    }
+
+    public func added_at(_ index: UInt) -> RustString {
+        RustString(ptr: __swift_bridge__$GitFullSnapshot$added_at(ptr, index))
+    }
+
+    public func deleted_len() -> UInt {
+        __swift_bridge__$GitFullSnapshot$deleted_len(ptr)
+    }
+
+    public func deleted_at(_ index: UInt) -> RustString {
+        RustString(ptr: __swift_bridge__$GitFullSnapshot$deleted_at(ptr, index))
+    }
+
+    public func untracked_len() -> UInt {
+        __swift_bridge__$GitFullSnapshot$untracked_len(ptr)
+    }
+
+    public func untracked_at(_ index: UInt) -> RustString {
+        RustString(ptr: __swift_bridge__$GitFullSnapshot$untracked_at(ptr, index))
+    }
+}
+extension GitFullSnapshot: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_GitFullSnapshot$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_GitFullSnapshot$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: GitFullSnapshot) {
+        __swift_bridge__$Vec_GitFullSnapshot$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_GitFullSnapshot$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (GitFullSnapshot(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<GitFullSnapshotRef> {
+        let pointer = __swift_bridge__$Vec_GitFullSnapshot$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return GitFullSnapshotRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<GitFullSnapshotRefMut> {
+        let pointer = __swift_bridge__$Vec_GitFullSnapshot$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return GitFullSnapshotRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<GitFullSnapshotRef> {
+        UnsafePointer<GitFullSnapshotRef>(OpaquePointer(__swift_bridge__$Vec_GitFullSnapshot$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_GitFullSnapshot$len(vecPtr)
     }
 }
 

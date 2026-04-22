@@ -173,12 +173,38 @@ void* __swift_bridge__$Vec_GitPathList$get_mut(void* vec_ptr, uintptr_t index);
 uintptr_t __swift_bridge__$Vec_GitPathList$len(void* vec_ptr);
 void* __swift_bridge__$Vec_GitPathList$as_ptr(void* vec_ptr);
 
+typedef struct GitFullSnapshot GitFullSnapshot;
+void __swift_bridge__$GitFullSnapshot$_free(void* self);
+
+void* __swift_bridge__$Vec_GitFullSnapshot$new(void);
+void __swift_bridge__$Vec_GitFullSnapshot$drop(void* vec_ptr);
+void __swift_bridge__$Vec_GitFullSnapshot$push(void* vec_ptr, void* item_ptr);
+void* __swift_bridge__$Vec_GitFullSnapshot$pop(void* vec_ptr);
+void* __swift_bridge__$Vec_GitFullSnapshot$get(void* vec_ptr, uintptr_t index);
+void* __swift_bridge__$Vec_GitFullSnapshot$get_mut(void* vec_ptr, uintptr_t index);
+uintptr_t __swift_bridge__$Vec_GitFullSnapshot$len(void* vec_ptr);
+void* __swift_bridge__$Vec_GitFullSnapshot$as_ptr(void* vec_ptr);
+
 uintptr_t __swift_bridge__$GitPathList$len(void* self);
 void* __swift_bridge__$GitPathList$at(void* self, uintptr_t index);
+void* __swift_bridge__$GitFullSnapshot$branch(void* self);
+uint32_t __swift_bridge__$GitFullSnapshot$modified_count(void* self);
+uint32_t __swift_bridge__$GitFullSnapshot$added_count(void* self);
+uint32_t __swift_bridge__$GitFullSnapshot$deleted_count(void* self);
+uint32_t __swift_bridge__$GitFullSnapshot$untracked_count(void* self);
+uintptr_t __swift_bridge__$GitFullSnapshot$modified_len(void* self);
+void* __swift_bridge__$GitFullSnapshot$modified_at(void* self, uintptr_t index);
+uintptr_t __swift_bridge__$GitFullSnapshot$added_len(void* self);
+void* __swift_bridge__$GitFullSnapshot$added_at(void* self, uintptr_t index);
+uintptr_t __swift_bridge__$GitFullSnapshot$deleted_len(void* self);
+void* __swift_bridge__$GitFullSnapshot$deleted_at(void* self, uintptr_t index);
+uintptr_t __swift_bridge__$GitFullSnapshot$untracked_len(void* self);
+void* __swift_bridge__$GitFullSnapshot$untracked_at(void* self, uintptr_t index);
 struct __swift_bridge__$Option$FfiGitSnapshot __swift_bridge__$ffi_git_snapshot(void* root);
 void* __swift_bridge__$ffi_git_modified_paths(void* root);
 void* __swift_bridge__$ffi_git_added_paths(void* root);
 void* __swift_bridge__$ffi_git_deleted_paths(void* root);
 void* __swift_bridge__$ffi_git_untracked_paths(void* root);
+void* __swift_bridge__$ffi_git_full_snapshot(void* root);
 
 

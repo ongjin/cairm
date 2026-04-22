@@ -52,14 +52,23 @@ final class GitService {
     }
 
     /// Synchronous — libgit2 under the hood. Call from main, debounced by caller.
+    ///
+    /// Single FFI hop into `ffi_git_full_snapshot` does ONE libgit2 status walk
+    /// and returns branch + counts + all four path lists. Replaces the old
+    /// 5-call sequence (`ffi_git_snapshot` + 4× `ffi_git_*_paths`), each of
+    /// which re-ran `cairn_git::snapshot::snapshot()` — i.e. 5 FFI hops and
+    /// 4 redundant repo scans per refresh, 50–500ms wasted on the main thread
+    /// for moderate repos.
     func refresh() {
-        let s = ffi_git_snapshot(root.path)
-        guard let s else { self.snapshot = nil; return }
-        let branch = s.branch.toString()
-        let mods = Self.loadPaths(ffi_git_modified_paths(root.path))
-        let adds = Self.loadPaths(ffi_git_added_paths(root.path))
-        let dels = Self.loadPaths(ffi_git_deleted_paths(root.path))
-        let untr = Self.loadPaths(ffi_git_untracked_paths(root.path))
+        guard let full = ffi_git_full_snapshot(root.path) else {
+            self.snapshot = nil
+            return
+        }
+        let branch = full.branch().toString()
+        let modifiedCount = Int(full.modified_count())
+        let addedCount = Int(full.added_count())
+        let deletedCount = Int(full.deleted_count())
+        let untrackedCount = Int(full.untracked_count())
 
         // Build the consolidated status dict. Insertion order matters when a
         // path appears in multiple sets (libgit2 occasionally reports a file
@@ -67,31 +76,41 @@ final class GitService {
         // earliest insertion wins, matching the original switch order in the
         // file-list git column (modified > added > deleted > untracked).
         var byPath: [String: GitStatus] = [:]
-        byPath.reserveCapacity(mods.count + adds.count + dels.count + untr.count)
-        for p in mods where byPath[p] == nil { byPath[p] = .modified }
-        for p in adds where byPath[p] == nil { byPath[p] = .added }
-        for p in dels where byPath[p] == nil { byPath[p] = .deleted }
-        for p in untr where byPath[p] == nil { byPath[p] = .untracked }
+        byPath.reserveCapacity(modifiedCount + addedCount + deletedCount + untrackedCount)
+        Self.collect(into: &byPath, count: full.modified_len(), status: .modified) {
+            full.modified_at($0).toString()
+        }
+        Self.collect(into: &byPath, count: full.added_len(), status: .added) {
+            full.added_at($0).toString()
+        }
+        Self.collect(into: &byPath, count: full.deleted_len(), status: .deleted) {
+            full.deleted_at($0).toString()
+        }
+        Self.collect(into: &byPath, count: full.untracked_len(), status: .untracked) {
+            full.untracked_at($0).toString()
+        }
 
         self.snapshot = Snapshot(
             branch: branch.isEmpty ? nil : branch,
-            modifiedCount: Int(s.modified_count),
-            untrackedCount: Int(s.untracked_count),
-            addedCount: Int(s.added_count),
-            deletedCount: Int(s.deleted_count),
+            modifiedCount: modifiedCount,
+            untrackedCount: untrackedCount,
+            addedCount: addedCount,
+            deletedCount: deletedCount,
             statusByPath: byPath
         )
     }
 
-    private static func loadPaths(_ list: GitPathList) -> [String] {
-        var out: [String] = []
-        let n = list.len()
-        out.reserveCapacity(Int(n))
+    private static func collect(
+        into byPath: inout [String: GitStatus],
+        count: UInt,
+        status: GitStatus,
+        path: (UInt) -> String
+    ) {
         var i: UInt = 0
-        while i < n {
-            out.append(list.at(i).toString())
+        while i < count {
+            let p = path(i)
+            if byPath[p] == nil { byPath[p] = status }
             i += 1
         }
-        return out
     }
 }
