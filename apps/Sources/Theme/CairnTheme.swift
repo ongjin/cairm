@@ -46,16 +46,16 @@ extension CairnTheme {
     static let glass = CairnTheme(
         id: "glass",
         displayName: "Glass (Blue)",
-        windowMaterial: .underWindowBackground,
-        // Softer blue wash — brighter base + lower opacity so the
-        // underlying desktop vibrancy reads through more cleanly.
-        sidebarTint: Color(hue: 0.60, saturation: 0.18, brightness: 0.22, opacity: 0.55),
-        panelTint:   Color(hue: 0.60, saturation: 0.22, brightness: 0.32, opacity: 0.18),
-        text:          Color(white: 0.96),
-        textSecondary: Color(white: 0.72),
-        textTertiary:  Color(white: 0.50),
-        accent:        Color(red: 0.04, green: 0.52, blue: 1.00),
-        accentMuted:   Color(red: 0.04, green: 0.52, blue: 1.00, opacity: 0.28),
+        windowMaterial: .hudWindow,
+        // Clearly blue, more saturated, higher brightness so the tint
+        // actually reads as a colour rather than grey.
+        sidebarTint: Color(hue: 0.60, saturation: 0.42, brightness: 0.45, opacity: 0.55),
+        panelTint:   Color(hue: 0.60, saturation: 0.30, brightness: 0.42, opacity: 0.20),
+        text:          Color(white: 0.97),
+        textSecondary: Color(white: 0.78),
+        textTertiary:  Color(white: 0.56),
+        accent:        Color(red: 0.10, green: 0.55, blue: 1.00),
+        accentMuted:   Color(red: 0.10, green: 0.55, blue: 1.00, opacity: 0.30),
         selectionFg:   .white,
         cornerRadius: 8,
         rowHeight: 26,
