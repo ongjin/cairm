@@ -3,6 +3,7 @@ import AppKit
 
 struct ContentView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.cairnTheme) private var theme
     @State private var folder: FolderModel?
     @State private var searchModel: SearchModel?
     @FocusState private var searchFocused: Bool
@@ -55,17 +56,29 @@ struct ContentView: View {
                     .background(Color.orange.opacity(0.15))
                 }
 
-                if searchModel.isActive
-                    && searchModel.results.isEmpty
-                    && searchModel.phase != .running
-                {
-                    emptySearchState(query: searchModel.query)
-                } else {
-                    fileList(folder: folder, searchModel: searchModel)
-                }
+                contentBody(folder: folder, searchModel: searchModel)
             }
         } else {
             ProgressView().controlSize(.small)
+        }
+    }
+
+    @ViewBuilder
+    private func contentBody(folder: FolderModel, searchModel: SearchModel) -> some View {
+        if searchModel.isActive
+            && searchModel.results.isEmpty
+            && searchModel.phase != .running
+        {
+            EmptyStateView.searchNoMatch(query: searchModel.query)
+        } else if !searchModel.isActive
+            && folder.state == .loaded
+            && folder.entries.isEmpty
+        {
+            EmptyStateView.emptyFolder()
+        } else if case .failed = folder.state, !searchModel.isActive {
+            EmptyStateView.permissionDenied { app.reopenCurrentFolder() }
+        } else {
+            fileList(folder: folder, searchModel: searchModel)
         }
     }
 
@@ -86,20 +99,13 @@ struct ContentView: View {
             },
             onSelectionChanged: handleSelectionChanged
         )
-    }
-
-    @ViewBuilder
-    private func emptySearchState(query: String) -> some View {
-        VStack(spacing: 4) {
-            Spacer()
-            Image(systemName: "magnifyingglass")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-            Text("No matches for \"\(query)\"")
-                .foregroundStyle(.secondary)
-            Spacer()
+        .background {
+            ZStack {
+                VisualEffectBlur(material: .contentBackground)
+                theme.panelTint.opacity(0.55)
+            }
+            .ignoresSafeArea()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ToolbarContentBuilder

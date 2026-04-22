@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import SwiftUI
@@ -85,6 +86,26 @@ final class AppModel {
             currentEntry = nil
         }
         history.push(url)
+    }
+
+    /// Re-prompts the user for folder access via `NSOpenPanel`. Invoked from
+    /// the "Grant Access…" button in the permission-denied empty state.
+    /// If the user picks a folder (same or different), history is pushed so
+    /// FolderModel reloads via ContentView's onChange.
+    @MainActor
+    func reopenCurrentFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        if let current = currentFolder {
+            panel.directoryURL = current
+        }
+        panel.begin { [weak self] response in
+            if response == .OK, let url = panel.url {
+                self?.history.push(url)
+            }
+        }
     }
 
     /// Register a freshly-chosen folder (from NSOpenPanel) as pinned if it's the
