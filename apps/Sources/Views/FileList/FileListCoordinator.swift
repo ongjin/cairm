@@ -307,20 +307,15 @@ final class FileListCoordinator: NSObject,
             }
             let symbol: String
             let color: NSColor
-            if let snap = gitSnapshot {
-                if snap.modifiedPaths.contains(rel) {
-                    symbol = "M"; color = .systemYellow
-                } else if snap.addedPaths.contains(rel) {
-                    symbol = "A"; color = .systemGreen
-                } else if snap.deletedPaths.contains(rel) {
-                    symbol = "D"; color = .systemRed
-                } else if snap.untrackedPaths.contains(rel) {
-                    symbol = "??"; color = .secondaryLabelColor
-                } else {
-                    symbol = "—"; color = .tertiaryLabelColor
-                }
-            } else {
-                symbol = "—"; color = .tertiaryLabelColor
+            // Single dict lookup (was 4 sequential set probes per row → 40K
+            // hashes per render on a 10K-row folder; now 10K).
+            let status: GitService.GitStatus? = gitSnapshot?.statusByPath[rel] ?? nil
+            switch status {
+            case .modified:  symbol = "M";  color = .systemYellow
+            case .added:     symbol = "A";  color = .systemGreen
+            case .deleted:   symbol = "D";  color = .systemRed
+            case .untracked: symbol = "??"; color = .secondaryLabelColor
+            case nil:        symbol = "—";  color = .tertiaryLabelColor
             }
             cell.textField?.stringValue = symbol
             cell.textField?.textColor = color

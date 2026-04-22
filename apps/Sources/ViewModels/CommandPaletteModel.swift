@@ -68,6 +68,18 @@ final class CommandPaletteModel {
 
     var contentSession: ContentSearchSession?
 
+    /// Monotonic generation tag. Bumped on every `runQuery` invocation so an
+    /// in-flight `fallbackFuzzyHits` background task can detect that a newer
+    /// query has been issued and discard its result. Without this, a slow disk
+    /// fallback could land after the real Rust index has already populated
+    /// `fileHits` and clobber the (better) results.
+    private var queryGeneration: UInt64 = 0
+    /// Background task running `fallbackFuzzyHits`. Cancelled on every new
+    /// `runQuery`; the cancellation is best-effort because the Foundation
+    /// enumerator doesn't honour `Task.isCancelled` mid-walk, but we re-check
+    /// before publishing results.
+    private var fallbackTask: Task<Void, Never>?
+
     static func parse(_ raw: String) -> ParsedQuery {
         if raw.isEmpty { return .fuzzy("") }
         let first = raw.first!
@@ -99,6 +111,8 @@ final class CommandPaletteModel {
         symbolHits = []
         contentSession?.cancel()
         contentSession = nil
+        fallbackTask?.cancel()
+        fallbackTask = nil
     }
 
     /// Called by the View whenever the TextField text changes. Intercepts a
@@ -131,12 +145,43 @@ final class CommandPaletteModel {
     /// keyboard nav starts at the top of the new result list.
     func runQuery(tab: Tab, commands: [PaletteCommand]) {
         selectedIndex = 0
+        queryGeneration &+= 1
+        let gen = queryGeneration
+        // Any in-flight fallback walk is from a previous keystroke; cancel
+        // before issuing the new query so its result can't land late.
+        fallbackTask?.cancel()
+        fallbackTask = nil
         switch mode {
         case .fuzzy:
             if let idx = tab.index {
                 fileHits = idx.queryFuzzy(query, limit: 50)
             } else {
-                fileHits = fallbackFuzzyHits(folder: tab.folder, root: tab.currentFolder, query: query)
+                // Index not ready (just-navigated folder). Walk the FS on a
+                // background task so the palette stays responsive on slow
+                // disks — the enumerator + per-file `.isDirectoryKey` lookups
+                // were previously synchronous on the main actor and froze
+                // typing for hundreds of ms on network volumes.
+                fileHits = []
+                let folder = tab.folder
+                let root = tab.currentFolder
+                let q = query
+                fallbackTask = Task { [weak self] in
+                    let hits = await Task.detached(priority: .userInitiated) {
+                        CommandPaletteModel.fallbackFuzzyHitsStatic(
+                            folder: folder, root: root, query: q)
+                    }.value
+                    if Task.isCancelled { return }
+                    await MainActor.run {
+                        guard let self else { return }
+                        // Drop the result if a newer query / mode change has
+                        // happened, or if the real index arrived in the
+                        // meantime (its results take precedence).
+                        guard self.queryGeneration == gen,
+                              self.mode == .fuzzy,
+                              tab.index == nil else { return }
+                        self.fileHits = hits
+                    }
+                }
             }
             commandHits = []; contentHits = []; symbolHits = []
             contentSession?.cancel(); contentSession = nil
@@ -181,8 +226,26 @@ final class CommandPaletteModel {
     static let fallbackWalkLimit = 2000
 
     func fallbackFuzzyHits(folder: FolderModel, root: URL?, query: String) -> [FileHit] {
+        Self.fallbackFuzzyHitsStatic(folder: folder, root: root, query: query)
+    }
+
+    /// Pure / non-isolated implementation so `runQuery` can hand it off to
+    /// `Task.detached`. The instance method above is preserved as a thin
+    /// wrapper so existing callers (and tests in CommandPaletteModelTests)
+    /// keep working unchanged.
+    ///
+    /// Does NOT touch `self` — every input is passed in. Safe to invoke from
+    /// any executor as long as `folder.entries` (used only as a flat-fallback
+    /// after enumeration) is not being mutated concurrently; in practice the
+    /// FolderModel is touched only on the main actor and a snapshot of
+    /// `entries` is captured here on entry.
+    static func fallbackFuzzyHitsStatic(folder: FolderModel, root: URL?, query: String) -> [FileHit] {
         let raw = query.lowercased()
         guard !raw.isEmpty else { return [] }
+
+        // Snapshot the flat entries up front so the off-main read doesn't
+        // race with a main-actor mutation if the user is navigating quickly.
+        let flatEntries = folder.entries
 
         if let root,
            let enumerator = FileManager.default.enumerator(
@@ -207,7 +270,7 @@ final class CommandPaletteModel {
             if !hits.isEmpty { return hits }
         }
 
-        return folder.entries.compactMap { entry in
+        return flatEntries.compactMap { entry in
             let name = entry.name.toString().lowercased()
             return name.contains(raw)
                 ? FileHit(pathRel: entry.name.toString(),

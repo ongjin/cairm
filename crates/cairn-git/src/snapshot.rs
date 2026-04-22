@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use git2::{Repository, StatusOptions};
@@ -15,10 +16,10 @@ pub enum FileStatus {
 #[derive(Debug, Clone)]
 pub struct GitSnapshot {
     pub branch: Option<String>,
-    pub modified: Vec<PathBuf>,
-    pub added: Vec<PathBuf>,
-    pub deleted: Vec<PathBuf>,
-    pub untracked: Vec<PathBuf>,
+    pub modified: HashSet<PathBuf>,
+    pub added: HashSet<PathBuf>,
+    pub deleted: HashSet<PathBuf>,
+    pub untracked: HashSet<PathBuf>,
 }
 
 pub fn snapshot(root: &Path) -> Option<GitSnapshot> {
@@ -36,10 +37,10 @@ pub fn snapshot(root: &Path) -> Option<GitSnapshot> {
     let mut opts = StatusOptions::new();
     opts.include_untracked(true).recurse_untracked_dirs(true);
 
-    let mut modified = Vec::new();
-    let mut added = Vec::new();
-    let mut deleted = Vec::new();
-    let mut untracked = Vec::new();
+    let mut modified = HashSet::new();
+    let mut added = HashSet::new();
+    let mut deleted = HashSet::new();
+    let mut untracked = HashSet::new();
 
     let statuses = repo.statuses(Some(&mut opts)).ok()?;
     for s in statuses.iter() {
@@ -49,13 +50,13 @@ pub fn snapshot(root: &Path) -> Option<GitSnapshot> {
         };
         let flags = s.status();
         if flags.intersects(git2::Status::WT_MODIFIED | git2::Status::INDEX_MODIFIED) {
-            modified.push(path);
+            modified.insert(path);
         } else if flags.intersects(git2::Status::INDEX_NEW) {
-            added.push(path);
+            added.insert(path);
         } else if flags.intersects(git2::Status::WT_DELETED | git2::Status::INDEX_DELETED) {
-            deleted.push(path);
+            deleted.insert(path);
         } else if flags.contains(git2::Status::WT_NEW) {
-            untracked.push(path);
+            untracked.insert(path);
         }
     }
 
@@ -116,7 +117,7 @@ mod tests {
         fs::write(tmp.path().join("hello.txt"), "hi").unwrap();
         let snap = snapshot(tmp.path()).unwrap();
         assert_eq!(snap.untracked.len(), 1);
-        assert_eq!(snap.untracked[0], PathBuf::from("hello.txt"));
+        assert!(snap.untracked.contains(&PathBuf::from("hello.txt")));
     }
 
     #[test]
@@ -136,6 +137,6 @@ mod tests {
         fs::write(tmp.path().join("a.txt"), "changed").unwrap();
         let snap = snapshot(tmp.path()).unwrap();
         assert_eq!(snap.modified.len(), 1);
-        assert_eq!(snap.modified[0], PathBuf::from("a.txt"));
+        assert!(snap.modified.contains(&PathBuf::from("a.txt")));
     }
 }

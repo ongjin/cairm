@@ -146,7 +146,7 @@ impl FileListing {
     /// Panics if `index >= len()`. Swift wrapper iterates `0..len` so out-of-bounds
     /// would indicate a programming error, not recoverable state.
     fn entry(&self, index: usize) -> ffi::FileEntry {
-        wire_file_entry(self.entries[index].clone())
+        wire_file_entry(&self.entries[index])
     }
 }
 
@@ -172,7 +172,7 @@ impl SearchBatch {
 
     /// Panics if `index >= len()`. Swift wrapper iterates `0..len`.
     fn entry(&self, index: usize) -> ffi::FileEntry {
-        wire_file_entry(self.entries[index].clone())
+        wire_file_entry(&self.entries[index])
     }
 }
 
@@ -213,15 +213,15 @@ fn search_cancel(handle: u64) {
 
 // ---- Wire-type conversions --------------------------------------------------
 
-fn wire_file_entry(e: cairn_walker::FileEntry) -> ffi::FileEntry {
+fn wire_file_entry(e: &cairn_walker::FileEntry) -> ffi::FileEntry {
     ffi::FileEntry {
         path: e.path.to_string_lossy().into_owned(),
-        name: e.name,
+        name: e.name.clone(),
         size: e.size,
         modified_unix: e.modified_unix,
         kind: wire_file_kind(e.kind),
         is_hidden: e.is_hidden,
-        icon_kind: wire_icon_kind(e.icon_kind),
+        icon_kind: wire_icon_kind(&e.icon_kind),
     }
 }
 
@@ -233,11 +233,11 @@ fn wire_file_kind(k: cairn_walker::FileKind) -> ffi::FileKind {
     }
 }
 
-fn wire_icon_kind(k: cairn_walker::IconKind) -> ffi::IconKind {
+fn wire_icon_kind(k: &cairn_walker::IconKind) -> ffi::IconKind {
     match k {
         cairn_walker::IconKind::Folder => ffi::IconKind::Folder,
         cairn_walker::IconKind::GenericFile => ffi::IconKind::GenericFile,
-        cairn_walker::IconKind::ExtensionHint(s) => ffi::IconKind::ExtensionHint(s),
+        cairn_walker::IconKind::ExtensionHint(s) => ffi::IconKind::ExtensionHint(s.clone()),
     }
 }
 

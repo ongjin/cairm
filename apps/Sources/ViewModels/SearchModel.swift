@@ -100,13 +100,18 @@ final class SearchModel {
                 root: rootPath, query: q, subtree: true, showHidden: hidden)
             await MainActor.run { self?.activeHandle = handle }
 
+            // Append batches in walker order during streaming; defer the full
+            // sort until the walker signals .done (or .capped). Previously we
+            // re-sorted the entire results array on every batch — for 1000
+            // hits across 20 batches that was 20× full sorts (~O(N² log N)
+            // total). Streaming-order display is acceptable UX: results visibly
+            // "stream in" and snap into final order once the walk completes.
             while !Task.isCancelled {
                 guard let batch = await eng.fetchSearchBatch(handle: handle) else { break }
                 if batch.isEmpty { continue } // keep-alive tick
                 await MainActor.run {
                     guard let self else { return }
                     self.results.append(contentsOf: batch)
-                    self.results.sort(by: cmp)
                     self.hitCount = self.results.count
                     if self.results.count >= 5_000 {
                         self.phase = .capped
@@ -116,6 +121,10 @@ final class SearchModel {
 
             await MainActor.run {
                 guard let self else { return }
+                // Final sort: one pass once the walker is done (or cancelled
+                // mid-flight — sorting is cheap on cancellation too and keeps
+                // the surfaced list coherent if the user re-engages).
+                self.results.sort(by: cmp)
                 if case .running = self.phase { self.phase = .done }
                 if self.activeHandle == handle { self.activeHandle = nil }
             }

@@ -51,6 +51,13 @@ final class FolderModel {
 
     private let engine: CairnEngine
 
+    /// Memoized result of the last `sortedEntries` access. Invalidated to nil
+    /// every time `entries` or `sortDescriptor` mutates. The 10K-entry sort is
+    /// O(N log N) and was previously re-run on every selection change /
+    /// snapshot apply (multiple times per gesture). Caching collapses those
+    /// to a single sort per data change.
+    private var _sortedCache: [FileEntry]?
+
     init(engine: CairnEngine) {
         self.engine = engine
     }
@@ -59,6 +66,7 @@ final class FolderModel {
     /// inject a known fixture. Production code uses `load(_:)`.
     func setEntries(_ list: [FileEntry]) {
         entries = list
+        _sortedCache = nil
         state = .loaded
     }
 
@@ -70,22 +78,27 @@ final class FolderModel {
         do {
             let list = try await engine.listDirectory(url)
             entries = list
+            _sortedCache = nil
             state = .loaded
         } catch {
             entries = []
+            _sortedCache = nil
             state = .failed(ErrorMessage.userFacing(error))
         }
     }
 
     func clear() {
         entries = []
+        _sortedCache = nil
         selection = []
         state = .idle
         currentFolder = nil
     }
 
     func setSortDescriptor(_ desc: SortDescriptor) {
+        guard sortDescriptor != desc else { return }
         sortDescriptor = desc
+        _sortedCache = nil
     }
 
     func setSelection(_ paths: Set<String>) {
@@ -93,9 +106,12 @@ final class FolderModel {
     }
 
     /// Computed view: entries with directories first, then the chosen sort
-    /// field applied within each group. Recomputed every access — fine for the
-    /// 10K-entry ceiling. Phase 2 should cache if it ever shows up in profiles.
+    /// field applied within each group. Cached — see `_sortedCache`. Cache
+    /// is invalidated on any mutation of `entries` or `sortDescriptor`.
     var sortedEntries: [FileEntry] {
-        entries.sorted(by: Self.comparator(for: sortDescriptor))
+        if let cached = _sortedCache { return cached }
+        let sorted = entries.sorted(by: Self.comparator(for: sortDescriptor))
+        _sortedCache = sorted
+        return sorted
     }
 }

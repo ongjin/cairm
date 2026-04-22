@@ -1,4 +1,5 @@
 use cairn_git::{snapshot, GitSnapshot};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 #[swift_bridge::bridge]
@@ -53,7 +54,7 @@ pub fn ffi_git_snapshot(root: String) -> Option<ffi::FfiGitSnapshot> {
     })
 }
 
-fn paths_of<F: Fn(&GitSnapshot) -> &Vec<PathBuf>>(root: String, f: F) -> GitPathList {
+fn paths_of<F: Fn(&GitSnapshot) -> &HashSet<PathBuf>>(root: String, f: F) -> GitPathList {
     let snap = match snapshot(Path::new(&root)) {
         Some(s) => s,
         None => return GitPathList { paths: Vec::new() },
