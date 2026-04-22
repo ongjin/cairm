@@ -97,6 +97,34 @@ typedef struct __swift_bridge__$FfiFileHit { void* path_rel; uint32_t score; } _
 typedef struct __swift_bridge__$Option$FfiFileHit { bool is_some; __swift_bridge__$FfiFileHit val; } __swift_bridge__$Option$FfiFileHit;
 typedef struct __swift_bridge__$FfiSymbolHit { void* path_rel; void* name; uint8_t kind_raw; uint32_t line; } __swift_bridge__$FfiSymbolHit;
 typedef struct __swift_bridge__$Option$FfiSymbolHit { bool is_some; __swift_bridge__$FfiSymbolHit val; } __swift_bridge__$Option$FfiSymbolHit;
+typedef struct FileHitList FileHitList;
+void __swift_bridge__$FileHitList$_free(void* self);
+
+void* __swift_bridge__$Vec_FileHitList$new(void);
+void __swift_bridge__$Vec_FileHitList$drop(void* vec_ptr);
+void __swift_bridge__$Vec_FileHitList$push(void* vec_ptr, void* item_ptr);
+void* __swift_bridge__$Vec_FileHitList$pop(void* vec_ptr);
+void* __swift_bridge__$Vec_FileHitList$get(void* vec_ptr, uintptr_t index);
+void* __swift_bridge__$Vec_FileHitList$get_mut(void* vec_ptr, uintptr_t index);
+uintptr_t __swift_bridge__$Vec_FileHitList$len(void* vec_ptr);
+void* __swift_bridge__$Vec_FileHitList$as_ptr(void* vec_ptr);
+
+typedef struct SymbolHitList SymbolHitList;
+void __swift_bridge__$SymbolHitList$_free(void* self);
+
+void* __swift_bridge__$Vec_SymbolHitList$new(void);
+void __swift_bridge__$Vec_SymbolHitList$drop(void* vec_ptr);
+void __swift_bridge__$Vec_SymbolHitList$push(void* vec_ptr, void* item_ptr);
+void* __swift_bridge__$Vec_SymbolHitList$pop(void* vec_ptr);
+void* __swift_bridge__$Vec_SymbolHitList$get(void* vec_ptr, uintptr_t index);
+void* __swift_bridge__$Vec_SymbolHitList$get_mut(void* vec_ptr, uintptr_t index);
+uintptr_t __swift_bridge__$Vec_SymbolHitList$len(void* vec_ptr);
+void* __swift_bridge__$Vec_SymbolHitList$as_ptr(void* vec_ptr);
+
+uintptr_t __swift_bridge__$FileHitList$len(void* self);
+struct __swift_bridge__$FfiFileHit __swift_bridge__$FileHitList$at(void* self, uintptr_t index);
+uintptr_t __swift_bridge__$SymbolHitList$len(void* self);
+struct __swift_bridge__$FfiSymbolHit __swift_bridge__$SymbolHitList$at(void* self, uintptr_t index);
 uint64_t __swift_bridge__$ffi_index_open(void* root);
 void __swift_bridge__$ffi_index_close(uint64_t handle);
 void* __swift_bridge__$ffi_index_query_fuzzy(uint64_t handle, void* query, uint32_t limit);
@@ -109,6 +137,20 @@ void* __swift_bridge__$ffi_index_query_git_dirty(uint64_t handle);
 #include <stdbool.h>
 typedef struct __swift_bridge__$FfiContentHit { void* path_rel; uint32_t line; void* preview; } __swift_bridge__$FfiContentHit;
 typedef struct __swift_bridge__$Option$FfiContentHit { bool is_some; __swift_bridge__$FfiContentHit val; } __swift_bridge__$Option$FfiContentHit;
+typedef struct ContentHitList ContentHitList;
+void __swift_bridge__$ContentHitList$_free(void* self);
+
+void* __swift_bridge__$Vec_ContentHitList$new(void);
+void __swift_bridge__$Vec_ContentHitList$drop(void* vec_ptr);
+void __swift_bridge__$Vec_ContentHitList$push(void* vec_ptr, void* item_ptr);
+void* __swift_bridge__$Vec_ContentHitList$pop(void* vec_ptr);
+void* __swift_bridge__$Vec_ContentHitList$get(void* vec_ptr, uintptr_t index);
+void* __swift_bridge__$Vec_ContentHitList$get_mut(void* vec_ptr, uintptr_t index);
+uintptr_t __swift_bridge__$Vec_ContentHitList$len(void* vec_ptr);
+void* __swift_bridge__$Vec_ContentHitList$as_ptr(void* vec_ptr);
+
+uintptr_t __swift_bridge__$ContentHitList$len(void* self);
+struct __swift_bridge__$FfiContentHit __swift_bridge__$ContentHitList$at(void* self, uintptr_t index);
 uint64_t __swift_bridge__$ffi_content_start(uint64_t handle, void* pattern);
 void* __swift_bridge__$ffi_content_poll(uint64_t session, uint32_t max);
 void __swift_bridge__$ffi_content_cancel(uint64_t session);
@@ -119,6 +161,24 @@ void __swift_bridge__$ffi_content_cancel(uint64_t session);
 #include <stdbool.h>
 typedef struct __swift_bridge__$FfiGitSnapshot { void* branch; uint32_t modified_count; uint32_t untracked_count; uint32_t added_count; uint32_t deleted_count; } __swift_bridge__$FfiGitSnapshot;
 typedef struct __swift_bridge__$Option$FfiGitSnapshot { bool is_some; __swift_bridge__$FfiGitSnapshot val; } __swift_bridge__$Option$FfiGitSnapshot;
+typedef struct GitPathList GitPathList;
+void __swift_bridge__$GitPathList$_free(void* self);
+
+void* __swift_bridge__$Vec_GitPathList$new(void);
+void __swift_bridge__$Vec_GitPathList$drop(void* vec_ptr);
+void __swift_bridge__$Vec_GitPathList$push(void* vec_ptr, void* item_ptr);
+void* __swift_bridge__$Vec_GitPathList$pop(void* vec_ptr);
+void* __swift_bridge__$Vec_GitPathList$get(void* vec_ptr, uintptr_t index);
+void* __swift_bridge__$Vec_GitPathList$get_mut(void* vec_ptr, uintptr_t index);
+uintptr_t __swift_bridge__$Vec_GitPathList$len(void* vec_ptr);
+void* __swift_bridge__$Vec_GitPathList$as_ptr(void* vec_ptr);
+
+uintptr_t __swift_bridge__$GitPathList$len(void* self);
+void* __swift_bridge__$GitPathList$at(void* self, uintptr_t index);
 struct __swift_bridge__$Option$FfiGitSnapshot __swift_bridge__$ffi_git_snapshot(void* root);
+void* __swift_bridge__$ffi_git_modified_paths(void* root);
+void* __swift_bridge__$ffi_git_added_paths(void* root);
+void* __swift_bridge__$ffi_git_deleted_paths(void* root);
+void* __swift_bridge__$ffi_git_untracked_paths(void* root);
 
 

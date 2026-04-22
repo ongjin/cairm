@@ -570,14 +570,14 @@ public func ffi_index_open<GenericIntoRustString: IntoRustString>(_ root: Generi
 public func ffi_index_close(_ handle: UInt64) {
     __swift_bridge__$ffi_index_close(handle)
 }
-public func ffi_index_query_fuzzy<GenericIntoRustString: IntoRustString>(_ handle: UInt64, _ query: GenericIntoRustString, _ limit: UInt32) -> RustVec<FfiFileHit> {
-    RustVec(ptr: __swift_bridge__$ffi_index_query_fuzzy(handle, { let rustString = query.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), limit))
+public func ffi_index_query_fuzzy<GenericIntoRustString: IntoRustString>(_ handle: UInt64, _ query: GenericIntoRustString, _ limit: UInt32) -> FileHitList {
+    FileHitList(ptr: __swift_bridge__$ffi_index_query_fuzzy(handle, { let rustString = query.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), limit))
 }
-public func ffi_index_query_symbols<GenericIntoRustString: IntoRustString>(_ handle: UInt64, _ query: GenericIntoRustString, _ limit: UInt32) -> RustVec<FfiSymbolHit> {
-    RustVec(ptr: __swift_bridge__$ffi_index_query_symbols(handle, { let rustString = query.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), limit))
+public func ffi_index_query_symbols<GenericIntoRustString: IntoRustString>(_ handle: UInt64, _ query: GenericIntoRustString, _ limit: UInt32) -> SymbolHitList {
+    SymbolHitList(ptr: __swift_bridge__$ffi_index_query_symbols(handle, { let rustString = query.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), limit))
 }
-public func ffi_index_query_git_dirty(_ handle: UInt64) -> RustVec<FfiFileHit> {
-    RustVec(ptr: __swift_bridge__$ffi_index_query_git_dirty(handle))
+public func ffi_index_query_git_dirty(_ handle: UInt64) -> FileHitList {
+    FileHitList(ptr: __swift_bridge__$ffi_index_query_git_dirty(handle))
 }
 public struct FfiFileHit {
     public var path_rel: RustString
@@ -662,12 +662,180 @@ extension __swift_bridge__$Option$FfiSymbolHit {
     }
 }
 
+public class FileHitList: FileHitListRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$FileHitList$_free(ptr)
+        }
+    }
+}
+public class FileHitListRefMut: FileHitListRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class FileHitListRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension FileHitListRef {
+    public func len() -> UInt {
+        __swift_bridge__$FileHitList$len(ptr)
+    }
+
+    public func at(_ index: UInt) -> FfiFileHit {
+        __swift_bridge__$FileHitList$at(ptr, index).intoSwiftRepr()
+    }
+}
+extension FileHitList: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_FileHitList$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_FileHitList$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: FileHitList) {
+        __swift_bridge__$Vec_FileHitList$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_FileHitList$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (FileHitList(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<FileHitListRef> {
+        let pointer = __swift_bridge__$Vec_FileHitList$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return FileHitListRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<FileHitListRefMut> {
+        let pointer = __swift_bridge__$Vec_FileHitList$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return FileHitListRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<FileHitListRef> {
+        UnsafePointer<FileHitListRef>(OpaquePointer(__swift_bridge__$Vec_FileHitList$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_FileHitList$len(vecPtr)
+    }
+}
+
+
+public class SymbolHitList: SymbolHitListRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$SymbolHitList$_free(ptr)
+        }
+    }
+}
+public class SymbolHitListRefMut: SymbolHitListRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class SymbolHitListRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension SymbolHitListRef {
+    public func len() -> UInt {
+        __swift_bridge__$SymbolHitList$len(ptr)
+    }
+
+    public func at(_ index: UInt) -> FfiSymbolHit {
+        __swift_bridge__$SymbolHitList$at(ptr, index).intoSwiftRepr()
+    }
+}
+extension SymbolHitList: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_SymbolHitList$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_SymbolHitList$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: SymbolHitList) {
+        __swift_bridge__$Vec_SymbolHitList$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_SymbolHitList$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (SymbolHitList(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SymbolHitListRef> {
+        let pointer = __swift_bridge__$Vec_SymbolHitList$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SymbolHitListRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SymbolHitListRefMut> {
+        let pointer = __swift_bridge__$Vec_SymbolHitList$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SymbolHitListRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<SymbolHitListRef> {
+        UnsafePointer<SymbolHitListRef>(OpaquePointer(__swift_bridge__$Vec_SymbolHitList$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_SymbolHitList$len(vecPtr)
+    }
+}
+
+
 
 public func ffi_content_start<GenericIntoRustString: IntoRustString>(_ handle: UInt64, _ pattern: GenericIntoRustString) -> UInt64 {
     __swift_bridge__$ffi_content_start(handle, { let rustString = pattern.intoRustString(); rustString.isOwned = false; return rustString.ptr }())
 }
-public func ffi_content_poll(_ session: UInt64, _ max: UInt32) -> RustVec<FfiContentHit> {
-    RustVec(ptr: __swift_bridge__$ffi_content_poll(session, max))
+public func ffi_content_poll(_ session: UInt64, _ max: UInt32) -> ContentHitList {
+    ContentHitList(ptr: __swift_bridge__$ffi_content_poll(session, max))
 }
 public func ffi_content_cancel(_ session: UInt64) {
     __swift_bridge__$ffi_content_cancel(session)
@@ -714,9 +882,105 @@ extension __swift_bridge__$Option$FfiContentHit {
     }
 }
 
+public class ContentHitList: ContentHitListRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$ContentHitList$_free(ptr)
+        }
+    }
+}
+public class ContentHitListRefMut: ContentHitListRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class ContentHitListRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension ContentHitListRef {
+    public func len() -> UInt {
+        __swift_bridge__$ContentHitList$len(ptr)
+    }
+
+    public func at(_ index: UInt) -> FfiContentHit {
+        __swift_bridge__$ContentHitList$at(ptr, index).intoSwiftRepr()
+    }
+}
+extension ContentHitList: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_ContentHitList$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_ContentHitList$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: ContentHitList) {
+        __swift_bridge__$Vec_ContentHitList$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_ContentHitList$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (ContentHitList(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<ContentHitListRef> {
+        let pointer = __swift_bridge__$Vec_ContentHitList$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return ContentHitListRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<ContentHitListRefMut> {
+        let pointer = __swift_bridge__$Vec_ContentHitList$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return ContentHitListRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<ContentHitListRef> {
+        UnsafePointer<ContentHitListRef>(OpaquePointer(__swift_bridge__$Vec_ContentHitList$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_ContentHitList$len(vecPtr)
+    }
+}
+
+
 
 public func ffi_git_snapshot<GenericIntoRustString: IntoRustString>(_ root: GenericIntoRustString) -> Optional<FfiGitSnapshot> {
     __swift_bridge__$ffi_git_snapshot({ let rustString = root.intoRustString(); rustString.isOwned = false; return rustString.ptr }()).intoSwiftRepr()
+}
+public func ffi_git_modified_paths<GenericIntoRustString: IntoRustString>(_ root: GenericIntoRustString) -> GitPathList {
+    GitPathList(ptr: __swift_bridge__$ffi_git_modified_paths({ let rustString = root.intoRustString(); rustString.isOwned = false; return rustString.ptr }()))
+}
+public func ffi_git_added_paths<GenericIntoRustString: IntoRustString>(_ root: GenericIntoRustString) -> GitPathList {
+    GitPathList(ptr: __swift_bridge__$ffi_git_added_paths({ let rustString = root.intoRustString(); rustString.isOwned = false; return rustString.ptr }()))
+}
+public func ffi_git_deleted_paths<GenericIntoRustString: IntoRustString>(_ root: GenericIntoRustString) -> GitPathList {
+    GitPathList(ptr: __swift_bridge__$ffi_git_deleted_paths({ let rustString = root.intoRustString(); rustString.isOwned = false; return rustString.ptr }()))
+}
+public func ffi_git_untracked_paths<GenericIntoRustString: IntoRustString>(_ root: GenericIntoRustString) -> GitPathList {
+    GitPathList(ptr: __swift_bridge__$ffi_git_untracked_paths({ let rustString = root.intoRustString(); rustString.isOwned = false; return rustString.ptr }()))
 }
 public struct FfiGitSnapshot {
     public var branch: RustString
@@ -763,5 +1027,89 @@ extension __swift_bridge__$Option$FfiGitSnapshot {
         }
     }
 }
+
+public class GitPathList: GitPathListRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$GitPathList$_free(ptr)
+        }
+    }
+}
+public class GitPathListRefMut: GitPathListRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class GitPathListRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension GitPathListRef {
+    public func len() -> UInt {
+        __swift_bridge__$GitPathList$len(ptr)
+    }
+
+    public func at(_ index: UInt) -> RustString {
+        RustString(ptr: __swift_bridge__$GitPathList$at(ptr, index))
+    }
+}
+extension GitPathList: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_GitPathList$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_GitPathList$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: GitPathList) {
+        __swift_bridge__$Vec_GitPathList$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_GitPathList$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (GitPathList(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<GitPathListRef> {
+        let pointer = __swift_bridge__$Vec_GitPathList$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return GitPathListRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<GitPathListRefMut> {
+        let pointer = __swift_bridge__$Vec_GitPathList$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return GitPathListRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<GitPathListRef> {
+        UnsafePointer<GitPathListRef>(OpaquePointer(__swift_bridge__$Vec_GitPathList$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_GitPathList$len(vecPtr)
+    }
+}
+
 
 
