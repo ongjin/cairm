@@ -9,16 +9,17 @@ pub struct SymbolRow {
     pub line: u32,
 }
 
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SymbolKind {
-    Class,
-    Struct,
-    Enum,
-    Function,
-    Method,
-    Variable,
-    Constant,
-    Interface,
+    Class = 0,
+    Struct = 1,
+    Enum = 2,
+    Function = 3,
+    Method = 4,
+    Variable = 5,
+    Constant = 6,
+    Interface = 7,
 }
 
 fn lang_for_ext(ext: &str) -> Option<(Language, &'static str)> {
