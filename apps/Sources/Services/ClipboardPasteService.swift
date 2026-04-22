@@ -33,7 +33,48 @@ enum ClipboardPasteService {
 
     static func uniqueDestination(filename: String,
                                   in dir: URL,
-                                  rule: CollisionRule) -> URL { fatalError("stub") }
+                                  rule: CollisionRule) -> URL {
+        let initial = dir.appendingPathComponent(filename)
+        if !FileManager.default.fileExists(atPath: initial.path) {
+            return initial
+        }
+        let (base, ext) = splitName(filename)
+        var n = 2
+        while true {
+            let candidate: String
+            switch rule {
+            case .appendCopy:
+                // n == 2 is the FIRST collision → unsuffixed " copy".
+                // n == 3+ → " copy <n-1>" to match Finder ("foo copy", "foo copy 2").
+                let suffix = (n == 2) ? "copy" : "copy \(n - 1)"
+                candidate = ext.isEmpty ? "\(base) \(suffix)" : "\(base) \(suffix).\(ext)"
+            case .appendNumber:
+                // Straight numbering starting at 2 ("Untitled 2.png").
+                candidate = ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
+            }
+            let url = dir.appendingPathComponent(candidate)
+            if !FileManager.default.fileExists(atPath: url.path) {
+                return url
+            }
+            n += 1
+        }
+    }
+
+    /// Finder's filename/extension split. Returns extension without the leading dot.
+    /// - Dotfiles (leading ".", no more dots): whole name is the base, no extension.
+    /// - Composite extensions ("foo.tar.gz"): split on LAST dot only → ("foo.tar", "gz").
+    /// - No dot: whole name is base, no extension.
+    private static func splitName(_ filename: String) -> (base: String, ext: String) {
+        if filename.hasPrefix(".") && !filename.dropFirst().contains(".") {
+            return (filename, "")
+        }
+        if let dotIdx = filename.lastIndex(of: "."), dotIdx != filename.startIndex {
+            let base = String(filename[..<dotIdx])
+            let ext = String(filename[filename.index(after: dotIdx)...])
+            return (base, ext)
+        }
+        return (filename, "")
+    }
 
     static func tiffToPng(_ tiff: Data) -> Data? { fatalError("stub") }
 
