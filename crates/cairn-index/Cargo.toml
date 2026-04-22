@@ -16,7 +16,7 @@ dirs = "5"
 hex = "0.4"
 thiserror = "1"
 cairn-git = { path = "../cairn-git" }
-walkdir = "2"
+ignore = "0.4"
 nucleo-matcher = "0.3"
 tree-sitter = "0.25"
 tree-sitter-swift = "0.7"
