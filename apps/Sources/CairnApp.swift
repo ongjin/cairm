@@ -234,6 +234,27 @@ struct EditCommands: Commands {
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(!(undoManager?.canRedo ?? false))
         }
+        CommandGroup(after: .pasteboard) {
+            // Copy / Paste / Paste Item Here route through the responder chain.
+            // `NSApp.sendAction(_:to:from:)` with `to: nil` walks first → last
+            // responder; FileListNSTableView's overrides (Task 6) pick them up
+            // when the table has focus.
+            Button("Copy") {
+                NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+            }
+            .keyboardShortcut("c", modifiers: [.command])
+
+            Button("Paste") {
+                NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+            }
+            .keyboardShortcut("v", modifiers: [.command])
+
+            Button("Paste Item Here") {
+                NSApp.sendAction(#selector(CairnResponder.pasteItemHere(_:)),
+                                 to: nil, from: nil)
+            }
+            .keyboardShortcut("v", modifiers: [.command, .option])
+        }
     }
 
     private var undoTitle: String {
