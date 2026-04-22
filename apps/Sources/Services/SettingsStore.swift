@@ -18,6 +18,12 @@ final class SettingsStore {
         }
     }
 
+    enum SortField: String, CaseIterable, Identifiable {
+        case name, size, modified
+        var id: String { rawValue }
+        var label: String { rawValue.capitalized }
+    }
+
     enum FontSize: String, CaseIterable, Identifiable {
         case small, medium, large
         var id: String { rawValue }
@@ -41,8 +47,8 @@ final class SettingsStore {
     var fontSize: FontSize {
         didSet { defaults.set(fontSize.rawValue, forKey: Keys.fontSize) }
     }
-    var defaultSortField: String {
-        didSet { defaults.set(defaultSortField, forKey: Keys.defaultSortField) }
+    var defaultSortField: SortField {
+        didSet { defaults.set(defaultSortField.rawValue, forKey: Keys.defaultSortField) }
     }
     var defaultSortAscending: Bool {
         didSet { defaults.set(defaultSortAscending, forKey: Keys.defaultSortAscending) }
@@ -59,7 +65,7 @@ final class SettingsStore {
         self.startFolder = StartFolder(rawValue: defaults.string(forKey: Keys.startFolder) ?? "") ?? .lastUsed
         self.restoreTabs = defaults.object(forKey: Keys.restoreTabs) as? Bool ?? true
         self.fontSize = FontSize(rawValue: defaults.string(forKey: Keys.fontSize) ?? "") ?? .medium
-        self.defaultSortField = defaults.string(forKey: Keys.defaultSortField) ?? "name"
+        self.defaultSortField = SortField(rawValue: defaults.string(forKey: Keys.defaultSortField) ?? "") ?? .name
         self.defaultSortAscending = defaults.object(forKey: Keys.defaultSortAscending) as? Bool ?? true
         self.showHiddenByDefault = defaults.bool(forKey: Keys.showHiddenByDefault)
         self.showGitColumn = defaults.object(forKey: Keys.showGitColumn) as? Bool ?? true

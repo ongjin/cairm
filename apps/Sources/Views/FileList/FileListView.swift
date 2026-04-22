@@ -45,6 +45,14 @@ struct FileListView: NSViewRepresentable {
     let isPinnedCheck: (FileEntry) -> Bool
     let onSelectionChanged: (FileEntry?) -> Void
 
+    private static func makeGitColumn() -> NSTableColumn {
+        let col = NSTableColumn(identifier: .git)
+        col.title = "Git"
+        col.minWidth = 28
+        col.width = 40
+        return col
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
@@ -91,11 +99,7 @@ struct FileListView: NSViewRepresentable {
         // "—" in non-repo folders. No sortDescriptorPrototype: sorting by git
         // status isn't useful in M1.8.
         if showGitColumn {
-            let gitCol = NSTableColumn(identifier: .git)
-            gitCol.title = "Git"
-            gitCol.minWidth = 28
-            gitCol.width = 40
-            table.addTableColumn(gitCol)
+            table.addTableColumn(Self.makeGitColumn())
         }
 
         // Coordinator wears both hats.
@@ -139,11 +143,7 @@ struct FileListView: NSViewRepresentable {
         // Sync Git column presence with the current setting.
         let hasGit = table.tableColumn(withIdentifier: .git) != nil
         if showGitColumn && !hasGit {
-            let gitCol = NSTableColumn(identifier: .git)
-            gitCol.title = "Git"
-            gitCol.minWidth = 28
-            gitCol.width = 40
-            table.addTableColumn(gitCol)
+            table.addTableColumn(Self.makeGitColumn())
         } else if !showGitColumn && hasGit, let col = table.tableColumn(withIdentifier: .git) {
             table.removeTableColumn(col)
         }

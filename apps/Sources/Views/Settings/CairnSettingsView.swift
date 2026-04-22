@@ -14,7 +14,7 @@ struct CairnSettingsView: View {
             AdvancedPane()
                 .tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
         }
-        .frame(width: 520, height: 360)
+        .frame(minWidth: 520, maxWidth: 520, minHeight: 360, maxHeight: 360)
     }
 }
 
@@ -56,12 +56,17 @@ private struct FilesPane: View {
     var body: some View {
         Form {
             Picker("Default sort", selection: $settings.defaultSortField) {
-                Text("Name").tag("name")
-                Text("Size").tag("size")
-                Text("Modified").tag("modified")
+                ForEach(SettingsStore.SortField.allCases) { f in
+                    Text(f.label).tag(f)
+                }
             }
             Toggle("Ascending", isOn: $settings.defaultSortAscending)
-            Toggle("Show hidden files by default", isOn: $settings.showHiddenByDefault)
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle("Show hidden files by default", isOn: $settings.showHiddenByDefault)
+                Text("Takes effect on next launch.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("Show Git status column", isOn: $settings.showGitColumn)
         }
         .padding(20)
