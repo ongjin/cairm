@@ -161,6 +161,10 @@ final class FileListCoordinator: NSObject,
 
     // MARK: - Delegate (view-based cells)
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        FileListRowView()
+    }
+
     func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
         guard let column, row < lastSnapshot.count else { return nil }
         let entry = lastSnapshot[row]
