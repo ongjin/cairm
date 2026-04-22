@@ -19,7 +19,6 @@ struct TabBarView: View {
                     onActivate: { scene.activeTabID = tab.id },
                     onClose: { scene.closeTab(tab.id) }
                 )
-                .frame(maxWidth: .infinity)
             }
             Button(action: { scene.newTab() }) {
                 Image(systemName: "plus")
@@ -32,6 +31,7 @@ struct TabBarView: View {
                     )
             }
             .buttonStyle(.plain)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)

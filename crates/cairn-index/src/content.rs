@@ -21,6 +21,7 @@ impl ContentSearch {
         rg_binary: &Path,
         root: &Path,
         pattern: &str,
+        is_regex: bool,
         on_hit: impl Fn(ContentHit) + Send + 'static,
     ) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
@@ -30,10 +31,16 @@ impl ContentSearch {
         let pat = pattern.to_string();
 
         let handle = std::thread::spawn(move || {
-            let mut child: Child = match Command::new(&rg_path)
-                .args(["--json", "--max-count", "200"])
-                .arg(&pat)
-                .arg(&root_path)
+            // ripgrep is regex-by-default; `-F` flips it to fixed-string
+            // (literal) mode. Keeping the default off saves users from `*.tsx`
+            // raising a regex parse error and silently returning zero hits.
+            let mut cmd = Command::new(&rg_path);
+            cmd.args(["--json", "--max-count", "200"]);
+            if !is_regex {
+                cmd.arg("-F");
+            }
+            cmd.arg(&pat).arg(&root_path);
+            let mut child: Child = match cmd
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .spawn()
@@ -146,7 +153,7 @@ mod tests {
 
         let counter = Arc::new(AtomicUsize::new(0));
         let c = counter.clone();
-        let search = ContentSearch::spawn(&rg, tmp.path(), "hello", move |_| {
+        let search = ContentSearch::spawn(&rg, tmp.path(), "hello", false, move |_| {
             c.fetch_add(1, Ordering::SeqCst);
         });
         std::thread::sleep(std::time::Duration::from_millis(500));

@@ -5,9 +5,11 @@ import SwiftUI
 /// while the chip is active. Activation fires `onActivate`; clicking the × fires
 /// `onClose`. All styling flows from the current `CairnTheme`.
 ///
-/// Added in M1.8 T13. Width is capped at 180pt with middle truncation to keep
-/// long folder names from blowing out the bar.
+/// Added in M1.8 T13. Uses a fixed 180pt width (Warp-style) so chips stay a
+/// consistent size as tabs are added; long names truncate in the middle.
 struct TabChip: View {
+    static let width: CGFloat = 180
+
     let label: String
     let isActive: Bool
     let onActivate: () -> Void
@@ -23,6 +25,7 @@ struct TabChip: View {
             Text(label)
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
             if hovering || isActive {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
@@ -35,6 +38,7 @@ struct TabChip: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+        .frame(width: TabChip.width, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
                 .fill(isActive ? theme.accentMuted : Color.secondary.opacity(0.08))

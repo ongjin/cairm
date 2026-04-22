@@ -28,18 +28,49 @@ struct LoadingPreview: View {
 
 // MARK: - Text
 
-struct TextPreview: View {
-    let body_: String
+/// Wraps an `NSTextView` so previewing 30-100 KB of source is fast. SwiftUI
+/// `Text` with `.textSelection(.enabled)` doesn't virtualize — it lays out
+/// the whole string once and tracks per-character selection metadata, which
+/// runs hundreds of ms for files in this size range. NSTextView's layout
+/// manager only renders visible glyphs, so scrolling and initial display
+/// are effectively constant-time regardless of body length.
+struct TextPreview: NSViewRepresentable {
+    let bodyText: String
 
-    init(_ text: String) { self.body_ = text }
+    init(_ text: String) { self.bodyText = text }
 
-    var body: some View {
-        ScrollView {
-            Text(body_)
-                .font(.system(size: 11, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSTextView.scrollableTextView()
+        scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+
+        guard let tv = scroll.documentView as? NSTextView else { return scroll }
+        tv.isEditable = false
+        tv.isRichText = false
+        tv.isSelectable = true
+        tv.drawsBackground = false
+        tv.textContainerInset = NSSize(width: 8, height: 8)
+        tv.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        // Disable auto-substitutions that NSTextView does by default — these
+        // are just CPU work for read-only preview content.
+        tv.isAutomaticQuoteSubstitutionEnabled = false
+        tv.isAutomaticDashSubstitutionEnabled = false
+        tv.isAutomaticTextReplacementEnabled = false
+        tv.isAutomaticSpellingCorrectionEnabled = false
+        tv.isContinuousSpellCheckingEnabled = false
+        tv.isGrammarCheckingEnabled = false
+        tv.string = bodyText
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let tv = scroll.documentView as? NSTextView else { return }
+        // Only rewrite when the content actually changed — assigning .string
+        // is the expensive part on big bodies.
+        if tv.string != bodyText {
+            tv.string = bodyText
+            tv.scroll(NSPoint.zero)
         }
     }
 }

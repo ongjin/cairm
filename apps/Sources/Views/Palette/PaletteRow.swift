@@ -45,7 +45,7 @@ struct PaletteRow: View {
 
     private var icon: Image {
         switch data {
-        case .file: return Image(systemName: "doc")
+        case .file(let f): return Image(systemName: f.isDirectory ? "folder" : "doc")
         case .command(let c): return Image(systemName: c.iconSF)
         case .content: return Image(systemName: "text.magnifyingglass")
         case .symbol: return Image(systemName: "chevron.left.forwardslash.chevron.right")

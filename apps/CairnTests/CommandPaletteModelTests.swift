@@ -52,7 +52,9 @@ final class CommandPaletteModelTests: XCTestCase {
         let model = CommandPaletteModel()
         model.query = "swif"
 
-        let hits = model.fallbackFuzzyHits(folder: folder)
+        // Pass `root: nil` so the enumerator branch is skipped and the test
+        // exercises the flat folder.entries fallback (small, deterministic).
+        let hits = model.fallbackFuzzyHits(folder: folder, root: nil, query: "swif")
         XCTAssertEqual(hits.map(\.pathRel), ["main.swift"])
     }
 
@@ -64,6 +66,6 @@ final class CommandPaletteModelTests: XCTestCase {
         let model = CommandPaletteModel()
         model.query = ""
 
-        XCTAssertEqual(model.fallbackFuzzyHits(folder: folder), [])
+        XCTAssertEqual(model.fallbackFuzzyHits(folder: folder, root: nil, query: ""), [])
     }
 }

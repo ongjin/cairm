@@ -41,6 +41,22 @@ final class PreviewModel {
     private var cacheKeys: [String] = []
     private var cacheValues: [String: PreviewState] = [:]
 
+    /// Active fetch task; cancelled when focus changes mid-flight so we
+    /// don't apply a stale result over the user's newer selection.
+    private var inflight: Task<Void, Never>?
+
+    /// Debounce: when the user holds ↑/↓ to scrub through rows, every step
+    /// would otherwise kick off a Rust preview_text call. We delay the
+    /// fetch by ~120ms after the last focus change so only the row the
+    /// user actually rests on gets previewed. Cached hits still apply
+    /// immediately so revisits stay instant.
+    private static let debounceNanos: UInt64 = 120_000_000
+    /// Loading-state suppression: only flip the UI to `.loading` if the
+    /// fetch hasn't returned within 150ms. Most files are small enough
+    /// that the previous content stays on screen and gets replaced
+    /// directly, eliminating the flicker users perceive as "choppy".
+    private static let loadingShowAfterNanos: UInt64 = 150_000_000
+
     nonisolated init(engine: CairnEngine) {
         self.engine = engine
     }
@@ -73,25 +89,46 @@ final class PreviewModel {
     // MARK: - Focus handling
 
     private func handleFocusChange(from previous: URL?) {
+        // Always cancel an in-flight fetch — its result is for an old URL.
+        inflight?.cancel()
+        inflight = nil
+
         guard let focus else {
             state = .idle
             return
         }
+        // Cache hit: apply instantly, no debounce, no loading flash.
         if let hit = cached(for: focus) {
             state = hit
             return
         }
-        state = .loading
-        Task { [weak self] in
-            await self?.loadPreview(for: focus)
+        // Otherwise debounce + delayed-loading. The previous PreviewState
+        // (whatever the user was looking at before) stays visible until
+        // either the new fetch returns or the loading-suppression window
+        // expires, so quick ↑/↓ scrubbing doesn't blink.
+        let target = focus
+        inflight = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.debounceNanos)
+            if Task.isCancelled { return }
+            await self?.loadPreview(for: target)
         }
     }
 
     private func loadPreview(for url: URL) async {
+        // Race a 150ms timer against the actual fetch: only show the loading
+        // state if the fetch hasn't completed yet. Most local files resolve
+        // in 1-30ms (small text, image classification) so the loading
+        // placeholder rarely appears, eliminating the flicker.
+        let loadingFlag = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.loadingShowAfterNanos)
+            if !Task.isCancelled, self?.focus == url {
+                self?.state = .loading
+            }
+        }
         let next = await Self.compute(for: url, engine: engine)
+        loadingFlag.cancel()
+        if Task.isCancelled { return }
         cache(state: next, for: url)
-        // Only publish if the focus is still the same URL (user might have
-        // selected something else while we were awaiting).
         if focus == url {
             state = next
         }

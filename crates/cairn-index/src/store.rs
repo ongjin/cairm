@@ -96,6 +96,82 @@ impl IndexStore {
         Ok(())
     }
 
+    /// Bulk-replace files + symbols in a single redb transaction. Used by
+    /// the initial walker so the cost is one fsync instead of one per file.
+    /// On Home (~50k files), per-file commit was taking minutes — the dominant
+    /// cost was the per-call fsync, not redb itself or the walk traversal.
+    ///
+    /// Inserts upsert (so re-walking the same root just refreshes existing
+    /// rows). This intentionally does NOT clear stale entries: the watcher
+    /// handles incremental deletes via `delete_file`, and full re-walks on
+    /// navigation re-key by relative path so old entries get overwritten in
+    /// place. A pure "rebuild" would need an explicit clear + insert; not
+    /// worth the complexity until we see a stale-entries bug in the wild.
+    /// Bulk-replace files in a single redb transaction. Used by the initial
+    /// walker so the cost is one fsync instead of one per file. On Home
+    /// (~30k files), per-file commit was taking minutes — the dominant cost
+    /// was the per-call fsync, not redb itself or the walk traversal.
+    /// Symbols are written separately by `bulk_put_symbols` so the file
+    /// index can become queryable before tree-sitter parsing finishes.
+    pub fn bulk_put_files(&self, files: &[(String, FileRow)]) -> Result<(), IndexError> {
+        let tx = self.db.begin_write()?;
+        {
+            let mut tf = tx.open_table(TABLE_FILES)?;
+            // Drop the previous walk's entries — without this, paths that no
+            // longer match the current skip-list (e.g. an old `target/` blob
+            // from before node_modules/target/etc were excluded) stick around
+            // forever and pollute fuzzy results. A walk is a full snapshot
+            // by definition, so a clear-then-insert is the right semantic.
+            let stale_keys: Vec<String> = tf
+                .iter()?
+                .filter_map(|e| e.ok().map(|(k, _)| k.value().to_string()))
+                .collect();
+            for k in stale_keys {
+                tf.remove(k.as_str())?;
+            }
+            for (rel, row) in files {
+                let bytes = bincode::serialize(row)?;
+                tf.insert(rel.as_str(), bytes.as_slice())?;
+            }
+            // Symbols are written by a later background pass; drop the old
+            // ones here so the symbol table stays consistent with files.
+            let mut ts = tx.open_table(TABLE_SYMBOLS)?;
+            let stale_sym_keys: Vec<(String, u32)> = ts
+                .iter()?
+                .filter_map(|e| e.ok().map(|(k, _)| {
+                    let kv = k.value();
+                    (kv.0.to_string(), kv.1)
+                }))
+                .collect();
+            for (rel, idx) in stale_sym_keys {
+                ts.remove((rel.as_str(), idx))?;
+            }
+        }
+        tx.commit()?;
+        self.files_gen.fetch_add(1, Ordering::AcqRel);
+        Ok(())
+    }
+
+    /// Bulk-write symbols in a single redb transaction. Caller is the
+    /// background symbol-extraction pass spawned after `bulk_put_files`.
+    pub fn bulk_put_symbols(
+        &self,
+        symbols: &[(String, Vec<crate::symbols::SymbolRow>)],
+    ) -> Result<(), IndexError> {
+        let tx = self.db.begin_write()?;
+        {
+            let mut ts = tx.open_table(TABLE_SYMBOLS)?;
+            for (rel, syms) in symbols {
+                for (i, sym) in syms.iter().enumerate() {
+                    let bytes = bincode::serialize(sym)?;
+                    ts.insert((rel.as_str(), i as u32), bytes.as_slice())?;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn list_all(&self) -> Result<Vec<(String, FileRow)>, IndexError> {
         let current_gen = self.files_gen.load(Ordering::Acquire);
 

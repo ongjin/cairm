@@ -10,6 +10,17 @@ pub struct FileHit {
     pub score: u32,
     /// Byte offsets in path_rel that matched, used by UI for highlighting.
     pub matches: Vec<u32>,
+    /// 0 = Regular, 1 = Directory, 2 = Symlink. Mirrors `FileKind`'s discriminant
+    /// order so the FFI layer doesn't need a translation table.
+    pub kind: u8,
+}
+
+fn kind_byte(k: crate::store::FileKind) -> u8 {
+    match k {
+        crate::store::FileKind::Regular => 0,
+        crate::store::FileKind::Directory => 1,
+        crate::store::FileKind::Symlink => 2,
+    }
 }
 
 pub fn query(
@@ -23,10 +34,11 @@ pub fn query(
         return Ok(rows
             .into_iter()
             .take(limit)
-            .map(|(p, _)| FileHit {
+            .map(|(p, row)| FileHit {
                 path_rel: p,
                 score: 0,
                 matches: Vec::new(),
+                kind: kind_byte(row.kind),
             })
             .collect());
     }
@@ -36,7 +48,7 @@ pub fn query(
 
     let mut scored: Vec<FileHit> = rows
         .iter()
-        .filter_map(|(path, _)| {
+        .filter_map(|(path, row)| {
             let mut buf = Vec::new();
             let hay = Utf32Str::new(path, &mut buf);
             let mut indices: Vec<u32> = Vec::new();
@@ -45,6 +57,7 @@ pub fn query(
                 path_rel: path.clone(),
                 score,
                 matches: indices,
+                kind: kind_byte(row.kind),
             })
         })
         .collect();

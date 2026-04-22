@@ -582,21 +582,23 @@ public func ffi_index_query_git_dirty(_ handle: UInt64) -> FileHitList {
 public struct FfiFileHit {
     public var path_rel: RustString
     public var score: UInt32
+    public var kind_raw: UInt8
 
-    public init(path_rel: RustString,score: UInt32) {
+    public init(path_rel: RustString,score: UInt32,kind_raw: UInt8) {
         self.path_rel = path_rel
         self.score = score
+        self.kind_raw = kind_raw
     }
 
     @inline(__always)
     func intoFfiRepr() -> __swift_bridge__$FfiFileHit {
-        { let val = self; return __swift_bridge__$FfiFileHit(path_rel: { let rustString = val.path_rel.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), score: val.score); }()
+        { let val = self; return __swift_bridge__$FfiFileHit(path_rel: { let rustString = val.path_rel.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), score: val.score, kind_raw: val.kind_raw); }()
     }
 }
 extension __swift_bridge__$FfiFileHit {
     @inline(__always)
     func intoSwiftRepr() -> FfiFileHit {
-        { let val = self; return FfiFileHit(path_rel: RustString(ptr: val.path_rel), score: val.score); }()
+        { let val = self; return FfiFileHit(path_rel: RustString(ptr: val.path_rel), score: val.score, kind_raw: val.kind_raw); }()
     }
 }
 extension __swift_bridge__$Option$FfiFileHit {
@@ -831,8 +833,8 @@ extension SymbolHitList: Vectorizable {
 
 
 
-public func ffi_content_start<GenericIntoRustString: IntoRustString>(_ handle: UInt64, _ pattern: GenericIntoRustString) -> UInt64 {
-    __swift_bridge__$ffi_content_start(handle, { let rustString = pattern.intoRustString(); rustString.isOwned = false; return rustString.ptr }())
+public func ffi_content_start<GenericIntoRustString: IntoRustString>(_ handle: UInt64, _ pattern: GenericIntoRustString, _ is_regex: Bool) -> UInt64 {
+    __swift_bridge__$ffi_content_start(handle, { let rustString = pattern.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), is_regex)
 }
 public func ffi_content_poll(_ session: UInt64, _ max: UInt32) -> ContentHitList {
     ContentHitList(ptr: __swift_bridge__$ffi_content_poll(session, max))

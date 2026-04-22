@@ -32,6 +32,9 @@ mod ffi {
     struct FfiFileHit {
         path_rel: String,
         score: u32,
+        /// 0 = Regular, 1 = Directory, 2 = Symlink. Lets the palette pick a
+        /// folder vs document icon without re-stat'ing the path.
+        kind_raw: u8,
     }
 
     #[swift_bridge(swift_repr = "struct")]
@@ -69,6 +72,7 @@ pub struct FileHitList {
     hits: Vec<ffi::FfiFileHit>,
 }
 
+
 impl FileHitList {
     fn len(&self) -> usize {
         self.hits.len()
@@ -78,6 +82,7 @@ impl FileHitList {
         ffi::FfiFileHit {
             path_rel: h.path_rel.clone(),
             score: h.score,
+            kind_raw: h.kind_raw,
         }
     }
 }
@@ -111,7 +116,41 @@ pub fn ffi_index_open(root: String) -> u64 {
             return 0;
         }
     };
-    let _ = walk_into(&root_p, &store);
+    // Phase 1: walk + commit files. Fast — one fsync for the whole walk.
+    let source_files = match walk_into(&root_p, &store) {
+        Ok((_, srcs)) => srcs,
+        Err(_) => Vec::new(),
+    };
+
+    // Phase 2: tree-sitter symbol extraction off the critical path. The
+    // file index is already queryable; symbol search (`@`) starts working
+    // once this finishes (a few seconds for a typical project, longer on
+    // huge roots — never blocks the UI).
+    let store_for_symbols = store.clone();
+    std::thread::spawn(move || {
+        // Flush in chunks so the redb write lock isn't held for the whole
+        // project. Without this, a large repo (~admin-app w/ thousands of
+        // .ts files) can starve the watcher's writes long enough that the
+        // app appears to freeze. 256 was chosen empirically: large enough
+        // that fsync-per-batch cost is amortised, small enough that lock
+        // hold time stays under ~50ms even on slow disks.
+        const CHUNK: usize = 256;
+        let mut buf: Vec<(String, Vec<cairn_index::SymbolRow>)> = Vec::with_capacity(CHUNK);
+        for (rel, abs) in source_files {
+            let syms = cairn_index::symbols::extract_from_file(&abs);
+            if !syms.is_empty() {
+                buf.push((rel, syms));
+            }
+            if buf.len() >= CHUNK {
+                let _ = store_for_symbols.bulk_put_symbols(&buf);
+                buf.clear();
+            }
+        }
+        if !buf.is_empty() {
+            let _ = store_for_symbols.bulk_put_symbols(&buf);
+        }
+    });
+
     let watcher = watch(&root_p, store.clone()).ok();
     let id = next_id();
     registry().lock().unwrap().insert(
@@ -141,6 +180,7 @@ pub fn ffi_index_query_fuzzy(handle: u64, query: String, limit: u32) -> FileHitL
         .map(|h| ffi::FfiFileHit {
             path_rel: h.path_rel,
             score: h.score,
+            kind_raw: h.kind,
         })
         .collect();
     FileHitList { hits: mapped }
@@ -189,6 +229,7 @@ pub fn ffi_index_query_git_dirty(handle: u64) -> FileHitList {
         out.push(ffi::FfiFileHit {
             path_rel: p.to_string_lossy().into_owned(),
             score: 0,
+            kind_raw: 0,
         });
     }
     FileHitList { hits: out }
@@ -224,7 +265,7 @@ mod ffi_content {
     }
 
     extern "Rust" {
-        fn ffi_content_start(handle: u64, pattern: String) -> u64;
+        fn ffi_content_start(handle: u64, pattern: String, is_regex: bool) -> u64;
         fn ffi_content_poll(session: u64, max: u32) -> ContentHitList;
         fn ffi_content_cancel(session: u64);
     }
@@ -248,7 +289,7 @@ impl ContentHitList {
     }
 }
 
-pub fn ffi_content_start(handle: u64, pattern: String) -> u64 {
+pub fn ffi_content_start(handle: u64, pattern: String, is_regex: bool) -> u64 {
     let rg_path = match std::env::var("CAIRN_RG_PATH") {
         Ok(p) => PathBuf::from(p),
         Err(_) => match which::which("rg") {
@@ -264,7 +305,7 @@ pub fn ffi_content_start(handle: u64, pattern: String) -> u64 {
         }
     };
     let (tx, rx): (Sender<_>, Receiver<_>) = channel();
-    let search = ContentSearch::spawn(&rg_path, &root, &pattern, move |hit| {
+    let search = ContentSearch::spawn(&rg_path, &root, &pattern, is_regex, move |hit| {
         let _ = tx.send(hit);
     });
     let id = next_id();

@@ -26,7 +26,9 @@ final class IndexService {
         out.reserveCapacity(Int(n))
         for i in 0..<n {
             let h = list.at(i)
-            out.append(FileHit(pathRel: h.path_rel.toString(), score: Int(h.score)))
+            out.append(FileHit(pathRel: h.path_rel.toString(),
+                               score: Int(h.score),
+                               isDirectory: h.kind_raw == 1))
         }
         return out
     }
@@ -51,13 +53,15 @@ final class IndexService {
         out.reserveCapacity(Int(n))
         for i in 0..<n {
             let h = list.at(i)
-            out.append(FileHit(pathRel: h.path_rel.toString(), score: 0))
+            // Modified files are by definition regular — git can't track an
+            // empty directory, so isDirectory is always false here.
+            out.append(FileHit(pathRel: h.path_rel.toString(), score: 0, isDirectory: false))
         }
         return out
     }
 
-    func startContent(pattern: String) -> ContentSearchSession? {
-        let sid = ffi_content_start(handle, pattern)
+    func startContent(pattern: String, isRegex: Bool = false) -> ContentSearchSession? {
+        let sid = ffi_content_start(handle, pattern, isRegex)
         guard sid != 0 else { return nil }
         return ContentSearchSession(sessionID: sid)
     }
@@ -66,7 +70,17 @@ final class IndexService {
 struct FileHit: Identifiable, Hashable {
     let pathRel: String
     let score: Int
+    /// True when the indexed entry is a directory. Drives the folder vs
+    /// document icon in PaletteRow so users can tell at a glance whether
+    /// hitting Enter will navigate or open a file.
+    let isDirectory: Bool
     var id: String { pathRel }
+
+    init(pathRel: String, score: Int, isDirectory: Bool = false) {
+        self.pathRel = pathRel
+        self.score = score
+        self.isDirectory = isDirectory
+    }
 }
 
 struct SymbolHit: Identifiable, Hashable {

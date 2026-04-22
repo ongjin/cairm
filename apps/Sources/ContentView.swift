@@ -77,7 +77,7 @@ struct ContentView: View {
         .focusedSceneValue(\.paletteModel, palette)
         .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
             guard palette.isOpen else { return }
-            if case .content = CommandPaletteModel.parse(palette.query) {
+            if palette.mode == .content {
                 palette.pollContent()
             }
         }
@@ -158,7 +158,12 @@ struct ContentView: View {
             isPinnedCheck: { entry in
                 app.bookmarks.isPinned(url: URL(fileURLWithPath: entry.path.toString()))
             },
-            onSelectionChanged: { handleSelectionChanged($0, tab: tab) }
+            onSelectionChanged: { handleSelectionChanged($0, tab: tab) },
+            onMoved: {
+                guard let url = tab.currentFolder else { return }
+                Task { await tab.folder.load(url) }
+            },
+            undoManager: tab.undoManager
         )
         .background {
             ZStack {
