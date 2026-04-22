@@ -1,6 +1,10 @@
 use redb::ReadableTable;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    RwLock,
+};
 
 const TABLE_FILES: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("files");
 const TABLE_SYMBOLS: redb::TableDefinition<(&str, u32), &[u8]> =
@@ -28,6 +32,17 @@ pub type GitStatusByte = u8;
 
 pub struct IndexStore {
     db: redb::Database,
+    // In-memory cache of the TABLE_FILES contents. Invalidated by a
+    // generation counter bumped on every file mutation (put_file /
+    // delete_file). TABLE_SYMBOLS writes do NOT invalidate — symbols
+    // live in their own table.
+    files_cache: RwLock<Option<CachedFiles>>,
+    files_gen: AtomicU64,
+}
+
+struct CachedFiles {
+    gen: u64,
+    files: Vec<(String, FileRow)>,
 }
 
 impl IndexStore {
@@ -42,10 +57,15 @@ impl IndexStore {
             let _ = tx.open_table(TABLE_SYMBOLS)?;
         }
         tx.commit()?;
-        Ok(Self { db })
+        Ok(Self {
+            db,
+            files_cache: RwLock::new(None),
+            files_gen: AtomicU64::new(0),
+        })
     }
 
     pub fn put_file(&self, rel: &str, row: &FileRow) -> Result<(), IndexError> {
+        self.files_gen.fetch_add(1, Ordering::AcqRel);
         let bytes = bincode::serialize(row)?;
         let tx = self.db.begin_write()?;
         {
@@ -66,6 +86,7 @@ impl IndexStore {
     }
 
     pub fn delete_file(&self, rel: &str) -> Result<(), IndexError> {
+        self.files_gen.fetch_add(1, Ordering::AcqRel);
         let tx = self.db.begin_write()?;
         {
             let mut t = tx.open_table(TABLE_FILES)?;
@@ -76,6 +97,29 @@ impl IndexStore {
     }
 
     pub fn list_all(&self) -> Result<Vec<(String, FileRow)>, IndexError> {
+        let current_gen = self.files_gen.load(Ordering::Acquire);
+
+        // Fast path: cache hit.
+        if let Ok(guard) = self.files_cache.read() {
+            if let Some(c) = guard.as_ref() {
+                if c.gen == current_gen {
+                    return Ok(c.files.clone());
+                }
+            }
+        }
+
+        // Slow path: rebuild from redb.
+        let files = self.list_all_from_db()?;
+        if let Ok(mut slot) = self.files_cache.write() {
+            *slot = Some(CachedFiles {
+                gen: current_gen,
+                files: files.clone(),
+            });
+        }
+        Ok(files)
+    }
+
+    fn list_all_from_db(&self) -> Result<Vec<(String, FileRow)>, IndexError> {
         let tx = self.db.begin_read()?;
         let t = tx.open_table(TABLE_FILES)?;
         let mut out = Vec::new();
@@ -205,5 +249,40 @@ mod tests {
         store.put_file("b.txt", &sample()).unwrap();
         let rows = store.list_all().unwrap();
         assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn list_all_cache_hits_on_repeated_calls_without_mutation() {
+        let tmp = TempDir::new().unwrap();
+        let store = IndexStore::open(&tmp.path().join("idx.redb")).unwrap();
+
+        store.put_file("a.txt", &sample()).unwrap();
+        store.put_file("b.txt", &sample()).unwrap();
+
+        let first = store.list_all().unwrap();
+        let second = store.list_all().unwrap();
+        // Same content, cache must serve the second call.
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 2);
+    }
+
+    #[test]
+    fn list_all_cache_invalidates_on_put_and_delete() {
+        let tmp = TempDir::new().unwrap();
+        let store = IndexStore::open(&tmp.path().join("idx.redb")).unwrap();
+
+        store.put_file("a.txt", &sample()).unwrap();
+
+        let before_insert = store.list_all().unwrap();
+        store.put_file("b.txt", &sample()).unwrap();
+        let after_insert = store.list_all().unwrap();
+
+        assert_eq!(before_insert.len(), 1);
+        assert_eq!(after_insert.len(), 2);
+
+        store.delete_file("a.txt").unwrap();
+        let after_delete = store.list_all().unwrap();
+        assert_eq!(after_delete.len(), 1);
+        assert_eq!(after_delete[0].0, "b.txt");
     }
 }
