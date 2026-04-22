@@ -33,11 +33,54 @@ mod ffi {
     }
 
     extern "Rust" {
+        type FileHitList;
+
+        fn len(&self) -> usize;
+        fn at(&self, index: usize) -> FfiFileHit;
+    }
+
+    extern "Rust" {
+        type SymbolHitList;
+
+        fn len(&self) -> usize;
+        fn at(&self, index: usize) -> FfiSymbolHit;
+    }
+
+    extern "Rust" {
         fn ffi_index_open(root: String) -> u64;
         fn ffi_index_close(handle: u64);
-        fn ffi_index_query_fuzzy(handle: u64, query: String, limit: u32) -> Vec<FfiFileHit>;
-        fn ffi_index_query_symbols(handle: u64, query: String, limit: u32) -> Vec<FfiSymbolHit>;
-        fn ffi_index_query_git_dirty(handle: u64) -> Vec<FfiFileHit>;
+        fn ffi_index_query_fuzzy(handle: u64, query: String, limit: u32) -> FileHitList;
+        fn ffi_index_query_symbols(handle: u64, query: String, limit: u32) -> SymbolHitList;
+        fn ffi_index_query_git_dirty(handle: u64) -> FileHitList;
+    }
+}
+
+pub struct FileHitList {
+    hits: Vec<ffi::FfiFileHit>,
+}
+
+impl FileHitList {
+    fn len(&self) -> usize { self.hits.len() }
+    fn at(&self, index: usize) -> ffi::FfiFileHit {
+        let h = &self.hits[index];
+        ffi::FfiFileHit { path_rel: h.path_rel.clone(), score: h.score }
+    }
+}
+
+pub struct SymbolHitList {
+    hits: Vec<ffi::FfiSymbolHit>,
+}
+
+impl SymbolHitList {
+    fn len(&self) -> usize { self.hits.len() }
+    fn at(&self, index: usize) -> ffi::FfiSymbolHit {
+        let h = &self.hits[index];
+        ffi::FfiSymbolHit {
+            path_rel: h.path_rel.clone(),
+            name: h.name.clone(),
+            kind_raw: h.kind_raw,
+            line: h.line,
+        }
     }
 }
 
@@ -56,34 +99,38 @@ pub fn ffi_index_close(handle: u64) {
     registry().lock().unwrap().remove(&handle);
 }
 
-pub fn ffi_index_query_fuzzy(handle: u64, query: String, limit: u32) -> Vec<ffi::FfiFileHit> {
+pub fn ffi_index_query_fuzzy(handle: u64, query: String, limit: u32) -> FileHitList {
     let reg = registry().lock().unwrap();
-    let entry = match reg.get(&handle) { Some(e) => e, None => return Vec::new() };
+    let entry = match reg.get(&handle) { Some(e) => e, None => return FileHitList { hits: Vec::new() } };
     let hits = query_fuzzy(&entry.store, &query, limit as usize).unwrap_or_default();
-    hits.into_iter().map(|h| ffi::FfiFileHit { path_rel: h.path_rel, score: h.score }).collect()
+    let mapped: Vec<ffi::FfiFileHit> = hits.into_iter()
+        .map(|h| ffi::FfiFileHit { path_rel: h.path_rel, score: h.score })
+        .collect();
+    FileHitList { hits: mapped }
 }
 
-pub fn ffi_index_query_symbols(handle: u64, query: String, limit: u32) -> Vec<ffi::FfiSymbolHit> {
+pub fn ffi_index_query_symbols(handle: u64, query: String, limit: u32) -> SymbolHitList {
     let reg = registry().lock().unwrap();
-    let entry = match reg.get(&handle) { Some(e) => e, None => return Vec::new() };
+    let entry = match reg.get(&handle) { Some(e) => e, None => return SymbolHitList { hits: Vec::new() } };
     let rows = entry.store.query_symbols(&query, limit as usize).unwrap_or_default();
-    rows.into_iter().map(|(p, s)| ffi::FfiSymbolHit {
+    let mapped: Vec<ffi::FfiSymbolHit> = rows.into_iter().map(|(p, s)| ffi::FfiSymbolHit {
         path_rel: p,
         name: s.name,
         kind_raw: s.kind as u8,
         line: s.line,
-    }).collect()
+    }).collect();
+    SymbolHitList { hits: mapped }
 }
 
-pub fn ffi_index_query_git_dirty(handle: u64) -> Vec<ffi::FfiFileHit> {
+pub fn ffi_index_query_git_dirty(handle: u64) -> FileHitList {
     let reg = registry().lock().unwrap();
-    let entry = match reg.get(&handle) { Some(e) => e, None => return Vec::new() };
-    let snap = match cairn_git::snapshot(&entry.root) { Some(s) => s, None => return Vec::new() };
+    let entry = match reg.get(&handle) { Some(e) => e, None => return FileHitList { hits: Vec::new() } };
+    let snap = match cairn_git::snapshot(&entry.root) { Some(s) => s, None => return FileHitList { hits: Vec::new() } };
     let mut out = Vec::new();
     for p in snap.modified.iter().chain(snap.untracked.iter()).chain(snap.added.iter()).chain(snap.deleted.iter()) {
         out.push(ffi::FfiFileHit { path_rel: p.to_string_lossy().into_owned(), score: 0 });
     }
-    out
+    FileHitList { hits: out }
 }
 
 // ---- content session ----
@@ -109,9 +156,32 @@ mod ffi_content {
     }
 
     extern "Rust" {
+        type ContentHitList;
+
+        fn len(&self) -> usize;
+        fn at(&self, index: usize) -> FfiContentHit;
+    }
+
+    extern "Rust" {
         fn ffi_content_start(handle: u64, pattern: String) -> u64;
-        fn ffi_content_poll(session: u64, max: u32) -> Vec<FfiContentHit>;
+        fn ffi_content_poll(session: u64, max: u32) -> ContentHitList;
         fn ffi_content_cancel(session: u64);
+    }
+}
+
+pub struct ContentHitList {
+    hits: Vec<ffi_content::FfiContentHit>,
+}
+
+impl ContentHitList {
+    fn len(&self) -> usize { self.hits.len() }
+    fn at(&self, index: usize) -> ffi_content::FfiContentHit {
+        let h = &self.hits[index];
+        ffi_content::FfiContentHit {
+            path_rel: h.path_rel.clone(),
+            line: h.line,
+            preview: h.preview.clone(),
+        }
     }
 }
 
@@ -131,7 +201,7 @@ pub fn ffi_content_start(handle: u64, pattern: String) -> u64 {
     id
 }
 
-pub fn ffi_content_poll(session: u64, max: u32) -> Vec<ffi_content::FfiContentHit> {
+pub fn ffi_content_poll(session: u64, max: u32) -> ContentHitList {
     let mut out = Vec::new();
     let sessions = content_sessions().lock().unwrap();
     if let Some(s) = sessions.get(&session) {
@@ -142,7 +212,7 @@ pub fn ffi_content_poll(session: u64, max: u32) -> Vec<ffi_content::FfiContentHi
             }
         }
     }
-    out
+    ContentHitList { hits: out }
 }
 
 pub fn ffi_content_cancel(session: u64) {
