@@ -116,7 +116,10 @@ mod tests {
     use tempfile::TempDir;
 
     fn which_rg() -> Option<std::path::PathBuf> {
-        let out = std::process::Command::new("which").arg("rg").output().ok()?;
+        let out = std::process::Command::new("which")
+            .arg("rg")
+            .output()
+            .ok()?;
         if !out.status.success() {
             return None;
         }

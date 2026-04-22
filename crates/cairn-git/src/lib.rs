@@ -1,3 +1,3 @@
 pub mod snapshot;
 
-pub use snapshot::{snapshot, GitSnapshot, FileStatus};
+pub use snapshot::{snapshot, FileStatus, GitSnapshot};

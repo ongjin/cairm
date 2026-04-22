@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 mod ffi {
     #[swift_bridge(swift_repr = "struct")]
     struct FfiGitSnapshot {
-        branch: String,            // "" 이면 no branch
+        branch: String, // "" 이면 no branch
         modified_count: u32,
         untracked_count: u32,
         added_count: u32,

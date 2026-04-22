@@ -18,8 +18,8 @@
 
 #![allow(clippy::unnecessary_cast)]
 
-pub mod index;
 pub mod git;
+pub mod index;
 
 use std::path::Path;
 

@@ -1,36 +1,56 @@
-use crate::store::{FileRow, FileKind, IndexStore};
+use crate::store::{FileKind, FileRow, IndexStore};
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use walkdir::WalkDir;
-use std::os::unix::fs::MetadataExt;
 
 pub fn walk_into(root: &Path, store: &IndexStore) -> Result<usize, crate::IndexError> {
     let git_snap = cairn_git::snapshot(root);
     let git_status_for = |rel: &str| -> Option<u8> {
         let snap = git_snap.as_ref()?;
         let pb = std::path::PathBuf::from(rel);
-        if snap.modified.contains(&pb)  { Some(b'M') }
-        else if snap.added.contains(&pb)    { Some(b'A') }
-        else if snap.deleted.contains(&pb)  { Some(b'D') }
-        else if snap.untracked.contains(&pb){ Some(b'U') }
-        else { None }
+        if snap.modified.contains(&pb) {
+            Some(b'M')
+        } else if snap.added.contains(&pb) {
+            Some(b'A')
+        } else if snap.deleted.contains(&pb) {
+            Some(b'D')
+        } else if snap.untracked.contains(&pb) {
+            Some(b'U')
+        } else {
+            None
+        }
     };
 
     let mut count = 0;
-    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_entry(|e| {
-        e.file_name().to_string_lossy() != ".git"
-    }) {
-        let entry = match entry { Ok(e) => e, Err(_) => continue };
-        if entry.depth() == 0 { continue; }
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| e.file_name().to_string_lossy() != ".git")
+    {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if entry.depth() == 0 {
+            continue;
+        }
 
         let rel = match entry.path().strip_prefix(root) {
             Ok(r) => r.to_string_lossy().into_owned(),
             Err(_) => continue,
         };
         let ft = entry.file_type();
-        let kind = if ft.is_dir() { FileKind::Directory }
-                   else if ft.is_symlink() { FileKind::Symlink }
-                   else { FileKind::Regular };
-        let md = match entry.metadata() { Ok(m) => m, Err(_) => continue };
+        let kind = if ft.is_dir() {
+            FileKind::Directory
+        } else if ft.is_symlink() {
+            FileKind::Symlink
+        } else {
+            FileKind::Regular
+        };
+        let md = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
         let row = FileRow {
             size: md.len(),
             mtime_unix: md.mtime(),
@@ -71,7 +91,9 @@ mod tests {
 
         let all = store.list_all().unwrap();
         assert!(all.iter().any(|(p, _)| p == "a.txt"));
-        assert!(all.iter().any(|(p, r)| p == "sub" && matches!(r.kind, FileKind::Directory)));
+        assert!(all
+            .iter()
+            .any(|(p, r)| p == "sub" && matches!(r.kind, FileKind::Directory)));
         assert!(all.iter().any(|(p, _)| p == "sub/c.md"));
     }
 

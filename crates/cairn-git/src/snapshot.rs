@@ -26,11 +26,11 @@ pub fn snapshot(root: &Path) -> Option<GitSnapshot> {
 
     let branch = match repo.head() {
         Ok(head) => head.shorthand().map(String::from),
-        Err(_) => {
-            repo.find_reference("HEAD").ok()
-                .and_then(|r| r.symbolic_target().map(String::from))
-                .and_then(|t| t.strip_prefix("refs/heads/").map(String::from))
-        }
+        Err(_) => repo
+            .find_reference("HEAD")
+            .ok()
+            .and_then(|r| r.symbolic_target().map(String::from))
+            .and_then(|t| t.strip_prefix("refs/heads/").map(String::from)),
     };
 
     let mut opts = StatusOptions::new();
@@ -43,7 +43,10 @@ pub fn snapshot(root: &Path) -> Option<GitSnapshot> {
 
     let statuses = repo.statuses(Some(&mut opts)).ok()?;
     for s in statuses.iter() {
-        let path = match s.path() { Some(p) => PathBuf::from(p), None => continue };
+        let path = match s.path() {
+            Some(p) => PathBuf::from(p),
+            None => continue,
+        };
         let flags = s.status();
         if flags.intersects(git2::Status::WT_MODIFIED | git2::Status::INDEX_MODIFIED) {
             modified.push(path);
@@ -56,7 +59,13 @@ pub fn snapshot(root: &Path) -> Option<GitSnapshot> {
         }
     }
 
-    Some(GitSnapshot { branch, modified, added, deleted, untracked })
+    Some(GitSnapshot {
+        branch,
+        modified,
+        added,
+        deleted,
+        untracked,
+    })
 }
 
 #[cfg(test)]
@@ -68,12 +77,21 @@ mod tests {
 
     fn init_repo() -> TempDir {
         let tmp = TempDir::new().unwrap();
-        Command::new("git").args(["init", "-q", "-b", "main"])
-            .current_dir(tmp.path()).status().unwrap();
-        Command::new("git").args(["config", "user.email", "t@t"])
-            .current_dir(tmp.path()).status().unwrap();
-        Command::new("git").args(["config", "user.name", "t"])
-            .current_dir(tmp.path()).status().unwrap();
+        Command::new("git")
+            .args(["init", "-q", "-b", "main"])
+            .current_dir(tmp.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "t@t"])
+            .current_dir(tmp.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "t"])
+            .current_dir(tmp.path())
+            .status()
+            .unwrap();
         tmp
     }
 
@@ -105,8 +123,16 @@ mod tests {
     fn modified_file_appears() {
         let tmp = init_repo();
         fs::write(tmp.path().join("a.txt"), "orig").unwrap();
-        Command::new("git").args(["add", "a.txt"]).current_dir(tmp.path()).status().unwrap();
-        Command::new("git").args(["commit", "-q", "-m", "init"]).current_dir(tmp.path()).status().unwrap();
+        Command::new("git")
+            .args(["add", "a.txt"])
+            .current_dir(tmp.path())
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .current_dir(tmp.path())
+            .status()
+            .unwrap();
         fs::write(tmp.path().join("a.txt"), "changed").unwrap();
         let snap = snapshot(tmp.path()).unwrap();
         assert_eq!(snap.modified.len(), 1);

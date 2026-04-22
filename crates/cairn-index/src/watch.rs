@@ -17,19 +17,26 @@ pub fn watch(root: &Path, store: Arc<IndexStore>) -> notify::Result<Watcher> {
     let (tx, rx) = mpsc::channel();
 
     let mut debouncer = new_debouncer(Duration::from_millis(200), tx)?;
-    debouncer.watcher().watch(&root, notify::RecursiveMode::Recursive)?;
+    debouncer
+        .watcher()
+        .watch(&root, notify::RecursiveMode::Recursive)?;
 
     let root_thr = root.clone();
     std::thread::spawn(move || {
         for events in rx {
-            let events = match events { Ok(e) => e, Err(_) => continue };
+            let events = match events {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
             for ev in events {
                 apply_event(&root_thr, &store, &ev.path, ev.kind);
             }
         }
     });
 
-    Ok(Watcher { _inner: Box::new(debouncer) })
+    Ok(Watcher {
+        _inner: Box::new(debouncer),
+    })
 }
 
 fn apply_event(root: &Path, store: &IndexStore, path: &Path, kind: DebouncedEventKind) {
@@ -37,33 +44,41 @@ fn apply_event(root: &Path, store: &IndexStore, path: &Path, kind: DebouncedEven
         Ok(r) => r.to_string_lossy().into_owned(),
         Err(_) => return,
     };
-    if rel.is_empty() || rel.starts_with(".git") { return; }
+    if rel.is_empty() || rel.starts_with(".git") {
+        return;
+    }
 
-    match kind {
-        DebouncedEventKind::Any => {
-            if !path.exists() {
-                let _ = store.delete_file(&rel);
-                return;
-            }
-            let md = match path.metadata() { Ok(m) => m, Err(_) => return };
-            let ft = md.file_type();
-            let kind_enum = if ft.is_dir() { FileKind::Directory }
-                            else if ft.is_symlink() { FileKind::Symlink }
-                            else { FileKind::Regular };
-            let row = FileRow {
-                size: md.len(),
-                mtime_unix: md.mtime(),
-                kind: kind_enum,
-                git_status: None,
-                symbol_count: 0,
-            };
-            let _ = store.put_file(&rel, &row);
-            if matches!(kind_enum, FileKind::Regular) {
-                let syms = crate::symbols::extract_from_file(path);
-                if !syms.is_empty() { let _ = store.put_symbols(&rel, &syms); }
+    if kind == DebouncedEventKind::Any {
+        if !path.exists() {
+            let _ = store.delete_file(&rel);
+            return;
+        }
+        let md = match path.metadata() {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+        let ft = md.file_type();
+        let kind_enum = if ft.is_dir() {
+            FileKind::Directory
+        } else if ft.is_symlink() {
+            FileKind::Symlink
+        } else {
+            FileKind::Regular
+        };
+        let row = FileRow {
+            size: md.len(),
+            mtime_unix: md.mtime(),
+            kind: kind_enum,
+            git_status: None,
+            symbol_count: 0,
+        };
+        let _ = store.put_file(&rel, &row);
+        if matches!(kind_enum, FileKind::Regular) {
+            let syms = crate::symbols::extract_from_file(path);
+            if !syms.is_empty() {
+                let _ = store.put_symbols(&rel, &syms);
             }
         }
-        _ => {}
     }
 }
 
@@ -87,6 +102,9 @@ mod tests {
         std::thread::sleep(Duration::from_millis(1500));
 
         let got = store.get_file("added.txt").unwrap();
-        assert!(got.is_some(), "FSEvents-driven index update should have added 'added.txt'");
+        assert!(
+            got.is_some(),
+            "FSEvents-driven index update should have added 'added.txt'"
+        );
     }
 }

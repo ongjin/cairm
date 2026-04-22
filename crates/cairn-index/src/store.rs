@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 const TABLE_FILES: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("files");
-const TABLE_SYMBOLS: redb::TableDefinition<(&str, u32), &[u8]> = redb::TableDefinition::new("symbols");
+const TABLE_SYMBOLS: redb::TableDefinition<(&str, u32), &[u8]> =
+    redb::TableDefinition::new("symbols");
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FileRow {
@@ -15,7 +16,11 @@ pub struct FileRow {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub enum FileKind { Regular, Directory, Symlink }
+pub enum FileKind {
+    Regular,
+    Directory,
+    Symlink,
+}
 
 /// Single-byte git status for compact storage.
 /// M=modified, A=added, D=deleted, U=untracked, R=renamed.
@@ -82,14 +87,19 @@ impl IndexStore {
         Ok(out)
     }
 
-    pub fn put_symbols(&self, rel: &str, syms: &[crate::symbols::SymbolRow]) -> Result<(), IndexError> {
+    pub fn put_symbols(
+        &self,
+        rel: &str,
+        syms: &[crate::symbols::SymbolRow],
+    ) -> Result<(), IndexError> {
         let tx = self.db.begin_write()?;
         {
             let mut t = tx.open_table(TABLE_SYMBOLS)?;
             // Clear existing for this file.
             let keys: Vec<(String, u32)> = {
                 let read = t.iter()?;
-                read.filter_map(|e| e.ok().map(|(k,_)| (k.value().0.to_string(), k.value().1))).collect()
+                read.filter_map(|e| e.ok().map(|(k, _)| (k.value().0.to_string(), k.value().1)))
+                    .collect()
             };
             for (p, idx) in keys.iter().filter(|(p, _)| p == rel) {
                 t.remove((p.as_str(), *idx))?;
@@ -103,7 +113,11 @@ impl IndexStore {
         Ok(())
     }
 
-    pub fn query_symbols(&self, needle: &str, limit: usize) -> Result<Vec<(String, crate::symbols::SymbolRow)>, IndexError> {
+    pub fn query_symbols(
+        &self,
+        needle: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, crate::symbols::SymbolRow)>, IndexError> {
         let tx = self.db.begin_read()?;
         let t = tx.open_table(TABLE_SYMBOLS)?;
         let mut out = Vec::new();
@@ -115,7 +129,9 @@ impl IndexStore {
             if needle.is_empty() || row.name.to_lowercase().contains(&needle_lc) {
                 out.push((rel.to_string(), row));
             }
-            if out.len() >= limit { break; }
+            if out.len() >= limit {
+                break;
+            }
         }
         Ok(out)
     }
@@ -123,12 +139,18 @@ impl IndexStore {
 
 #[derive(Debug, thiserror::Error)]
 pub enum IndexError {
-    #[error("redb: {0}")] Db(#[from] redb::Error),
-    #[error("redb transaction: {0}")] Tx(#[from] redb::TransactionError),
-    #[error("redb storage: {0}")] Storage(#[from] redb::StorageError),
-    #[error("redb table: {0}")] Table(#[from] redb::TableError),
-    #[error("redb commit: {0}")] Commit(#[from] redb::CommitError),
-    #[error("bincode: {0}")] Codec(#[from] bincode::Error),
+    #[error("redb: {0}")]
+    Db(#[from] redb::Error),
+    #[error("redb transaction: {0}")]
+    Tx(#[from] redb::TransactionError),
+    #[error("redb storage: {0}")]
+    Storage(#[from] redb::StorageError),
+    #[error("redb table: {0}")]
+    Table(#[from] redb::TableError),
+    #[error("redb commit: {0}")]
+    Commit(#[from] redb::CommitError),
+    #[error("bincode: {0}")]
+    Codec(#[from] bincode::Error),
 }
 
 /// Compute cache path under user's cache dir.
@@ -138,7 +160,9 @@ pub fn cache_path_for(root: &Path) -> PathBuf {
     hasher.update(root.to_string_lossy().as_bytes());
     let hash = hex::encode(hasher.finalize());
     let base = dirs::cache_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-    base.join("Cairn").join("index").join(format!("{hash}.redb"))
+    base.join("Cairn")
+        .join("index")
+        .join(format!("{hash}.redb"))
 }
 
 #[cfg(test)]
@@ -147,7 +171,13 @@ mod tests {
     use tempfile::TempDir;
 
     fn sample() -> FileRow {
-        FileRow { size: 42, mtime_unix: 1_700_000_000, kind: FileKind::Regular, git_status: None, symbol_count: 0 }
+        FileRow {
+            size: 42,
+            mtime_unix: 1_700_000_000,
+            kind: FileKind::Regular,
+            git_status: None,
+            symbol_count: 0,
+        }
     }
 
     #[test]
