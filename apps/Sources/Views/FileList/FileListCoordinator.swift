@@ -794,8 +794,10 @@ final class FileListCoordinator: NSObject,
             pasteCopy(urls: urls, into: dir)
         case (.files(let urls), .move):
             pasteMove(urls: urls, into: dir)
-        default:
-            NSSound.beep()  // .image branches handled in Task 10
+        case (.image(let data, let ext), _):
+            // Operation is ignored for images — clipboard images don't have a
+            // source file to move. ⌘V and ⌥⌘V both "paste" the image.
+            pasteImage(data: data, ext: ext, into: dir)
         }
     }
 
@@ -842,6 +844,53 @@ final class FileListCoordinator: NSObject,
             // exactly right for ⌥⌘V too.
             registerMoveUndo(moved)
             onMoved()
+        }
+    }
+
+    private func pasteImage(data: Data, ext: String, into dir: URL) {
+        let dest = ClipboardPasteService.uniqueDestination(
+            filename: "Untitled.\(ext)", in: dir, rule: .appendNumber)
+        // Off-main write: a retina screenshot PNG is ~10 MB and would hitch
+        // scrolling if written synchronously on the main actor.
+        let onMoved = self.onMoved
+        Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                try data.write(to: dest, options: .atomic)
+                await MainActor.run {
+                    self?.registerPasteImageUndo(dest: dest, data: data)
+                    onMoved()
+                }
+            } catch {
+                await MainActor.run { NSSound.beep() }
+            }
+        }
+    }
+
+    private func registerPasteImageUndo(dest: URL, data: Data) {
+        guard let undoManager else { return }
+        let onMoved = self.onMoved
+        let target = self
+        undoManager.registerUndo(withTarget: target) { _ in
+            try? FileManager.default.removeItem(at: dest)
+            onMoved()
+            undoManager.registerUndo(withTarget: target) { coord in
+                coord.replayPasteImage(dest: dest, data: data)
+            }
+        }
+        undoManager.setActionName("Paste Screenshot")
+    }
+
+    private func replayPasteImage(dest: URL, data: Data) {
+        // Find a fresh collision-free name in case the user filled the
+        // original slot between undo and redo.
+        let dir = dest.deletingLastPathComponent()
+        let fresh = ClipboardPasteService.uniqueDestination(
+            filename: dest.lastPathComponent, in: dir, rule: .appendNumber)
+        if (try? data.write(to: fresh, options: .atomic)) != nil {
+            registerPasteImageUndo(dest: fresh, data: data)
+            onMoved()
+        } else {
+            NSSound.beep()
         }
     }
 
