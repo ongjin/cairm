@@ -198,25 +198,6 @@ struct ContentView: View {
         ToolbarItem(placement: .navigation) {
             BreadcrumbBar(tab: tab)
         }
-
-        ToolbarItem(placement: .primaryAction) {
-            Button(action: { palette.open() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "magnifyingglass")
-                    Text("⌘K")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.secondary.opacity(0.12))
-                )
-            }
-            .buttonStyle(.plain)
-            .help("Open Command Palette")
-        }
     }
 
     private func builtinCommands() -> [PaletteCommand] {
