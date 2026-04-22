@@ -15,6 +15,9 @@ cairn-core = { path = "../cairn-core" }
 cairn-walker = { path = "../cairn-walker" }
 cairn-preview = { path = "../cairn-preview" }
 cairn-search = { path = "../cairn-search" }
+cairn-index = { path = "../cairn-index" }
+cairn-git = { path = "../cairn-git" }
+which = "6"
 swift-bridge = "0.1"
 
 [build-dependencies]

@@ -18,6 +18,9 @@
 
 #![allow(clippy::unnecessary_cast)]
 
+pub mod index;
+pub mod git;
+
 use std::path::Path;
 
 #[swift_bridge::bridge]

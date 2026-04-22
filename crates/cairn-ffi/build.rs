@@ -5,7 +5,7 @@ fn main() {
     // ./generated/ 아래에 Swift 소스와 C 헤더를 생성한다.
     let out_dir = PathBuf::from("./generated");
 
-    let bridges = vec!["src/lib.rs"];
+    let bridges = vec!["src/lib.rs", "src/index.rs", "src/git.rs"];
     for path in &bridges {
         println!("cargo:rerun-if-changed={}", path);
     }
