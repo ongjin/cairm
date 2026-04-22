@@ -31,3 +31,5 @@ generated/
 # DMG build artifacts (make-dmg.sh)
 *.dmg
 .dmg-build/
+
+node_modules
