@@ -143,6 +143,8 @@ struct ContentView: View {
             folder: folder,
             folderColumnVisible: showFolderCol,
             searchRoot: searchRoot,
+            folderRoot: tab.currentFolder,
+            gitSnapshot: tab.git?.snapshot,
             onActivate: { handleOpen($0, tab: tab) },
             onAddToPinned: handleAddToPinned,
             isPinnedCheck: { entry in

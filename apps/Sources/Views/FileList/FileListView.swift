@@ -26,6 +26,13 @@ struct FileListView: NSViewRepresentable {
     /// Root URL the Folder column truncates paths against. Nil when not in
     /// subtree search.
     let searchRoot: URL?
+    /// Tab's current folder — used by the Git column to compute each entry's
+    /// path relative to the repo root. Independent of `searchRoot` (which is
+    /// nil outside subtree search). Nil means no git-relative mapping.
+    let folderRoot: URL?
+    /// Latest GitService snapshot for the tab's folder. Nil when the folder
+    /// isn't a git repo; the Git column renders "—" in that case.
+    let gitSnapshot: GitService.Snapshot?
 
     /// Called when a row is activated (double-click or ⏎). The closure receives
     /// the FileEntry; the caller decides whether to push history or open in NSWorkspace.
@@ -78,6 +85,15 @@ struct FileListView: NSViewRepresentable {
         modCol.sortDescriptorPrototype = NSSortDescriptor(key: "modified", ascending: false)
         table.addTableColumn(modCol)
 
+        // Git column — always registered so the header position is stable across
+        // tabs; cell renders "—" in non-repo folders. No sortDescriptorPrototype:
+        // sorting by git status isn't useful in M1.8.
+        let gitCol = NSTableColumn(identifier: .git)
+        gitCol.title = "Git"
+        gitCol.minWidth = 28
+        gitCol.width = 40
+        table.addTableColumn(gitCol)
+
         // Coordinator wears both hats.
         table.dataSource = context.coordinator
         table.delegate = context.coordinator
@@ -111,6 +127,8 @@ struct FileListView: NSViewRepresentable {
         guard let table = scroll.documentView as? FileListNSTableView else { return }
         context.coordinator.setEntries(entries, searchRoot: searchRoot)
         context.coordinator.setFolderColumnVisible(folderColumnVisible)
+        context.coordinator.setFolderRoot(folderRoot)
+        context.coordinator.setGitSnapshot(gitSnapshot)
         context.coordinator.applyModelSnapshot(table: table)
     }
 
@@ -128,4 +146,5 @@ extension NSUserInterfaceItemIdentifier {
     static let size = NSUserInterfaceItemIdentifier("col.size")
     static let modified = NSUserInterfaceItemIdentifier("col.modified")
     static let folder = NSUserInterfaceItemIdentifier("col.folder")
+    static let git = NSUserInterfaceItemIdentifier("col.git")
 }

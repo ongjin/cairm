@@ -45,6 +45,12 @@ final class FileListCoordinator: NSObject,
     private var externalEntries: [FileEntry]?
     private(set) var searchRoot: URL?
     private(set) var folderColumnVisible: Bool = false
+    /// Current tab's folder root — used only by the Git column to translate
+    /// each absolute entry path to a repo-relative one for set lookups.
+    private var folderRoot: URL?
+    /// Latest GitService snapshot for this tab's folder. Nil when the folder
+    /// isn't a git repo.
+    private var gitSnapshot: GitService.Snapshot?
 
     private let iconCache = FileListIconCache()
 
@@ -93,6 +99,18 @@ final class FileListCoordinator: NSObject,
     func setEntries(_ entries: [FileEntry], searchRoot: URL?) {
         self.externalEntries = entries
         self.searchRoot = searchRoot
+    }
+
+    /// Sets the folder root used by the Git column for repo-relative path
+    /// lookups. Independent of `searchRoot`.
+    func setFolderRoot(_ url: URL?) {
+        self.folderRoot = url
+    }
+
+    /// Sets the current Git snapshot used by the Git column. Nil when the
+    /// tab's folder isn't a git repo.
+    func setGitSnapshot(_ snap: GitService.Snapshot?) {
+        self.gitSnapshot = snap
     }
 
     /// Toggles the "Folder" column used by subtree search results. Called by
@@ -206,6 +224,38 @@ final class FileListCoordinator: NSObject,
             }
             cell.textField?.stringValue = rel.isEmpty ? "—" : rel
             cell.textField?.alignment = .left
+        case .git:
+            cell.imageView?.image = nil
+            let full = entry.path.toString()
+            let rootPath = folderRoot?.standardizedFileURL.path ?? ""
+            let rel: String
+            if !rootPath.isEmpty, full.hasPrefix(rootPath) {
+                var r = String(full.dropFirst(rootPath.count))
+                if r.hasPrefix("/") { r.removeFirst() }
+                rel = r
+            } else {
+                rel = full
+            }
+            let symbol: String
+            let color: NSColor
+            if let snap = gitSnapshot {
+                if snap.modifiedPaths.contains(rel) {
+                    symbol = "M"; color = .systemYellow
+                } else if snap.addedPaths.contains(rel) {
+                    symbol = "A"; color = .systemGreen
+                } else if snap.deletedPaths.contains(rel) {
+                    symbol = "D"; color = .systemRed
+                } else if snap.untrackedPaths.contains(rel) {
+                    symbol = "??"; color = .secondaryLabelColor
+                } else {
+                    symbol = "—"; color = .tertiaryLabelColor
+                }
+            } else {
+                symbol = "—"; color = .tertiaryLabelColor
+            }
+            cell.textField?.stringValue = symbol
+            cell.textField?.textColor = color
+            cell.textField?.alignment = .center
         default:
             cell.textField?.stringValue = ""
         }
