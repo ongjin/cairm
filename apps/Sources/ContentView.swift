@@ -151,7 +151,7 @@ struct ContentView: View {
         }
         ToolbarItem(placement: .automatic) {
             if let searchModel {
-                SearchField(search: searchModel, focused: $searchFocused)
+                ThemedSearchField(search: searchModel, focused: $searchFocused)
             }
         }
         ToolbarItem(placement: .automatic) {

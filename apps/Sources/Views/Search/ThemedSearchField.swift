@@ -1,11 +1,16 @@
 import SwiftUI
 
-/// Toolbar search component. Holds a scope Picker (This Folder / Subtree)
-/// and the query text field. Progress badge appears during subtree streaming.
-/// Focus is bound externally so `ContentView` can wire `⌘F` to `focused = true`.
-struct SearchField: View {
+/// Search field styled to match Cairn's Glass Blue palette. Replaces the
+/// default `.roundedBorder` with an accent-tinted rounded rectangle + accent
+/// border so the field reads as "search in this app" rather than generic
+/// macOS text input. Scope Picker + progress badge unchanged from M1.6.
+///
+/// Focus is bound externally so `ContentView` can wire `⌘F` → `focused = true`.
+struct ThemedSearchField: View {
     @Bindable var search: SearchModel
     @FocusState.Binding var focused: Bool
+
+    @Environment(\.cairnTheme) private var theme
 
     var body: some View {
         HStack(spacing: 6) {
@@ -17,7 +22,17 @@ struct SearchField: View {
             .frame(width: 140)
 
             TextField("Search", text: $search.query)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: theme.cornerRadius)
+                        .fill(theme.accentMuted.opacity(0.3))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: theme.cornerRadius)
+                        .stroke(theme.accent.opacity(0.4), lineWidth: 1)
+                )
                 .focused($focused)
                 .frame(width: 200)
 
