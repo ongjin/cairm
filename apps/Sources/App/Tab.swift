@@ -20,7 +20,19 @@ final class Tab: Identifiable {
     let folder: FolderModel
     let search: SearchModel
     let preview: PreviewModel
+    /// Per-tab undo stack for file system mutations (drag-drop move, ⌘⌫
+    /// trash, context-menu trash). Lives on the tab so each tab's history
+    /// is independent — undoing in one tab won't surprise-resurrect a file
+    /// you trashed in another. Wired to ⌘Z / ⌘⇧Z via the Edit menu in
+    /// CairnApp's `CommandGroup(replacing: .undoRedo)`.
+    let undoManager = UndoManager()
+
     private(set) var index: IndexService?
+    /// Per-folder FSEventsStream watcher. Fires `folder.load(url)` whenever
+    /// any file under the current folder changes — including changes WE made
+    /// (drag/drop move, ⌘⌫, context-menu trash) and external ones (Finder,
+    /// terminal). Replaces the old "rely on user to ⌘R" pattern.
+    private var folderWatcher: FolderWatcher?
     private(set) var git: GitService?
 
     var history = NavigationHistory()
@@ -158,10 +170,31 @@ final class Tab: Identifiable {
         index = nil
         git = nil
 
+        // Rebuild the FS watcher synchronously — a directory swap should
+        // start observing the new root before the index task finishes,
+        // otherwise external edits during indexing get missed.
+        folderWatcher = FolderWatcher(root: url) { [weak self] in
+            guard let self, let cur = self.currentFolder else { return }
+            // Standardize the URL so a sandbox-resolved path matches the
+            // raw one stored on the watcher.
+            guard cur.standardizedFileURL.path == url.standardizedFileURL.path else { return }
+            Task { await self.folder.load(cur) }
+        }
+
         let target = url.standardizedFileURL
+        // Open index + git in parallel. The index walk on a large root can
+        // take a few seconds; running git after it would mean the Git column
+        // stays hidden for that whole window even though `git status` itself
+        // is sub-100ms. Two detached tasks let each surface the moment its
+        // own work finishes.
         servicesTask = Task.detached { [weak self] in
-            let idx = IndexService(root: url)
-            let gitSvc = GitService(root: url)
+            async let idxTask: IndexService? = Task.detached(priority: .userInitiated) {
+                IndexService(root: url)
+            }.value
+            async let gitTask: GitService = Task.detached(priority: .userInitiated) {
+                GitService(root: url)
+            }.value
+            let (idx, gitSvc) = await (idxTask, gitTask)
             if Task.isCancelled { return }
             await MainActor.run {
                 guard let self else { return }

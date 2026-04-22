@@ -70,17 +70,31 @@ final class FileListCoordinator: NSObject,
     private var onAddToPinned: (FileEntry) -> Void
     private var isPinnedCheck: (FileEntry) -> Bool
     private var onSelectionChanged: (FileEntry?) -> Void
+    /// Called after a successful drop-move so the host can reload the folder
+    /// (and trigger any side effects like search refresh). The Rust index
+    /// watcher will eventually pick up the FS change too, but reloading here
+    /// makes the UI feel synchronous.
+    private var onMoved: () -> Void
+    /// Tab-scoped undo stack. Coordinator registers inverse FS operations
+    /// here after every successful move / trash so ⌘Z reverts them. Held
+    /// weakly because the Tab owns the manager's lifetime; if the tab goes
+    /// away mid-operation we just skip registration.
+    private weak var undoManager: UndoManager?
 
     init(folder: FolderModel,
          onActivate: @escaping (FileEntry) -> Void,
          onAddToPinned: @escaping (FileEntry) -> Void,
          isPinnedCheck: @escaping (FileEntry) -> Bool,
-         onSelectionChanged: @escaping (FileEntry?) -> Void) {
+         onSelectionChanged: @escaping (FileEntry?) -> Void,
+         onMoved: @escaping () -> Void = {},
+         undoManager: UndoManager? = nil) {
         self.folder = folder
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
         self.onSelectionChanged = onSelectionChanged
+        self.onMoved = onMoved
+        self.undoManager = undoManager
         super.init()
     }
 
@@ -111,13 +125,17 @@ final class FileListCoordinator: NSObject,
                         onActivate: @escaping (FileEntry) -> Void,
                         onAddToPinned: @escaping (FileEntry) -> Void,
                         isPinnedCheck: @escaping (FileEntry) -> Bool,
-                        onSelectionChanged: @escaping (FileEntry?) -> Void) {
+                        onSelectionChanged: @escaping (FileEntry?) -> Void,
+                        onMoved: @escaping () -> Void = {},
+                        undoManager: UndoManager? = nil) {
         let folderChanged = self.folder !== folder
         self.folder = folder
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
         self.onSelectionChanged = onSelectionChanged
+        self.onMoved = onMoved
+        self.undoManager = undoManager
         if folderChanged {
             resetPerFolderCaches()
             // Deliberately skip applyModelSnapshot here — updateNSView will call
@@ -513,8 +531,11 @@ final class FileListCoordinator: NSObject,
     @objc private func menuMoveToTrash(_ sender: NSMenuItem) {
         guard let payload = sender.representedObject as? MenuPayload else { return }
         let url = URL(fileURLWithPath: payload.entry.path.toString())
+        var trashedURL: NSURL?
         do {
-            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            try FileManager.default.trashItem(at: url, resultingItemURL: &trashedURL)
+            registerTrashUndo(originalURL: url, trashedURL: trashedURL as URL?)
+            onMoved()
         } catch {
             let alert = NSAlert()
             alert.messageText = "Couldn't move to Trash"
@@ -522,6 +543,97 @@ final class FileListCoordinator: NSObject,
             alert.alertStyle = .warning
             alert.addButton(withTitle: "OK")
             alert.runModal()
+        }
+    }
+
+    /// Called by FileListNSTableView on ⌘⌫. Trashes every currently-selected
+    /// row; partial failures still trigger a reload so the successful
+    /// removals are reflected immediately.
+    func deleteSelected() {
+        guard let table = self.table else { return }
+        let indexes = table.selectedRowIndexes
+        guard !indexes.isEmpty else { return }
+        // Collect (orig, trashed-location) pairs so a single ⌘Z restores
+        // every file from one ⌘⌫. Without grouping the user would have to
+        // hit ⌘Z N times to undo a multi-select trash.
+        var pairs: [(URL, URL)] = []
+        for idx in indexes where idx >= 0 && idx < lastSnapshot.count {
+            let url = URL(fileURLWithPath: lastSnapshot[idx].path.toString())
+            var trashed: NSURL?
+            do {
+                try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
+                if let t = trashed as URL? { pairs.append((url, t)) }
+            } catch {
+                NSSound.beep()
+            }
+        }
+        if !pairs.isEmpty {
+            registerBatchTrashUndo(pairs)
+            onMoved()
+        }
+    }
+
+    /// Pushes "move trashed file back to original location" onto the undo
+    /// stack. The redo handler re-trashes — symmetric so ⌘⇧Z works.
+    private func registerTrashUndo(originalURL: URL, trashedURL: URL?) {
+        guard let undoManager, let trashedURL else { return }
+        let onMoved = self.onMoved
+        let target = self
+        undoManager.registerUndo(withTarget: target) { _ in
+            do {
+                try FileManager.default.moveItem(at: trashedURL, to: originalURL)
+                onMoved()
+                undoManager.registerUndo(withTarget: target) { coord in
+                    coord.menuMoveToTrashURL(originalURL)
+                }
+            } catch {
+                NSSound.beep()
+            }
+        }
+        undoManager.setActionName("Move to Trash")
+    }
+
+    private func registerBatchTrashUndo(_ pairs: [(URL, URL)]) {
+        guard let undoManager else { return }
+        let onMoved = self.onMoved
+        let target = self
+        undoManager.registerUndo(withTarget: target) { _ in
+            for (orig, trashed) in pairs {
+                try? FileManager.default.moveItem(at: trashed, to: orig)
+            }
+            onMoved()
+            undoManager.registerUndo(withTarget: target) { coord in
+                coord.batchTrash(originalURLs: pairs.map { $0.0 })
+            }
+        }
+        undoManager.setActionName(pairs.count == 1 ? "Move to Trash" : "Move \(pairs.count) Items to Trash")
+    }
+
+    /// Plumbing for redo paths — same as menuMoveToTrash but takes the URL
+    /// directly instead of a menu payload.
+    private func menuMoveToTrashURL(_ url: URL) {
+        var trashed: NSURL?
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
+            registerTrashUndo(originalURL: url, trashedURL: trashed as URL?)
+            onMoved()
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    private func batchTrash(originalURLs urls: [URL]) {
+        var pairs: [(URL, URL)] = []
+        for url in urls {
+            var trashed: NSURL?
+            if (try? FileManager.default.trashItem(at: url, resultingItemURL: &trashed)) != nil,
+               let t = trashed as URL? {
+                pairs.append((url, t))
+            }
+        }
+        if !pairs.isEmpty {
+            registerBatchTrashUndo(pairs)
+            onMoved()
         }
     }
 
@@ -634,6 +746,112 @@ final class FileListCoordinator: NSObject,
         case "size": return .size
         case "modified": return .modified
         default: return nil
+        }
+    }
+}
+
+// MARK: - Drag & drop (file move)
+//
+// Drag source: any selected row exports its absolute file URL via the standard
+// `.fileURL` pasteboard type, so files can be dragged out to Finder or any
+// other URL-aware target.
+//
+// Drop target: when the proposed drop is .on a folder row, accept the drop
+// and `FileManager.moveItem` each pasteboard URL into that folder. We don't
+// accept `.above` drops on a list — reordering files in a folder isn't a
+// meaningful operation; if the user wants to move INTO the current folder
+// they should drop on the breadcrumb / sidebar instead.
+extension FileListCoordinator {
+    func tableView(_ tableView: NSTableView,
+                   pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard row >= 0, row < lastSnapshot.count else { return nil }
+        let entry = lastSnapshot[row]
+        return URL(fileURLWithPath: entry.path.toString()) as NSURL
+    }
+
+    func tableView(_ tableView: NSTableView,
+                   validateDrop info: NSDraggingInfo,
+                   proposedRow row: Int,
+                   proposedDropOperation op: NSTableView.DropOperation) -> NSDragOperation {
+        guard op == .on,
+              row >= 0, row < lastSnapshot.count,
+              lastSnapshot[row].kind == .Directory else {
+            return []
+        }
+        let targetURL = URL(fileURLWithPath: lastSnapshot[row].path.toString())
+        // Block dropping a folder onto itself or one of its descendants.
+        if let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+            for src in urls {
+                if src.standardizedFileURL.path == targetURL.standardizedFileURL.path { return [] }
+                if targetURL.standardizedFileURL.path.hasPrefix(src.standardizedFileURL.path + "/") { return [] }
+            }
+        }
+        return .move
+    }
+
+    func tableView(_ tableView: NSTableView,
+                   acceptDrop info: NSDraggingInfo,
+                   row: Int,
+                   dropOperation op: NSTableView.DropOperation) -> Bool {
+        guard op == .on, row >= 0, row < lastSnapshot.count else { return false }
+        let target = lastSnapshot[row]
+        guard target.kind == .Directory else { return false }
+        let targetURL = URL(fileURLWithPath: target.path.toString())
+
+        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
+            return false
+        }
+
+        var moved: [(URL, URL)] = []
+        for src in urls {
+            let dest = targetURL.appendingPathComponent(src.lastPathComponent)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                NSSound.beep()
+                continue
+            }
+            do {
+                try FileManager.default.moveItem(at: src, to: dest)
+                moved.append((src, dest))
+            } catch {
+                NSSound.beep()
+            }
+        }
+        if !moved.isEmpty {
+            registerMoveUndo(moved)
+            onMoved()
+            return true
+        }
+        return false
+    }
+
+    /// Push "move dest back to src" onto the undo stack for each successful
+    /// move in a drop. Symmetric — redo re-applies the move.
+    fileprivate func registerMoveUndo(_ pairs: [(URL, URL)]) {
+        guard let undoManager else { return }
+        let onMoved = self.onMoved
+        let target = self
+        undoManager.registerUndo(withTarget: target) { _ in
+            for (src, dest) in pairs {
+                try? FileManager.default.moveItem(at: dest, to: src)
+            }
+            onMoved()
+            undoManager.registerUndo(withTarget: target) { coord in
+                coord.replayMove(pairs)
+            }
+        }
+        undoManager.setActionName(pairs.count == 1 ? "Move" : "Move \(pairs.count) Items")
+    }
+
+    fileprivate func replayMove(_ pairs: [(URL, URL)]) {
+        var done: [(URL, URL)] = []
+        for (src, dest) in pairs {
+            if (try? FileManager.default.moveItem(at: src, to: dest)) != nil {
+                done.append((src, dest))
+            }
+        }
+        if !done.isEmpty {
+            registerMoveUndo(done)
+            onMoved()
         }
     }
 }

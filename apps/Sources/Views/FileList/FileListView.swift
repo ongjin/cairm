@@ -44,6 +44,12 @@ struct FileListView: NSViewRepresentable {
     /// Predicate used to label the menu item "Unpin" vs "Add to Pinned".
     let isPinnedCheck: (FileEntry) -> Bool
     let onSelectionChanged: (FileEntry?) -> Void
+    /// Called after a drop-move successfully relocates files. The host should
+    /// reload the folder so the moved entries disappear from this list.
+    var onMoved: () -> Void = {}
+    /// Tab-scoped undo stack. The coordinator registers inverse FS ops on
+    /// it after every successful move / trash so ⌘Z works.
+    var undoManager: UndoManager? = nil
 
     private static func makeGitColumn() -> NSTableColumn {
         let col = NSTableColumn(identifier: .git)
@@ -95,12 +101,18 @@ struct FileListView: NSViewRepresentable {
         modCol.sortDescriptorPrototype = NSSortDescriptor(key: "modified", ascending: false)
         table.addTableColumn(modCol)
 
-        // Git column — registered only when showGitColumn is true; cell renders
-        // "—" in non-repo folders. No sortDescriptorPrototype: sorting by git
-        // status isn't useful in M1.8.
-        if showGitColumn {
+        // Git column — only when the folder is actually a repo AND the
+        // setting is on. An always-empty column is just visual noise outside
+        // a git working tree, so we hide it rather than render "—" everywhere.
+        if showGitColumn && gitSnapshot != nil {
             table.addTableColumn(Self.makeGitColumn())
         }
+
+        // Drag & drop: export selected rows as file URLs and accept incoming
+        // file URL drops on folder rows (intra-app moves).
+        table.registerForDraggedTypes([.fileURL])
+        table.setDraggingSourceOperationMask([.move, .copy], forLocal: false)
+        table.setDraggingSourceOperationMask(.move, forLocal: true)
 
         // Coordinator wears both hats.
         table.dataSource = context.coordinator
@@ -116,6 +128,9 @@ struct FileListView: NSViewRepresentable {
         // Subclass needs a back-pointer for ⏎ activation.
         table.activationHandler = { [weak coord = context.coordinator] in
             coord?.activateSelected()
+        }
+        table.deleteHandler = { [weak coord = context.coordinator] in
+            coord?.deleteSelected()
         }
 
         // Right-click menu — delegate to Coordinator.
@@ -138,13 +153,18 @@ struct FileListView: NSViewRepresentable {
             onActivate: onActivate,
             onAddToPinned: onAddToPinned,
             isPinnedCheck: isPinnedCheck,
-            onSelectionChanged: onSelectionChanged
+            onSelectionChanged: onSelectionChanged,
+            onMoved: onMoved,
+            undoManager: undoManager
         )
-        // Sync Git column presence with the current setting.
+        // Sync Git column presence with the current setting AND whether
+        // the active folder is a git repo. Re-evaluated on every update so
+        // navigating into / out of a repo adds / removes the column live.
+        let shouldShowGit = showGitColumn && gitSnapshot != nil
         let hasGit = table.tableColumn(withIdentifier: .git) != nil
-        if showGitColumn && !hasGit {
+        if shouldShowGit && !hasGit {
             table.addTableColumn(Self.makeGitColumn())
-        } else if !showGitColumn && hasGit, let col = table.tableColumn(withIdentifier: .git) {
+        } else if !shouldShowGit && hasGit, let col = table.tableColumn(withIdentifier: .git) {
             table.removeTableColumn(col)
         }
         context.coordinator.setEntries(entries, searchRoot: searchRoot)
@@ -159,7 +179,9 @@ struct FileListView: NSViewRepresentable {
                             onActivate: onActivate,
                             onAddToPinned: onAddToPinned,
                             isPinnedCheck: isPinnedCheck,
-                            onSelectionChanged: onSelectionChanged)
+                            onSelectionChanged: onSelectionChanged,
+                            onMoved: onMoved,
+                            undoManager: undoManager)
     }
 }
 

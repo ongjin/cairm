@@ -24,6 +24,7 @@ struct CairnApp: App {
             CommandGroup(after: .newItem) {
                 TabFileMenuItems()
             }
+            EditCommands()
             NavigateCommands()
             ViewCommands()
             FindCommands()
@@ -69,6 +70,7 @@ struct WindowScene: View {
             // T13: drives ⌘T/W/1-9/⌥←→, ⌘R, ⌘⇧., ⌘D.
             .focusedSceneValue(\.scene, scene)
             .focusedSceneValue(\.appModel, app)
+            .focusedSceneValue(\.tabUndoManager, scene.activeTab?.undoManager)
     }
 }
 
@@ -82,6 +84,7 @@ struct WindowScene: View {
 private struct FocusedSceneKey: FocusedValueKey { typealias Value = WindowSceneModel }
 private struct FocusedAppKey: FocusedValueKey { typealias Value = AppModel }
 struct FocusedPaletteKey: FocusedValueKey { typealias Value = CommandPaletteModel }
+private struct FocusedUndoKey: FocusedValueKey { typealias Value = UndoManager }
 
 extension FocusedValues {
     var scene: WindowSceneModel? {
@@ -95,6 +98,10 @@ extension FocusedValues {
     var paletteModel: CommandPaletteModel? {
         get { self[FocusedPaletteKey.self] }
         set { self[FocusedPaletteKey.self] = newValue }
+    }
+    var tabUndoManager: UndoManager? {
+        get { self[FocusedUndoKey.self] }
+        set { self[FocusedUndoKey.self] = newValue }
     }
 }
 
@@ -203,5 +210,42 @@ struct FindCommands: Commands {
                 .keyboardShortcut("k", modifiers: [.command])
                 .disabled(palette == nil)
         }
+    }
+}
+
+// MARK: - Edit > Undo / Redo (file-system mutations)
+//
+// SwiftUI's default `.undoRedo` group looks for an UndoManager on whatever
+// view has focus, but our file list lives inside an NSViewRepresentable so
+// the search misses. We replace the group with explicit buttons that read
+// the active tab's UndoManager via `@FocusedValue`. Action names propagate
+// through `setActionName` in the coordinator so the menu shows
+// "Undo Move to Trash" / "Redo Move 3 Items" etc.
+
+struct EditCommands: Commands {
+    @FocusedValue(\.tabUndoManager) private var undoManager: UndoManager?
+
+    var body: some Commands {
+        CommandGroup(replacing: .undoRedo) {
+            Button(undoTitle) { undoManager?.undo() }
+                .keyboardShortcut("z", modifiers: [.command])
+                .disabled(!(undoManager?.canUndo ?? false))
+            Button(redoTitle) { undoManager?.redo() }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(!(undoManager?.canRedo ?? false))
+        }
+    }
+
+    private var undoTitle: String {
+        if let name = undoManager?.undoActionName, !name.isEmpty {
+            return "Undo \(name)"
+        }
+        return "Undo"
+    }
+    private var redoTitle: String {
+        if let name = undoManager?.redoActionName, !name.isEmpty {
+            return "Redo \(name)"
+        }
+        return "Redo"
     }
 }
