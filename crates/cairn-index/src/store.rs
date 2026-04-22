@@ -34,6 +34,7 @@ impl IndexStore {
         let tx = db.begin_write()?;
         {
             let _ = tx.open_table(TABLE_FILES)?;
+            let _ = tx.open_table(TABLE_SYMBOLS)?;
         }
         tx.commit()?;
         Ok(Self { db })
@@ -106,11 +107,12 @@ impl IndexStore {
         let tx = self.db.begin_read()?;
         let t = tx.open_table(TABLE_SYMBOLS)?;
         let mut out = Vec::new();
+        let needle_lc = needle.to_lowercase();
         for entry in t.iter()? {
             let (k, v) = entry?;
             let (rel, _idx) = k.value();
             let row: crate::symbols::SymbolRow = bincode::deserialize(v.value())?;
-            if needle.is_empty() || row.name.to_lowercase().contains(&needle.to_lowercase()) {
+            if needle.is_empty() || row.name.to_lowercase().contains(&needle_lc) {
                 out.push((rel.to_string(), row));
             }
             if out.len() >= limit { break; }
