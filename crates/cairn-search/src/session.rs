@@ -92,10 +92,27 @@ pub(crate) fn status(h: SearchHandle) -> SearchStatus {
 }
 
 pub(crate) fn cancel(h: SearchHandle) {
-    let reg = REGISTRY.lock().unwrap();
-    if let Some(session) = reg.get(&h.0) {
-        session.cancel.store(true, Ordering::SeqCst);
-    }
+    // Set the cancel flag THEN evict the session so its `Receiver` is
+    // dropped. Without the eviction, a walker that's blocked on a full
+    // `tx.send` (caller stopped polling after cancel — the standard Swift
+    // pattern in `SearchModel.cancel`/`refresh`) would never observe the
+    // flag and the worker thread would leak forever. Dropping the receiver
+    // makes the next `tx.send` return `Err`, which the walker treats as a
+    // clean exit.
+    let removed = {
+        let mut reg = REGISTRY.lock().unwrap();
+        let entry = reg.get(&h.0).cloned();
+        if let Some(session) = &entry {
+            session.cancel.store(true, Ordering::SeqCst);
+        }
+        // Eviction happens regardless — `next_batch` on a stale handle
+        // returns `None` (see early-return on `reg.get`), matching the
+        // post-natural-completion behavior. Callers that want the status
+        // of a cancelled session must read it before calling `cancel`.
+        reg.remove(&h.0);
+        entry
+    };
+    drop(removed);
 }
 
 // --- Walker implementations ---

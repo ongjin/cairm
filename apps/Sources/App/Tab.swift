@@ -166,7 +166,8 @@ final class Tab: Identifiable {
     /// Cancels any previous in-flight rebuild and guards against stale results
     /// by checking `currentFolder` equals the URL we opened before committing.
     private func rebuildServices(for url: URL) {
-        servicesTask?.cancel()
+        let previous = servicesTask
+        previous?.cancel()
         index = nil
         git = nil
 
@@ -188,6 +189,20 @@ final class Tab: Identifiable {
         // is sub-100ms. Two detached tasks let each surface the moment its
         // own work finishes.
         servicesTask = Task.detached { [weak self] in
+            // Serialize FFI service opens for this Tab — wait for the
+            // previous rebuild to fully release its IndexService/GitService
+            // before opening new ones. Without this, a fast back/forward to
+            // the same root can run two `ffi_index_open` calls concurrently
+            // for the same redb file; redb rejects the second open with
+            // `DatabaseAlreadyOpen`, the new task's `IndexService.init?`
+            // returns nil, and the tab silently loses indexing until the
+            // next navigation. `previous?.cancel()` above only signals — the
+            // synchronous Rust FFI call inside `IndexService.init?` does not
+            // observe Swift cancellation, so we must actually await
+            // completion (which drops the old IndexService and releases the
+            // redb file lock) before proceeding.
+            _ = await previous?.value
+            if Task.isCancelled { return }
             async let idxTask: IndexService? = Task.detached(priority: .userInitiated) {
                 IndexService(root: url)
             }.value
