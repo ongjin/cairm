@@ -54,10 +54,12 @@ struct ContentView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Color.orange.opacity(0.15))
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 contentBody(folder: folder, searchModel: searchModel)
             }
+            .animation(.easeInOut(duration: 0.2), value: searchModel.phase)
         } else {
             ProgressView().controlSize(.small)
         }
