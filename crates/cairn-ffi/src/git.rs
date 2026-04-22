@@ -61,7 +61,13 @@ impl GitPathList {
         self.paths.len()
     }
 
+    /// Returns an empty string if `index >= len()`. Swift refresh paths can
+    /// race a stale index against a fresh snapshot — degrade to "" instead
+    /// of panicking the host process.
     fn at(&self, index: usize) -> String {
+        if index >= self.paths.len() {
+            return String::new();
+        }
         self.paths[index].clone()
     }
 }
@@ -96,25 +102,41 @@ impl GitFullSnapshot {
     fn modified_len(&self) -> usize {
         self.modified.len()
     }
+    /// Returns "" on out-of-bounds — see `GitPathList::at` for rationale.
     fn modified_at(&self, index: usize) -> String {
+        if index >= self.modified.len() {
+            return String::new();
+        }
         self.modified[index].clone()
     }
     fn added_len(&self) -> usize {
         self.added.len()
     }
+    /// Returns "" on out-of-bounds — see `GitPathList::at` for rationale.
     fn added_at(&self, index: usize) -> String {
+        if index >= self.added.len() {
+            return String::new();
+        }
         self.added[index].clone()
     }
     fn deleted_len(&self) -> usize {
         self.deleted.len()
     }
+    /// Returns "" on out-of-bounds — see `GitPathList::at` for rationale.
     fn deleted_at(&self, index: usize) -> String {
+        if index >= self.deleted.len() {
+            return String::new();
+        }
         self.deleted[index].clone()
     }
     fn untracked_len(&self) -> usize {
         self.untracked.len()
     }
+    /// Returns "" on out-of-bounds — see `GitPathList::at` for rationale.
     fn untracked_at(&self, index: usize) -> String {
+        if index >= self.untracked.len() {
+            return String::new();
+        }
         self.untracked[index].clone()
     }
 }

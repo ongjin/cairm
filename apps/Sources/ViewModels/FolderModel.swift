@@ -108,9 +108,20 @@ final class FolderModel {
     /// Computed view: entries with directories first, then the chosen sort
     /// field applied within each group. Cached — see `_sortedCache`. Cache
     /// is invalidated on any mutation of `entries` or `sortDescriptor`.
+    ///
+    /// The name sort uses a "decorate-sort-undecorate" pass that lowercases
+    /// each name once into a key array, instead of lowercasing both sides on
+    /// every comparison. For 10K entries that's ~10K allocations instead of
+    /// ~260K. Other sort fields (size, modified) compare cheap scalars and
+    /// use the shared comparator unchanged.
     var sortedEntries: [FileEntry] {
         if let cached = _sortedCache { return cached }
-        let sorted = entries.sorted(by: Self.comparator(for: sortDescriptor))
+        let sorted: [FileEntry]
+        if sortDescriptor.field == .name {
+            sorted = Self.sortedByName(entries, order: sortDescriptor.order)
+        } else {
+            sorted = entries.sorted(by: Self.comparator(for: sortDescriptor))
+        }
         _sortedCache = sorted
         return sorted
     }

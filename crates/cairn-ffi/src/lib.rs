@@ -143,9 +143,13 @@ impl FileListing {
         self.entries.len()
     }
 
-    /// Panics if `index >= len()`. Swift wrapper iterates `0..len` so out-of-bounds
-    /// would indicate a programming error, not recoverable state.
+    /// Returns an empty entry if `index >= len()`. Swift normally iterates
+    /// `0..len`, but a stale index from a refresh race must NOT panic the
+    /// process — empty wire struct is the safe degenerate.
     fn entry(&self, index: usize) -> ffi::FileEntry {
+        if index >= self.entries.len() {
+            return empty_file_entry();
+        }
         wire_file_entry(&self.entries[index])
     }
 }
@@ -170,8 +174,13 @@ impl SearchBatch {
         self.entries.len()
     }
 
-    /// Panics if `index >= len()`. Swift wrapper iterates `0..len`.
+    /// Returns an empty entry if `index >= len()`. Search batches can race
+    /// with cancellation/refresh on the Swift side; an out-of-bounds call
+    /// must degrade to empty rather than abort the process.
     fn entry(&self, index: usize) -> ffi::FileEntry {
+        if index >= self.entries.len() {
+            return empty_file_entry();
+        }
         wire_file_entry(&self.entries[index])
     }
 }
@@ -212,6 +221,21 @@ fn search_cancel(handle: u64) {
 }
 
 // ---- Wire-type conversions --------------------------------------------------
+
+/// Safe zero-value `FileEntry` for out-of-bounds accessor calls. swift-bridge
+/// generated structs don't implement `Default`, so we hand-construct the
+/// emptiest plausible row (Regular file, generic icon, all-zero metadata).
+fn empty_file_entry() -> ffi::FileEntry {
+    ffi::FileEntry {
+        path: String::new(),
+        name: String::new(),
+        size: 0,
+        modified_unix: 0,
+        kind: ffi::FileKind::Regular,
+        is_hidden: false,
+        icon_kind: ffi::IconKind::GenericFile,
+    }
+}
 
 fn wire_file_entry(e: &cairn_walker::FileEntry) -> ffi::FileEntry {
     ffi::FileEntry {

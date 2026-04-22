@@ -98,13 +98,31 @@ enum SymbolKind: UInt8 {
 
 /// Polling-based stream for content search results.
 final class ContentSearchSession {
+    /// Hard cap on `results` to keep memory and SwiftUI render cost bounded
+    /// for pathological queries on huge repos. The palette/search UI shows
+    /// at most a few hundred rows at a time, so 5K is a generous ceiling
+    /// that still prevents runaway growth (tens of thousands of hits).
+    /// Reaching the cap silently auto-cancels the session — callers see the
+    /// session stop producing new results, same as a natural completion.
+    static let maxResults = 5000
+
     private let sessionID: UInt64
     private(set) var results: [ContentHit] = []
+    /// Set once `cancel()` has fired the FFI so `deinit` doesn't fire it
+    /// again. The Rust side currently treats a missing-session cancel as a
+    /// no-op, but a double-call is wasteful and would become a latent bug
+    /// the moment cancellation gains side effects.
+    private var cancelled: Bool = false
 
     init(sessionID: UInt64) { self.sessionID = sessionID }
-    deinit { ffi_content_cancel(sessionID) }
+    deinit {
+        if !cancelled { ffi_content_cancel(sessionID) }
+    }
 
     func poll(max: Int = 50) -> [ContentHit] {
+        // Stop polling entirely once we've hit the cap — there's no point
+        // pulling more hits we'd just throw away.
+        if cancelled || results.count >= Self.maxResults { return [] }
         let list = ffi_content_poll(sessionID, UInt32(max))
         let n = list.len()
         var mapped: [ContentHit] = []
@@ -114,10 +132,22 @@ final class ContentSearchSession {
             mapped.append(ContentHit(pathRel: h.path_rel.toString(), line: Int(h.line), preview: h.preview.toString()))
         }
         results.append(contentsOf: mapped)
+        if results.count >= Self.maxResults {
+            // Trim any overshoot from the final batch, then auto-cancel so
+            // the Rust worker stops producing.
+            if results.count > Self.maxResults {
+                results.removeLast(results.count - Self.maxResults)
+            }
+            cancel()
+        }
         return mapped
     }
 
-    func cancel() { ffi_content_cancel(sessionID) }
+    func cancel() {
+        guard !cancelled else { return }
+        cancelled = true
+        ffi_content_cancel(sessionID)
+    }
 }
 
 struct ContentHit: Identifiable, Hashable {

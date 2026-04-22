@@ -65,8 +65,11 @@ impl IndexStore {
     }
 
     pub fn put_file(&self, rel: &str, row: &FileRow) -> Result<(), IndexError> {
-        self.files_gen.fetch_add(1, Ordering::AcqRel);
+        // Serialize BEFORE acquiring the redb write lock so we hold it for
+        // the table write only — bincode encode is pure CPU work and has no
+        // business inside the lock-protected critical section.
         let bytes = bincode::serialize(row)?;
+        self.files_gen.fetch_add(1, Ordering::AcqRel);
         let tx = self.db.begin_write()?;
         {
             let mut t = tx.open_table(TABLE_FILES)?;
@@ -114,6 +117,15 @@ impl IndexStore {
     /// Symbols are written separately by `bulk_put_symbols` so the file
     /// index can become queryable before tree-sitter parsing finishes.
     pub fn bulk_put_files(&self, files: &[(String, FileRow)]) -> Result<(), IndexError> {
+        // Pre-serialize every row BEFORE acquiring the redb write lock. On
+        // a 50k-file repo this is the difference between holding the write
+        // lock for ~hundreds of ms (blocking the watcher) vs only the actual
+        // table inserts. bincode is pure CPU — keep it out of the critical
+        // section.
+        let serialized: Vec<(&str, Vec<u8>)> = files
+            .iter()
+            .map(|(rel, row)| bincode::serialize(row).map(|b| (rel.as_str(), b)))
+            .collect::<Result<Vec<_>, _>>()?;
         let tx = self.db.begin_write()?;
         {
             let mut tf = tx.open_table(TABLE_FILES)?;
@@ -129,9 +141,8 @@ impl IndexStore {
             for k in stale_keys {
                 tf.remove(k.as_str())?;
             }
-            for (rel, row) in files {
-                let bytes = bincode::serialize(row)?;
-                tf.insert(rel.as_str(), bytes.as_slice())?;
+            for (rel, bytes) in &serialized {
+                tf.insert(*rel, bytes.as_slice())?;
             }
             // Symbols are written by a later background pass; drop the old
             // ones here so the symbol table stays consistent with files.
@@ -158,14 +169,21 @@ impl IndexStore {
         &self,
         symbols: &[(String, Vec<crate::symbols::SymbolRow>)],
     ) -> Result<(), IndexError> {
+        // Pre-serialize so the redb write lock is held only for the inserts.
+        // tree-sitter rows can be a few KB each; serializing inside the lock
+        // would starve the file-watcher during background symbol passes.
+        let mut serialized: Vec<(&str, u32, Vec<u8>)> = Vec::new();
+        for (rel, syms) in symbols {
+            for (i, sym) in syms.iter().enumerate() {
+                let bytes = bincode::serialize(sym)?;
+                serialized.push((rel.as_str(), i as u32, bytes));
+            }
+        }
         let tx = self.db.begin_write()?;
         {
             let mut ts = tx.open_table(TABLE_SYMBOLS)?;
-            for (rel, syms) in symbols {
-                for (i, sym) in syms.iter().enumerate() {
-                    let bytes = bincode::serialize(sym)?;
-                    ts.insert((rel.as_str(), i as u32), bytes.as_slice())?;
-                }
+            for (rel, idx, bytes) in &serialized {
+                ts.insert((*rel, *idx), bytes.as_slice())?;
             }
         }
         tx.commit()?;
@@ -216,6 +234,12 @@ impl IndexStore {
         rel: &str,
         syms: &[crate::symbols::SymbolRow],
     ) -> Result<(), IndexError> {
+        // Pre-serialize before opening the write tx — same rationale as the
+        // bulk paths: keep the redb write lock free of CPU work.
+        let serialized: Vec<Vec<u8>> = syms
+            .iter()
+            .map(bincode::serialize)
+            .collect::<Result<Vec<_>, _>>()?;
         let tx = self.db.begin_write()?;
         {
             let mut t = tx.open_table(TABLE_SYMBOLS)?;
@@ -228,8 +252,7 @@ impl IndexStore {
             for (p, idx) in keys.iter().filter(|(p, _)| p == rel) {
                 t.remove((p.as_str(), *idx))?;
             }
-            for (i, s) in syms.iter().enumerate() {
-                let bytes = bincode::serialize(s)?;
+            for (i, bytes) in serialized.iter().enumerate() {
                 t.insert((rel, i as u32), bytes.as_slice())?;
             }
         }

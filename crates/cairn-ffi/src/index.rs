@@ -77,7 +77,17 @@ impl FileHitList {
     fn len(&self) -> usize {
         self.hits.len()
     }
+    /// Returns an empty hit if `index >= len()`. The palette can race a
+    /// stale index against a live refresh — degrade gracefully instead of
+    /// aborting the host process.
     fn at(&self, index: usize) -> ffi::FfiFileHit {
+        if index >= self.hits.len() {
+            return ffi::FfiFileHit {
+                path_rel: String::new(),
+                score: 0,
+                kind_raw: 0,
+            };
+        }
         let h = &self.hits[index];
         ffi::FfiFileHit {
             path_rel: h.path_rel.clone(),
@@ -95,7 +105,17 @@ impl SymbolHitList {
     fn len(&self) -> usize {
         self.hits.len()
     }
+    /// Returns an empty hit if `index >= len()`. See `FileHitList::at` for
+    /// rationale — never panic across the FFI boundary on stale indices.
     fn at(&self, index: usize) -> ffi::FfiSymbolHit {
+        if index >= self.hits.len() {
+            return ffi::FfiSymbolHit {
+                path_rel: String::new(),
+                name: String::new(),
+                kind_raw: 0,
+                line: 0,
+            };
+        }
         let h = &self.hits[index];
         ffi::FfiSymbolHit {
             path_rel: h.path_rel.clone(),
@@ -279,7 +299,17 @@ impl ContentHitList {
     fn len(&self) -> usize {
         self.hits.len()
     }
+    /// Returns an empty hit if `index >= len()`. Content polls drain a
+    /// background channel — Swift can hold a stale `len` snapshot just long
+    /// enough for a race; bounds-check rather than panic.
     fn at(&self, index: usize) -> ffi_content::FfiContentHit {
+        if index >= self.hits.len() {
+            return ffi_content::FfiContentHit {
+                path_rel: String::new(),
+                line: 0,
+                preview: String::new(),
+            };
+        }
         let h = &self.hits[index];
         ffi_content::FfiContentHit {
             path_rel: h.path_rel.clone(),
