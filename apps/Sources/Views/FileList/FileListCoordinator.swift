@@ -748,6 +748,32 @@ final class FileListCoordinator: NSObject,
         default: return nil
         }
     }
+
+    // MARK: - Clipboard (⌘C / ⌘V / ⌥⌘V)
+
+    /// True when at least one row is selected. Used by NSTableView's
+    /// validateMenuItem to gray out "Copy" when nothing's picked.
+    var hasSelection: Bool {
+        (table?.selectedRowIndexes.isEmpty ?? true) == false
+    }
+
+    /// Writes the selected rows' absolute URLs to the general pasteboard as
+    /// `.fileURL` items. Finder reads these directly — pasting in Finder
+    /// yields real files, not a path string.
+    ///
+    /// Distinct from the existing "Copy Path" menu item (⌥⌘C), which writes
+    /// the path as a plain string for shell-paste workflows.
+    func copySelectedToClipboard() {
+        guard let table else { return }
+        let indexes = table.selectedRowIndexes
+        guard !indexes.isEmpty else { NSSound.beep(); return }
+        let urls = indexes.compactMap { idx -> URL? in
+            guard idx >= 0, idx < lastSnapshot.count else { return nil }
+            return URL(fileURLWithPath: lastSnapshot[idx].path.toString())
+        }
+        guard !urls.isEmpty else { return }
+        ClipboardPasteService.writeFileURLs(urls, to: .general)
+    }
 }
 
 // MARK: - Drag & drop (file move)

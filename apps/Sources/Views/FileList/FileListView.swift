@@ -132,6 +132,9 @@ struct FileListView: NSViewRepresentable {
         table.deleteHandler = { [weak coord = context.coordinator] in
             coord?.deleteSelected()
         }
+        table.copyHandler = { [weak coord = context.coordinator] in
+            coord?.copySelectedToClipboard()
+        }
 
         // Right-click menu — delegate to Coordinator.
         table.menuHandler = { [weak coord = context.coordinator] event in
