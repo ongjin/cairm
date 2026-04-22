@@ -34,6 +34,7 @@ targets:
       properties:
         LSApplicationCategoryType: public.app-category.utilities
         NSHumanReadableCopyright: "Copyright © 2026 ongjin. MIT License."
+        CFBundleIconName: AppIcon
     settings:
       base:
         CODE_SIGN_ENTITLEMENTS: Sources/Cairn.entitlements
