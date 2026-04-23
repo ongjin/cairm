@@ -19,7 +19,14 @@ actor RemoteCacheStore {
         guard case .ssh(let t) = path.provider else {
             return URL(fileURLWithPath: path.path)
         }
-        let hostKey = "\(t.user)@\(t.hostname)-\(t.port)"
+        // Include `configHashHex` in the host key so two ssh_config
+        // aliases that share user/host/port but point at different
+        // environments (different ProxyCommand, IdentityFile, etc.)
+        // don't alias onto the same cached file. The `inflight`
+        // dedup map is keyed off this URL, so alias collisions
+        // would otherwise hand Quick Look / Open With a file
+        // downloaded from the wrong host environment.
+        let hostKey = "\(t.user)@\(t.hostname)-\(t.port)-\(t.configHashHex)"
         var h = SHA256()
         h.update(data: Data(path.path.utf8))
         let hash = h.finalize().map { String(format: "%02x", $0) }.joined()

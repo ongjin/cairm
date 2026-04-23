@@ -1298,10 +1298,20 @@ final class FileListCoordinator: NSObject,
                 // returns the SAME candidate — that signals a
                 // non-collision error (permission/transport) and
                 // spinning won't help.
+                //
+                // Every iteration checks `job.cancel.isCancelled`
+                // FIRST so a user cancel between the upload finishing
+                // and the rename committing still takes effect —
+                // otherwise the file would materialize at the final
+                // name after the UI says "cancelled".
                 var chosen = dstPath
                 let maxAttempts = 10
                 var attempt = 0
                 while true {
+                    if job.cancel.isCancelled {
+                        try? await self.provider.delete([tempRemotePath])
+                        throw CancellationError()
+                    }
                     do {
                         try await self.provider.rename(from: tempRemotePath, to: chosen)
                         return
@@ -1310,6 +1320,10 @@ final class FileListCoordinator: NSObject,
                         if attempt >= maxAttempts {
                             try? await self.provider.delete([tempRemotePath])
                             throw renameError
+                        }
+                        if job.cancel.isCancelled {
+                            try? await self.provider.delete([tempRemotePath])
+                            throw CancellationError()
                         }
                         let next: FSPath
                         do {
