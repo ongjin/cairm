@@ -84,18 +84,7 @@ final class SshFileSystemProvider: FileSystemProvider {
     }
 
     func downloadToCache(_ path: FSPath) async throws -> URL {
-        // RemoteCacheStore is Task 23 — stub with temp file download for now.
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cairn-remote-cache")
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathComponent(path.lastComponent)
-        try? FileManager.default.createDirectory(
-            at: tmp.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let cancel = CancelToken()
-        try await downloadToLocal(path, toLocalURL: tmp, progress: { _ in }, cancel: cancel)
-        return tmp
+        try await RemoteCacheStore.shared.fetch(remotePath: path, via: self)
     }
 
     func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: (Int64) -> Void, cancel: CancelToken) async throws {

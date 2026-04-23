@@ -11,6 +11,7 @@ enum PreviewState: Equatable {
     case directory(childCount: Int) // summary for a selected folder
     case binary                     // binary / unsupported
     case failed(String)             // user-facing error string
+    case pressSpaceForFullPreview   // remote binary/large file — hint to press Space for QL
 }
 
 /// Drives the detail pane.
@@ -84,6 +85,47 @@ final class PreviewModel {
             let dropped = cacheKeys.removeFirst()
             cacheValues.removeValue(forKey: dropped)
         }
+    }
+
+    // MARK: - Remote focus
+
+    /// Trigger a remote text-head preview for an SSH file.
+    /// Sets `focus` to a local-URL equivalent for header display, then overrides
+    /// the local-file inflight with a remote readHead fetch.
+    func setRemoteFocus(_ path: FSPath, via provider: FileSystemProvider) {
+        let displayURL = URL(fileURLWithPath: path.path)
+        focus = displayURL  // triggers handleFocusChange (starts local task, but we override it)
+        // Immediately cancel the local-file task and replace with remote load
+        inflight?.cancel()
+        let captured = path
+        inflight = Task { [weak self] in
+            await self?.loadHead(captured, via: provider)
+        }
+    }
+
+    private func loadHead(_ path: FSPath, via provider: FileSystemProvider) async {
+        if Task.isCancelled { return }
+        state = .loading
+        do {
+            let data = try await provider.readHead(path, max: 200 * 1024)
+            if Task.isCancelled { return }
+            if isLikelyText(data) {
+                let text = String(data: data, encoding: .utf8)
+                    ?? String(bytes: data, encoding: .isoLatin1)
+                    ?? ""
+                state = .text(text)
+            } else {
+                state = .pressSpaceForFullPreview
+            }
+        } catch {
+            if !Task.isCancelled {
+                state = .failed(ErrorMessage.userFacing(error))
+            }
+        }
+    }
+
+    private func isLikelyText(_ data: Data) -> Bool {
+        !data.prefix(8192).contains(0)
     }
 
     // MARK: - Focus handling

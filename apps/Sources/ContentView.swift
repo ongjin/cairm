@@ -355,7 +355,12 @@ struct ContentView: View {
 
     private func handleSelectionChanged(_ entry: FileEntry?, tab: Tab) {
         if let e = entry {
-            tab.preview.focus = URL(fileURLWithPath: e.path.toString())
+            if case .ssh = tab.provider.identifier {
+                let path = FSPath(provider: tab.provider.identifier, path: e.path.toString())
+                tab.preview.setRemoteFocus(path, via: tab.provider)
+            } else {
+                tab.preview.focus = URL(fileURLWithPath: e.path.toString())
+            }
         } else {
             tab.preview.focus = nil
         }

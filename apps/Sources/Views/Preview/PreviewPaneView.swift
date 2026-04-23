@@ -48,6 +48,16 @@ struct PreviewPaneView: View {
             BinaryPreview()
         case .failed(let m):
             FailedPreview(message: m)
+        case .pressSpaceForFullPreview:
+            VStack(spacing: 8) {
+                Image(systemName: "space")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.secondary)
+                Text("Press Space to preview")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

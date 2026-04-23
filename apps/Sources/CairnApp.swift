@@ -225,6 +225,12 @@ struct ViewCommands: Commands {
             }
             .keyboardShortcut("d", modifiers: [.command])
             .disabled(scene?.activeTab?.currentFolder == nil)
+
+            Divider()
+
+            Button("Clear Remote Cache") {
+                RemoteCacheStore.shared.clear()
+            }
         }
     }
 }

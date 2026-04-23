@@ -905,11 +905,21 @@ final class FileListCoordinator: NSObject,
 
     @objc private func menuOpenWith(_ sender: NSMenuItem) {
         guard let payload = sender.representedObject as? MenuPayload, let appURL = payload.appURL else { return }
-        let fileURL = URL(fileURLWithPath: payload.entry.path.toString())
-        NSWorkspace.shared.open([fileURL],
-                                withApplicationAt: appURL,
-                                configuration: .init()) { _, error in
-            if let error { NSLog("cairn: Open With failed — \(error.localizedDescription)") }
+        let p = FSPath(provider: provider.identifier, path: payload.entry.path.toString())
+        Task { [weak self] in
+            guard let self else { return }
+            let fileURL: URL
+            if case .ssh = p.provider {
+                guard let cached = try? await self.provider.downloadToCache(p) else { return }
+                try? FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: cached.path)
+                fileURL = cached
+            } else {
+                fileURL = URL(fileURLWithPath: payload.entry.path.toString())
+            }
+            NSWorkspace.shared.open([fileURL], withApplicationAt: appURL,
+                                    configuration: .init()) { _, error in
+                if let error { NSLog("cairn: Open With failed — \(error.localizedDescription)") }
+            }
         }
     }
 
@@ -926,14 +936,44 @@ final class FileListCoordinator: NSObject,
     /// the panel stays stable.
     func snapshotQuickLookURLs() {
         let selectedRows = table?.selectedRowIndexes ?? IndexSet()
-        let paths: [URL] = selectedRows.compactMap { row in
-            guard row < lastSnapshot.count else { return nil }
-            return URL(fileURLWithPath: lastSnapshot[row].path.toString())
+        var localPaths: [URL] = []
+        var remotePaths: [FSPath] = []
+
+        let rows = selectedRows.isEmpty ? (lastSnapshot.isEmpty ? [] : [0]) : Array(selectedRows)
+        for row in rows {
+            guard row < lastSnapshot.count else { continue }
+            let entry = lastSnapshot[row]
+            let p = FSPath(provider: provider.identifier, path: entry.path.toString())
+            if case .local = p.provider {
+                localPaths.append(URL(fileURLWithPath: entry.path.toString()))
+            } else {
+                remotePaths.append(p)
+            }
         }
-        if paths.isEmpty, !lastSnapshot.isEmpty {
-            quickLookSnapshot = [URL(fileURLWithPath: lastSnapshot[0].path.toString())]
-        } else {
-            quickLookSnapshot = paths
+
+        if remotePaths.isEmpty {
+            quickLookSnapshot = localPaths.isEmpty && !lastSnapshot.isEmpty
+                ? [URL(fileURLWithPath: lastSnapshot[0].path.toString())]
+                : localPaths
+            return
+        }
+
+        // Remote: start with empty snapshot (QL shows loading), download async, then reload
+        quickLookSnapshot = localPaths
+        Task { [weak self] in
+            guard let self else { return }
+            var downloaded: [URL] = []
+            for path in remotePaths {
+                if let url = try? await self.provider.downloadToCache(path) {
+                    downloaded.append(url)
+                }
+            }
+            await MainActor.run {
+                self.quickLookSnapshot = localPaths + downloaded
+                if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
+                    QLPreviewPanel.shared().reloadData()
+                }
+            }
         }
     }
 
