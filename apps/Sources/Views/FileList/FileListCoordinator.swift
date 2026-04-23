@@ -1316,6 +1316,20 @@ final class FileListCoordinator: NSObject,
                         try await self.provider.rename(from: tempRemotePath, to: chosen)
                         return
                     } catch let renameError {
+                        // Ambiguous-complete guard: under a flaky
+                        // transport the server may have committed
+                        // the rename before the client saw the
+                        // error. If `chosen` now exists and the
+                        // temp is gone, our rename landed — treat
+                        // it as success instead of spinning through
+                        // Untitled 2/3/… and eventually failing the
+                        // job (which would prompt a user retry and
+                        // create duplicates).
+                        let chosenExistsAfter = (try? await self.provider.exists(chosen)) == true
+                        let tempStillThere = (try? await self.provider.exists(tempRemotePath)) == true
+                        if chosenExistsAfter && !tempStillThere {
+                            return
+                        }
                         attempt += 1
                         if attempt >= maxAttempts {
                             try? await self.provider.delete([tempRemotePath])

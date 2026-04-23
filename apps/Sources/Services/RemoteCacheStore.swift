@@ -6,7 +6,15 @@ actor RemoteCacheStore {
 
     private let root: URL
     private let limitBytes: Int64 = 500 * 1024 * 1024
-    private var inflight: [URL: Task<URL, any Error>] = [:]
+    /// Each in-flight entry keeps both the wrapping Task and the cancel
+    /// token that drives `downloadToLocal`. `clear()` needs both: it
+    /// flips the token so the SFTP copy tears down promptly, then
+    /// awaits the task so the cache-root recreate races nothing.
+    private struct InflightEntry {
+        let task: Task<URL, any Error>
+        let cancel: CancelToken
+    }
+    private var inflight: [URL: InflightEntry] = [:]
 
     init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -39,8 +47,9 @@ actor RemoteCacheStore {
         let url = cacheURL(for: remotePath)
         // Deduplicate concurrent downloads for the same cache URL
         if let existing = inflight[url] {
-            return try await existing.value
+            return try await existing.task.value
         }
+        let cancel = CancelToken()
         let t = Task<URL, any Error> { [url] in
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -52,26 +61,60 @@ actor RemoteCacheStore {
                     return url
                 }
             }
-            let cancel = CancelToken()
-            try await provider.downloadToLocal(remotePath, toLocalURL: url,
-                                               progress: { _ in }, cancel: cancel)
+            // Download into a sibling temp path and atomically replace
+            // the final URL only on success. Writing directly to `url`
+            // would leave partial bytes under the canonical name on
+            // cancel/timeout, and the next fetch's mtime freshness
+            // check would happily hand that truncated file to Quick
+            // Look / Open With.
+            let tempURL = url
+                .deletingLastPathComponent()
+                .appendingPathComponent(".partial-\(UUID().uuidString)")
+            do {
+                try await provider.downloadToLocal(remotePath, toLocalURL: tempURL,
+                                                   progress: { _ in }, cancel: cancel)
+            } catch {
+                try? FileManager.default.removeItem(at: tempURL)
+                throw error
+            }
+            if cancel.isCancelled {
+                try? FileManager.default.removeItem(at: tempURL)
+                throw CancellationError()
+            }
+            // Replace existing final file if any, then move temp into place.
+            try? FileManager.default.removeItem(at: url)
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: url)
+            } catch {
+                try? FileManager.default.removeItem(at: tempURL)
+                throw error
+            }
             if let rm = remoteStat.mtime {
                 try? FileManager.default.setAttributes([.modificationDate: rm],
                                                        ofItemAtPath: url.path)
             }
             return url
         }
-        inflight[url] = t
+        inflight[url] = InflightEntry(task: t, cancel: cancel)
         defer { inflight.removeValue(forKey: url) }
         let result = try await t.value
         enforceLimit()
         return result
     }
 
-    func clear() {
-        // Cancel all in-flight downloads first
-        for (_, task) in inflight { task.cancel() }
+    func clear() async {
+        // Flip every in-flight cancel token so the underlying SFTP
+        // transfers stop writing to disk, then await each task so the
+        // cache root recreate below races nothing. Without this, a
+        // cancelled download could finish writing its temp file AFTER
+        // we remove `root`, repopulating a supposedly-cleared cache
+        // from the wrong environment.
+        let entries = Array(inflight.values)
+        for entry in entries { entry.cancel.cancel() }
         inflight.removeAll()
+        for entry in entries {
+            _ = try? await entry.task.value
+        }
         try? FileManager.default.removeItem(at: root)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }

@@ -275,7 +275,7 @@ struct ViewCommands: Commands {
             Divider()
 
             Button("Clear Remote Cache") {
-                RemoteCacheStore.shared.clear()
+                Task { await RemoteCacheStore.shared.clear() }
             }
         }
     }
