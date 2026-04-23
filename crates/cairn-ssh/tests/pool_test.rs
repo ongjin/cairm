@@ -21,6 +21,7 @@ fn connkey_dedup_by_content() {
         preferred_authentications: vec![],
         compression: false,
         hash_known_hosts: false,
+        password: None,
     };
     let a = ConnKey::from_resolved(&base);
     let b = ConnKey::from_resolved(&base);

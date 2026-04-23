@@ -9,7 +9,7 @@ use russh::client;
 use russh::keys::{self, key, PublicKeyBase64};
 use tracing::{debug, warn};
 
-use crate::auth::{format_tried, planned_methods, AuthMethod, PassphraseResolver};
+use crate::auth::{format_tried, planned_methods, AuthMethod, PassphraseResolver, PasswordResolver};
 use crate::config::resolve_host;
 use crate::error::{Result, SshError};
 use crate::hostkey::{HostKeyResolver, KnownHostsStore, KnownResult, TofuDecision};
@@ -67,6 +67,7 @@ impl SshPool {
         &self,
         spec: &ConnectSpec,
         passphrase: Arc<dyn PassphraseResolver>,
+        password: Arc<dyn PasswordResolver>,
         host_key_resolver: Arc<dyn HostKeyResolver>,
     ) -> Result<ConnKey> {
         // Resolve via ssh -G, then apply overrides.
@@ -82,6 +83,9 @@ impl SshPool {
         }
         if let Some(pc) = &spec.proxy_command_override {
             resolved.proxy_command = Some(pc.clone());
+        }
+        if let Some(pw) = &spec.password_override {
+            resolved.password = Some(pw.clone());
         }
 
         // Translate ProxyJump into an equivalent ProxyCommand. OpenSSH does
@@ -112,7 +116,7 @@ impl SshPool {
         }
 
         // Slow path: dial a new connection.
-        let handle = dial(&resolved, passphrase, host_key_resolver).await?;
+        let handle = dial(&resolved, passphrase, password, host_key_resolver).await?;
 
         {
             let mut map = self.inner.lock();
@@ -365,12 +369,14 @@ impl client::Handler for CairnHandler {
 // Dial — connect + authenticate
 // ---------------------------------------------------------------------------
 
-/// Maximum passphrase attempts for an encrypted key file.
+/// Maximum passphrase attempts for an encrypted key file. Also the retry budget
+/// for password auth when a preset/user-entered password is rejected.
 const MAX_PASSPHRASE_ATTEMPTS: usize = 3;
 
 async fn dial(
     resolved: &ResolvedConfig,
     passphrase: Arc<dyn PassphraseResolver>,
+    password: Arc<dyn PasswordResolver>,
     host_key_resolver: Arc<dyn HostKeyResolver>,
 ) -> Result<client::Handle<CairnHandler>> {
     let handler = CairnHandler::new(resolved, host_key_resolver);
@@ -421,6 +427,22 @@ async fn dial(
                     Ok(true) => return Ok(handle),
                     Ok(false) => tried.push(AuthMethod::KeyFile(path.clone())),
                     Err(_) => tried.push(AuthMethod::KeyFile(path.clone())),
+                }
+            }
+            AuthMethod::Password(preset) => {
+                match try_password_auth(
+                    &mut handle,
+                    &resolved.hostname,
+                    &resolved.user,
+                    preset,
+                    &*password,
+                )
+                .await
+                {
+                    Ok(true) => return Ok(handle),
+                    Ok(false) => tried.push(AuthMethod::Password(String::new())),
+                    Err(SshError::Cancelled) => return Err(SshError::Cancelled),
+                    Err(_) => tried.push(AuthMethod::Password(String::new())),
                 }
             }
         }
@@ -525,4 +547,77 @@ async fn try_key_auth(
         .map_err(|e| SshError::Russh(format!("{e:?}")))?;
 
     Ok(authed)
+}
+
+// ---------------------------------------------------------------------------
+// Password authentication
+// ---------------------------------------------------------------------------
+
+/// Attempts `authenticate_password` first, then falls back to
+/// `keyboard-interactive` using the same password for the first server prompt
+/// (OpenSSH's `password` stub answer pattern). On rejection, retries via the
+/// resolver up to `MAX_PASSPHRASE_ATTEMPTS` total including the preset.
+async fn try_password_auth(
+    handle: &mut client::Handle<CairnHandler>,
+    host: &str,
+    user: &str,
+    preset: &str,
+    resolver: &dyn PasswordResolver,
+) -> Result<bool> {
+    let mut current = preset.to_string();
+    for attempt in 0..MAX_PASSPHRASE_ATTEMPTS {
+        match attempt_password_once(handle, user, &current).await {
+            Ok(true) => return Ok(true),
+            Ok(false) => {
+                // Rejected — prompt for a new one.
+                let Some(next) = resolver.resolve(host, user).await else {
+                    return Err(SshError::Cancelled);
+                };
+                current = next;
+            }
+            Err(e) => {
+                debug!("password auth transport error on attempt {attempt}: {e:?}");
+                return Ok(false);
+            }
+        }
+    }
+    Ok(false)
+}
+
+/// One round-trip of `password` → `keyboard-interactive` fallback. Returns
+/// `Ok(true)` on success, `Ok(false)` on auth rejection, `Err(_)` on transport
+/// failure (caller should stop attempting).
+async fn attempt_password_once(
+    handle: &mut client::Handle<CairnHandler>,
+    user: &str,
+    password: &str,
+) -> std::result::Result<bool, anyhow::Error> {
+    use russh::client::KeyboardInteractiveAuthResponse;
+
+    if handle.authenticate_password(user, password).await? {
+        return Ok(true);
+    }
+    // Fallback: keyboard-interactive. Many modern sshd configs disable bare
+    // `password` and require `keyboard-interactive` — answer the first prompt
+    // batch with the same password, matching OpenSSH's default behaviour.
+    match handle
+        .authenticate_keyboard_interactive_start(user, None)
+        .await?
+    {
+        KeyboardInteractiveAuthResponse::Success => Ok(true),
+        KeyboardInteractiveAuthResponse::Failure => Ok(false),
+        KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
+            // Reply to every prompt with the password. Servers that ask for a
+            // second factor (e.g. TOTP) will reject this — that's acceptable;
+            // password-only hosts are the supported case.
+            let answers = vec![password.to_string(); prompts.len().max(1)];
+            match handle
+                .authenticate_keyboard_interactive_respond(answers)
+                .await?
+            {
+                KeyboardInteractiveAuthResponse::Success => Ok(true),
+                _ => Ok(false),
+            }
+        }
+    }
 }

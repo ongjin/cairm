@@ -136,6 +136,7 @@ pub fn parse_ssh_g_output(out: &str) -> Result<ResolvedConfig> {
         preferred_authentications,
         compression,
         hash_known_hosts,
+        password: None,
     })
 }
 

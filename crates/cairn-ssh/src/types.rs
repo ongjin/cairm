@@ -9,7 +9,7 @@ pub enum StrictMode {
     No,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ResolvedConfig {
     pub hostname: String,
     pub port: u16,
@@ -27,6 +27,35 @@ pub struct ResolvedConfig {
     pub preferred_authentications: Vec<String>,
     pub compression: bool,
     pub hash_known_hosts: bool,
+    /// Plain-text password override. When `Some`, the pool attempts password
+    /// auth (with keyboard-interactive fallback) before any other method. Never
+    /// persisted here — passed through per-connect from Swift (Keychain lookup
+    /// or user input in the Connect sheet).
+    pub password: Option<String>,
+}
+
+impl std::fmt::Debug for ResolvedConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResolvedConfig")
+            .field("hostname", &self.hostname)
+            .field("port", &self.port)
+            .field("user", &self.user)
+            .field("identity_files", &self.identity_files)
+            .field("identity_agent", &self.identity_agent)
+            .field("proxy_command", &self.proxy_command)
+            .field("proxy_jump", &self.proxy_jump)
+            .field("server_alive_interval", &self.server_alive_interval)
+            .field("server_alive_count_max", &self.server_alive_count_max)
+            .field("strict_host_key_checking", &self.strict_host_key_checking)
+            .field("user_known_hosts_file", &self.user_known_hosts_file)
+            .field("global_known_hosts_file", &self.global_known_hosts_file)
+            .field("host_key_algorithms", &self.host_key_algorithms)
+            .field("preferred_authentications", &self.preferred_authentications)
+            .field("compression", &self.compression)
+            .field("hash_known_hosts", &self.hash_known_hosts)
+            .field("password", &self.password.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -67,11 +96,29 @@ impl ConnKey {
 
 /// One-off connection spec — user may override user/host/port/path/proxy on
 /// top of the ssh_config-resolved defaults. All overrides are optional.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ConnectSpec {
     pub host_alias: String, // ssh_config 이름 or bare hostname
     pub user_override: Option<String>,
     pub port_override: Option<u16>,
     pub identity_file_override: Option<PathBuf>,
     pub proxy_command_override: Option<String>,
+    /// Plain-text password for password-auth hosts. Redacted in Debug.
+    pub password_override: Option<String>,
+}
+
+impl std::fmt::Debug for ConnectSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectSpec")
+            .field("host_alias", &self.host_alias)
+            .field("user_override", &self.user_override)
+            .field("port_override", &self.port_override)
+            .field("identity_file_override", &self.identity_file_override)
+            .field("proxy_command_override", &self.proxy_command_override)
+            .field(
+                "password_override",
+                &self.password_override.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }

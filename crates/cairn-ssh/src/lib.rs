@@ -13,7 +13,7 @@ pub mod sftp;
 pub mod transfer;
 pub mod types;
 
-pub use auth::PassphraseResolver;
+pub use auth::{PassphraseResolver, PasswordResolver};
 pub use config::{list_configured_hosts, resolve_host};
 pub use error::{Result, SshError};
 pub use hostkey::{

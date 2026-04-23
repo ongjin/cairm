@@ -1256,14 +1256,19 @@ func __swift_bridge__PassphraseCallback_ask_passphrase (_ this: UnsafeMutableRaw
     { if let rustString = optionalStringIntoRustString(Unmanaged<PassphraseCallback>.fromOpaque(this).takeUnretainedValue().askPassphrase(key_path: RustString(ptr: key_path))) { rustString.isOwned = false; return rustString.ptr } else { return nil } }()
 }
 
+@_cdecl("__swift_bridge__$PasswordCallback$ask_password")
+func __swift_bridge__PasswordCallback_ask_password (_ this: UnsafeMutableRawPointer, _ host: UnsafeMutableRawPointer, _ user: UnsafeMutableRawPointer) -> UnsafeMutableRawPointer? {
+    { if let rustString = optionalStringIntoRustString(Unmanaged<PasswordCallback>.fromOpaque(this).takeUnretainedValue().askPassword(host: RustString(ptr: host), user: RustString(ptr: user))) { rustString.isOwned = false; return rustString.ptr } else { return nil } }()
+}
+
 public func ssh_pool_new() -> SshPoolBridge {
     SshPoolBridge(ptr: __swift_bridge__$ssh_pool_new())
 }
 public func ssh_pool_list_configured_hosts() -> RustVec<RustString> {
     RustVec(ptr: __swift_bridge__$ssh_pool_list_configured_hosts())
 }
-public func ssh_pool_connect(_ pool: SshPoolBridgeRef, _ spec: ConnectSpecBridge, _ hostkey_cb: HostKeyCallback, _ passphrase_cb: PassphraseCallback) throws -> ConnKeyBridge {
-    try { let val = __swift_bridge__$ssh_pool_connect(pool.ptr, spec.intoFfiRepr(), Unmanaged.passRetained(hostkey_cb).toOpaque(), Unmanaged.passRetained(passphrase_cb).toOpaque()); switch val.tag { case __swift_bridge__$ResultConnKeyBridgeAndString$ResultOk: return val.payload.ok.intoSwiftRepr() case __swift_bridge__$ResultConnKeyBridgeAndString$ResultErr: throw RustString(ptr: val.payload.err) default: fatalError() } }()
+public func ssh_pool_connect(_ pool: SshPoolBridgeRef, _ spec: ConnectSpecBridge, _ hostkey_cb: HostKeyCallback, _ passphrase_cb: PassphraseCallback, _ password_cb: PasswordCallback) throws -> ConnKeyBridge {
+    try { let val = __swift_bridge__$ssh_pool_connect(pool.ptr, spec.intoFfiRepr(), Unmanaged.passRetained(hostkey_cb).toOpaque(), Unmanaged.passRetained(passphrase_cb).toOpaque(), Unmanaged.passRetained(password_cb).toOpaque()); switch val.tag { case __swift_bridge__$ResultConnKeyBridgeAndString$ResultOk: return val.payload.ok.intoSwiftRepr() case __swift_bridge__$ResultConnKeyBridgeAndString$ResultErr: throw RustString(ptr: val.payload.err) default: fatalError() } }()
 }
 public func ssh_pool_disconnect(_ pool: SshPoolBridgeRef, _ key: ConnKeyBridge) {
     __swift_bridge__$ssh_pool_disconnect(pool.ptr, key.intoFfiRepr())
@@ -1453,24 +1458,26 @@ public struct ConnectSpecBridge {
     public var port_override: Optional<UInt16>
     public var identity_file_override: Optional<RustString>
     public var proxy_command_override: Optional<RustString>
+    public var password_override: RustString
 
-    public init(host_alias: RustString,user_override: Optional<RustString>,port_override: Optional<UInt16>,identity_file_override: Optional<RustString>,proxy_command_override: Optional<RustString>) {
+    public init(host_alias: RustString,user_override: Optional<RustString>,port_override: Optional<UInt16>,identity_file_override: Optional<RustString>,proxy_command_override: Optional<RustString>,password_override: RustString) {
         self.host_alias = host_alias
         self.user_override = user_override
         self.port_override = port_override
         self.identity_file_override = identity_file_override
         self.proxy_command_override = proxy_command_override
+        self.password_override = password_override
     }
 
     @inline(__always)
     func intoFfiRepr() -> __swift_bridge__$ConnectSpecBridge {
-        { let val = self; return __swift_bridge__$ConnectSpecBridge(host_alias: { let rustString = val.host_alias.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), user_override: { if let rustString = optionalStringIntoRustString(val.user_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }(), port_override: val.port_override.intoFfiRepr(), identity_file_override: { if let rustString = optionalStringIntoRustString(val.identity_file_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }(), proxy_command_override: { if let rustString = optionalStringIntoRustString(val.proxy_command_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }()); }()
+        { let val = self; return __swift_bridge__$ConnectSpecBridge(host_alias: { let rustString = val.host_alias.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), user_override: { if let rustString = optionalStringIntoRustString(val.user_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }(), port_override: val.port_override.intoFfiRepr(), identity_file_override: { if let rustString = optionalStringIntoRustString(val.identity_file_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }(), proxy_command_override: { if let rustString = optionalStringIntoRustString(val.proxy_command_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }(), password_override: { let rustString = val.password_override.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); }()
     }
 }
 extension __swift_bridge__$ConnectSpecBridge {
     @inline(__always)
     func intoSwiftRepr() -> ConnectSpecBridge {
-        { let val = self; return ConnectSpecBridge(host_alias: RustString(ptr: val.host_alias), user_override: { let val = val.user_override; if val != nil { return RustString(ptr: val!) } else { return nil } }(), port_override: val.port_override.intoSwiftRepr(), identity_file_override: { let val = val.identity_file_override; if val != nil { return RustString(ptr: val!) } else { return nil } }(), proxy_command_override: { let val = val.proxy_command_override; if val != nil { return RustString(ptr: val!) } else { return nil } }()); }()
+        { let val = self; return ConnectSpecBridge(host_alias: RustString(ptr: val.host_alias), user_override: { let val = val.user_override; if val != nil { return RustString(ptr: val!) } else { return nil } }(), port_override: val.port_override.intoSwiftRepr(), identity_file_override: { let val = val.identity_file_override; if val != nil { return RustString(ptr: val!) } else { return nil } }(), proxy_command_override: { let val = val.proxy_command_override; if val != nil { return RustString(ptr: val!) } else { return nil } }(), password_override: RustString(ptr: val.password_override)); }()
     }
 }
 extension __swift_bridge__$Option$ConnectSpecBridge {
@@ -1543,6 +1550,12 @@ func __swift_bridge__HostKeyCallback__free (ptr: UnsafeMutableRawPointer) {
 @_cdecl("__swift_bridge__$PassphraseCallback$_free")
 func __swift_bridge__PassphraseCallback__free (ptr: UnsafeMutableRawPointer) {
     let _ = Unmanaged<PassphraseCallback>.fromOpaque(ptr).takeRetainedValue()
+}
+
+
+@_cdecl("__swift_bridge__$PasswordCallback$_free")
+func __swift_bridge__PasswordCallback__free (ptr: UnsafeMutableRawPointer) {
+    let _ = Unmanaged<PasswordCallback>.fromOpaque(ptr).takeRetainedValue()
 }
 
 

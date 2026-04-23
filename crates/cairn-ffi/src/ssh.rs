@@ -48,6 +48,8 @@ mod ffi {
         port_override: Option<u16>,
         identity_file_override: Option<String>,
         proxy_command_override: Option<String>,
+        /// Plain-text password for password-auth hosts. Empty string = unset.
+        password_override: String,
     }
 
     #[swift_bridge(swift_repr = "struct")]
@@ -75,6 +77,12 @@ mod ffi {
         fn ask_passphrase(&self, key_path: String) -> Option<String>;
     }
 
+    extern "Swift" {
+        type PasswordCallback;
+        #[swift_bridge(swift_name = "askPassword")]
+        fn ask_password(&self, host: String, user: String) -> Option<String>;
+    }
+
     extern "Rust" {
         type SshPoolBridge;
         type SftpHandleBridge;
@@ -89,6 +97,7 @@ mod ffi {
             spec: ConnectSpecBridge,
             hostkey_cb: HostKeyCallback,
             passphrase_cb: PassphraseCallback,
+            password_cb: PasswordCallback,
         ) -> Result<ConnKeyBridge, String>;
         fn ssh_pool_disconnect(pool: &SshPoolBridge, key: ConnKeyBridge);
         fn ssh_pool_close_all(pool: &SshPoolBridge);
@@ -226,6 +235,21 @@ impl ssh::PassphraseResolver for SwiftPassphraseAdapter {
     }
 }
 
+struct SwiftPasswordAdapter {
+    cb: ffi::PasswordCallback,
+}
+
+// Safety: same as SwiftHostKeyAdapter — single-threaded block_on + Semaphore.
+unsafe impl Send for SwiftPasswordAdapter {}
+unsafe impl Sync for SwiftPasswordAdapter {}
+
+#[async_trait]
+impl ssh::PasswordResolver for SwiftPasswordAdapter {
+    async fn resolve(&self, host: &str, user: &str) -> Option<String> {
+        self.cb.ask_password(host.to_string(), user.to_string())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Free functions exposed to Swift
 // ---------------------------------------------------------------------------
@@ -246,18 +270,26 @@ fn ssh_pool_connect(
     spec: ConnectSpecBridge,
     hostkey_cb: ffi::HostKeyCallback,
     passphrase_cb: ffi::PassphraseCallback,
+    password_cb: ffi::PasswordCallback,
 ) -> Result<ConnKeyBridge, String> {
+    let password_override = if spec.password_override.is_empty() {
+        None
+    } else {
+        Some(spec.password_override)
+    };
     let spec = ssh::ConnectSpec {
         host_alias: spec.host_alias,
         user_override: spec.user_override,
         port_override: spec.port_override,
         identity_file_override: spec.identity_file_override.map(Into::into),
         proxy_command_override: spec.proxy_command_override,
+        password_override,
     };
     let hk = Arc::new(SwiftHostKeyAdapter { cb: hostkey_cb });
     let pp = Arc::new(SwiftPassphraseAdapter { cb: passphrase_cb });
+    let pw = Arc::new(SwiftPasswordAdapter { cb: password_cb });
     let key = runtime()
-        .block_on(pool.inner.connect(&spec, pp, hk))
+        .block_on(pool.inner.connect(&spec, pp, pw, hk))
         .map_err(|e| e.to_string())?;
     Ok(key_to_bridge(&key))
 }
