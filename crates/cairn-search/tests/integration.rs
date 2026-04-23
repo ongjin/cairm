@@ -48,7 +48,7 @@ fn folder_mode_matches_only_direct_children() {
         },
     );
     let names = collect_all(h);
-    assert_eq!(names.len(), 2, "got {:?}", names);
+    assert_eq!(names.len(), 2, "got {names:?}");
     assert!(names.iter().any(|n| n == "readme.txt"));
     assert!(names.iter().any(|n| n == "README.md"));
 }
@@ -87,7 +87,7 @@ fn subtree_mode_recursive() {
         },
     );
     let names = collect_all(h);
-    assert_eq!(names.len(), 2, "got {:?}", names);
+    assert_eq!(names.len(), 2, "got {names:?}");
     assert!(names.iter().any(|n| n == "hello.txt"));
     assert!(names.iter().any(|n| n == "hello.md"));
 }
@@ -112,8 +112,7 @@ fn gitignore_respected_when_hidden_off() {
     let names = collect_all(h);
     assert!(
         !names.contains(&"secret.txt".to_string()),
-        "got {:?}",
-        names
+        "got {names:?}"
     );
     assert!(names.contains(&"keep.txt".to_string()));
 }
@@ -200,7 +199,7 @@ fn cap_enforcement() {
             observed_capped = true;
         }
     }
-    assert_eq!(names.len(), 10, "got {:?}", names);
+    assert_eq!(names.len(), 10, "got {names:?}");
     assert!(observed_capped, "status never transitioned to Capped");
 }
 

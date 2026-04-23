@@ -178,19 +178,24 @@ pub fn list_configured_hosts() -> Vec<String> {
 }
 
 pub fn parse_host_blocks(cfg: &str) -> Vec<String> {
+    // Preserve first-occurrence order; dedupe aliases since `Host x y z` group
+    // declarations and per-host `Host x` blocks commonly repeat the same name.
     let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for line in cfg.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
         let lower = trimmed.to_ascii_lowercase();
-        // Only top-level `Host x y z` — skip `Match host …`
         if let Some(_rest) = lower.strip_prefix("host ") {
-            // Use the original (non-lowered) slice for names
             let rest_orig = trimmed["Host".len()..].trim_start();
             for name in rest_orig.split_whitespace() {
-                if !name.contains('*') && !name.contains('?') && !name.starts_with('!') {
+                if !name.contains('*')
+                    && !name.contains('?')
+                    && !name.starts_with('!')
+                    && seen.insert(name.to_string())
+                {
                     out.push(name.to_string());
                 }
             }
