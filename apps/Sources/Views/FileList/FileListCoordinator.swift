@@ -32,6 +32,7 @@ final class FileListCoordinator: NSObject,
                                  QLPreviewPanelDataSource,
                                  QLPreviewPanelDelegate {
     private var folder: FolderModel
+    private var provider: FileSystemProvider
     private var onActivate: (FileEntry) -> Void
 
     /// Row index currently being inline-renamed. -1 when no rename is active.
@@ -92,6 +93,7 @@ final class FileListCoordinator: NSObject,
     private weak var undoManager: UndoManager?
 
     init(folder: FolderModel,
+         provider: FileSystemProvider,
          onActivate: @escaping (FileEntry) -> Void,
          onAddToPinned: @escaping (FileEntry) -> Void,
          isPinnedCheck: @escaping (FileEntry) -> Bool,
@@ -99,6 +101,7 @@ final class FileListCoordinator: NSObject,
          onMoved: @escaping () -> Void = {},
          undoManager: UndoManager? = nil) {
         self.folder = folder
+        self.provider = provider
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
@@ -132,6 +135,7 @@ final class FileListCoordinator: NSObject,
     /// indicator and selection state get re-applied by the trailing
     /// `applyModelSnapshot(table:)` call in `FileListView.updateNSView`.
     func updateBindings(folder: FolderModel,
+                        provider: FileSystemProvider,
                         onActivate: @escaping (FileEntry) -> Void,
                         onAddToPinned: @escaping (FileEntry) -> Void,
                         isPinnedCheck: @escaping (FileEntry) -> Bool,
@@ -140,6 +144,7 @@ final class FileListCoordinator: NSObject,
                         undoManager: UndoManager? = nil) {
         let folderChanged = self.folder !== folder
         self.folder = folder
+        self.provider = provider
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
@@ -471,21 +476,42 @@ final class FileListCoordinator: NSObject,
         }
 
         let entry = lastSnapshot[row]
-        let oldURL = URL(fileURLWithPath: entry.path.toString())
-        let newURL = oldURL.deletingLastPathComponent().appendingPathComponent(newName)
+        let oldPath = FSPath(provider: provider.identifier, path: entry.path.toString())
+        guard let parent = oldPath.parent() else { return }
+        let newPath = parent.appending(newName)
 
-        if FileManager.default.fileExists(atPath: newURL.path) {
-            tf.stringValue = oldName
-            NSSound.beep(); return
-        }
+        if case .ssh = provider.identifier {
+            // Remote rename — no undo in v1
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await self.provider.rename(from: oldPath, to: newPath)
+                    await MainActor.run { self.onMoved() }
+                } catch {
+                    await MainActor.run {
+                        tf.stringValue = oldName
+                        NSSound.beep()
+                    }
+                }
+            }
+        } else {
+            // Local rename — existing FileManager path with undo
+            let oldURL = URL(fileURLWithPath: entry.path.toString())
+            let newURL = oldURL.deletingLastPathComponent().appendingPathComponent(newName)
 
-        do {
-            try FileManager.default.moveItem(at: oldURL, to: newURL)
-            registerRenameUndo(from: oldURL, to: newURL)
-            onMoved()
-        } catch {
-            tf.stringValue = oldName
-            NSSound.beep()
+            if FileManager.default.fileExists(atPath: newURL.path) {
+                tf.stringValue = oldName
+                NSSound.beep(); return
+            }
+
+            do {
+                try FileManager.default.moveItem(at: oldURL, to: newURL)
+                registerRenameUndo(from: oldURL, to: newURL)
+                onMoved()
+            } catch {
+                tf.stringValue = oldName
+                NSSound.beep()
+            }
         }
     }
 
@@ -602,33 +628,52 @@ final class FileListCoordinator: NSObject,
         return menu
     }
 
-    /// Right-click on empty space: expose Paste / Paste Item Here when the
-    /// pasteboard has content. Both items use standard Cocoa selectors so the
-    /// responder chain routes them through FileListNSTableView's overrides.
-    /// Returns nil when there's nothing to paste — no menu appears at all.
+    /// Right-click on empty space: New Folder (always) + Paste / Paste Item
+    /// Here when the pasteboard has content.
     private func emptySpaceMenu() -> NSMenu? {
-        let pasted = ClipboardPasteService.read(from: .general)
-        guard pasted != nil else { return nil }
-
         let menu = NSMenu()
 
-        let pasteItem = NSMenuItem(title: "Paste",
-                                   action: #selector(NSText.paste(_:)),
-                                   keyEquivalent: "v")
-        pasteItem.keyEquivalentModifierMask = [.command]
-        menu.addItem(pasteItem)
+        // New Folder — available for all providers
+        let newFolderItem = NSMenuItem(title: "New Folder",
+                                       action: #selector(menuNewFolder(_:)),
+                                       keyEquivalent: "")
+        newFolderItem.target = self
+        menu.addItem(newFolderItem)
 
-        // "Paste Item Here" only makes sense for real files — an image on the
-        // clipboard has no source to move away from.
-        if case .files = pasted {
-            let moveItem = NSMenuItem(title: "Paste Item Here",
-                                      action: #selector(CairnResponder.pasteItemHere(_:)),
-                                      keyEquivalent: "v")
-            moveItem.keyEquivalentModifierMask = [.command, .option]
-            menu.addItem(moveItem)
+        let pasted = ClipboardPasteService.read(from: .general)
+        if let pasted {
+            menu.addItem(.separator())
+            let pasteItem = NSMenuItem(title: "Paste",
+                                       action: #selector(NSText.paste(_:)),
+                                       keyEquivalent: "v")
+            pasteItem.keyEquivalentModifierMask = [.command]
+            menu.addItem(pasteItem)
+            // "Paste Item Here" only makes sense for real files — an image on the
+            // clipboard has no source to move away from.
+            if case .files = pasted {
+                let moveItem = NSMenuItem(title: "Paste Item Here",
+                                          action: #selector(CairnResponder.pasteItemHere(_:)),
+                                          keyEquivalent: "v")
+                moveItem.keyEquivalentModifierMask = [.command, .option]
+                menu.addItem(moveItem)
+            }
         }
 
         return menu
+    }
+
+    @objc private func menuNewFolder(_ sender: Any?) {
+        guard let parent = folder.currentPath else { return }
+        let target = parent.appending("untitled folder")
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.provider.mkdir(target)
+                await MainActor.run { self.onMoved() }
+            } catch {
+                await MainActor.run { NSSound.beep() }
+            }
+        }
     }
 
     /// Returns the cached (apps, defaultApp) for the given file URL's extension.
@@ -731,30 +776,62 @@ final class FileListCoordinator: NSObject,
     }
 
     /// Called by FileListNSTableView on ⌘⌫. Trashes every currently-selected
-    /// row; partial failures still trigger a reload so the successful
-    /// removals are reflected immediately.
+    /// row (local) or permanently deletes with a confirmation sheet (remote).
     func deleteSelected() {
         guard let table = self.table else { return }
         let indexes = table.selectedRowIndexes
         guard !indexes.isEmpty else { return }
-        // Collect (orig, trashed-location) pairs so a single ⌘Z restores
-        // every file from one ⌘⌫. Without grouping the user would have to
-        // hit ⌘Z N times to undo a multi-select trash.
-        var pairs: [(URL, URL)] = []
-        for idx in indexes where idx >= 0 && idx < lastSnapshot.count {
-            let url = URL(fileURLWithPath: lastSnapshot[idx].path.toString())
-            var trashed: NSURL?
-            do {
-                try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
-                if let t = trashed as URL? { pairs.append((url, t)) }
-            } catch {
-                NSSound.beep()
+
+        if case .ssh = provider.identifier {
+            let victims = indexes.compactMap { idx -> FileEntry? in
+                idx < lastSnapshot.count ? lastSnapshot[idx] : nil
+            }
+            let paths = victims.map { FSPath(provider: provider.identifier, path: $0.path.toString()) }
+            confirmRemoteDelete(items: victims) { [weak self] confirmed in
+                guard let self, confirmed else { return }
+                Task {
+                    do {
+                        try await self.provider.delete(paths)
+                        await MainActor.run { self.onMoved() }
+                    } catch {
+                        await MainActor.run { NSSound.beep() }
+                    }
+                }
+            }
+        } else {
+            // Collect (orig, trashed-location) pairs so a single ⌘Z restores
+            // every file from one ⌘⌫. Without grouping the user would have to
+            // hit ⌘Z N times to undo a multi-select trash.
+            var pairs: [(URL, URL)] = []
+            for idx in indexes where idx >= 0 && idx < lastSnapshot.count {
+                let url = URL(fileURLWithPath: lastSnapshot[idx].path.toString())
+                var trashed: NSURL?
+                do {
+                    try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
+                    if let t = trashed as URL? { pairs.append((url, t)) }
+                } catch {
+                    NSSound.beep()
+                }
+            }
+            if !pairs.isEmpty {
+                registerBatchTrashUndo(pairs)
+                onMoved()
             }
         }
-        if !pairs.isEmpty {
-            registerBatchTrashUndo(pairs)
-            onMoved()
-        }
+    }
+
+    private func confirmRemoteDelete(items: [FileEntry], completion: @escaping (Bool) -> Void) {
+        let hostSummary: String = {
+            if case .ssh(let t) = provider.identifier { return "\(t.user)@\(t.hostname)" }
+            return ""
+        }()
+        let parent = folder.currentPath?.path ?? "/"
+        RemoteDeleteConfirm.present(
+            hostSummary: hostSummary,
+            parent: parent,
+            names: items.map { $0.name.toString() },
+            completion: completion
+        )
     }
 
     /// Pushes "move trashed file back to original location" onto the undo

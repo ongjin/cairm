@@ -50,6 +50,9 @@ struct FileListView: NSViewRepresentable {
     /// Tab-scoped undo stack. The coordinator registers inverse FS ops on
     /// it after every successful move / trash so ⌘Z works.
     var undoManager: UndoManager? = nil
+    /// Active file-system provider for the tab. Routes rename/delete/mkdir
+    /// through the correct backend (local vs. SSH).
+    let provider: FileSystemProvider
 
     private static func makeGitColumn() -> NSTableColumn {
         let col = NSTableColumn(identifier: .git)
@@ -157,6 +160,7 @@ struct FileListView: NSViewRepresentable {
         guard let table = scroll.documentView as? FileListNSTableView else { return }
         context.coordinator.updateBindings(
             folder: folder,
+            provider: provider,
             onActivate: onActivate,
             onAddToPinned: onAddToPinned,
             isPinnedCheck: isPinnedCheck,
@@ -183,6 +187,7 @@ struct FileListView: NSViewRepresentable {
 
     func makeCoordinator() -> FileListCoordinator {
         FileListCoordinator(folder: folder,
+                            provider: provider,
                             onActivate: onActivate,
                             onAddToPinned: onAddToPinned,
                             isPinnedCheck: isPinnedCheck,

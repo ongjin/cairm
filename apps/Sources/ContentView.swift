@@ -227,7 +227,8 @@ struct ContentView: View {
                 guard let path = tab.currentPath else { return }
                 Task { await tab.folder.load(path, via: tab.provider) }
             },
-            undoManager: tab.undoManager
+            undoManager: tab.undoManager,
+            provider: tab.provider
         )
         .background {
             ZStack {
