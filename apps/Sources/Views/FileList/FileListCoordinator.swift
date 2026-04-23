@@ -1206,12 +1206,11 @@ final class FileListCoordinator: NSObject,
     }
 
     private func pasteImageToSSH(data: Data, ext: String, into target: FSPath) {
-        // Stage the clipboard bytes in a temp file so the existing upload
-        // pipeline (which expects a local URL source) can ship them. Remote
-        // name uses an epoch-seconds suffix to avoid collisions without a
-        // roundtrip SFTP stat — good enough for screenshots where the user
-        // just wants "this, now, over there".
-        let filename = "Untitled-\(Int(Date().timeIntervalSince1970)).\(ext)"
+        // Stage clipboard bytes in a local temp file so the existing upload
+        // pipeline can ship them. Remote destination is picked by probing
+        // SFTP stat in a Finder-style "Untitled" → "Untitled 2" loop —
+        // SFTP upload truncates existing targets, so we MUST guarantee a
+        // non-existing destination before calling `uploadFromLocal`.
         let tmpURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("cairn-paste-\(UUID().uuidString).\(ext)")
         do {
@@ -1220,18 +1219,37 @@ final class FileListCoordinator: NSObject,
             NSSound.beep()
             return
         }
-        let dstPath = target.appending(filename)
         let size = Int64(data.count)
         Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.transfers.enqueue(source: FSPath(provider: .local, path: tmpURL.path),
-                                   destination: dstPath,
-                                   sizeHint: size) { [weak self] job, progress in
-                guard let self else { return }
+            guard let self else {
+                try? FileManager.default.removeItem(at: tmpURL)
+                return
+            }
+            let dstPath = await RemoteNameResolver.uniqueRemotePath(
+                base: "Untitled",
+                ext: ext,
+                in: target,
+                probe: { [weak self] candidate in
+                    guard let self else { return false }
+                    return (try? await self.provider.stat(candidate)) != nil
+                }
+            )
+            self.transfers.enqueue(
+                source: FSPath(provider: .local, path: tmpURL.path),
+                destination: dstPath,
+                sizeHint: size
+            ) { [weak self] job, progress in
+                guard let self else {
+                    try? FileManager.default.removeItem(at: tmpURL)
+                    return
+                }
                 defer { try? FileManager.default.removeItem(at: tmpURL) }
-                try await self.provider.uploadFromLocal(tmpURL, to: dstPath,
-                                                        progress: progress,
-                                                        cancel: job.cancel)
+                try await self.provider.uploadFromLocal(
+                    tmpURL,
+                    to: dstPath,
+                    progress: progress,
+                    cancel: job.cancel
+                )
             }
         }
     }
