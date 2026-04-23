@@ -6,6 +6,7 @@ use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
 
 use crate::error::{Result, SshError};
 use crate::pool::SshPool;
+use crate::transfer::{CancelFlag, ProgressSink};
 use crate::types::ConnKey;
 
 // ---------------------------------------------------------------------------
@@ -250,6 +251,254 @@ impl SftpHandle {
         self.pool.touch(&self.key);
         Ok(data)
     }
+
+    // -----------------------------------------------------------------------
+    // Download (remote → local)
+    // -----------------------------------------------------------------------
+
+    /// Download a remote file to a local path.
+    ///
+    /// Reads in 256 KiB chunks. Before each chunk read the `cancel` flag is
+    /// checked; if set, the function returns [`SshError::Cancelled`] and
+    /// leaves the (partial) destination file in place so the caller can
+    /// inspect what arrived.
+    ///
+    /// `progress` is called after each successful chunk with the running
+    /// byte total so a Swift actor can update a progress bar without
+    /// touching the transfer loop.
+    pub async fn download(
+        &self,
+        remote_path: &str,
+        local_path: &std::path::Path,
+        progress: ProgressSink,
+        cancel: CancelFlag,
+    ) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        self.pool.touch(&self.key);
+
+        if let Some(parent) = local_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+
+        let mut dest = tokio::fs::File::create(local_path)
+            .await
+            .map_err(SshError::Io)?;
+
+        let handle = self
+            .session
+            .open(remote_path, OpenFlags::READ, FileAttributes::empty())
+            .await
+            .map_err(map_sftp_err)?
+            .handle;
+
+        const CHUNK: u32 = 256 * 1024;
+        let mut offset: u64 = 0;
+        let mut total: u64 = 0;
+
+        loop {
+            if cancel.is_cancelled() {
+                let _ = self.session.close(handle.as_str()).await;
+                return Err(SshError::Cancelled);
+            }
+
+            match self.session.read(handle.as_str(), offset, CHUNK).await {
+                Ok(data) => {
+                    let n = data.data.len() as u64;
+                    dest.write_all(&data.data).await.map_err(SshError::Io)?;
+                    offset += n;
+                    total += n;
+                    progress(total);
+                    // If server returned fewer bytes than requested and the
+                    // next read would be at the same offset it's actually EOF;
+                    // but in SFTP the server will send an EOF status on the
+                    // following read, so just keep looping.
+                    if n == 0 {
+                        break;
+                    }
+                }
+                Err(SftpError::Status(ref status))
+                    if status.status_code == StatusCode::Eof =>
+                {
+                    break;
+                }
+                Err(e) => {
+                    let _ = self.session.close(handle.as_str()).await;
+                    return Err(map_sftp_err(e));
+                }
+            }
+        }
+
+        let _ = self.session.close(handle.as_str()).await;
+        dest.flush().await.map_err(SshError::Io)?;
+
+        self.pool.touch(&self.key);
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Upload (local → remote)
+    // -----------------------------------------------------------------------
+
+    /// Upload a local file to a remote path.
+    ///
+    /// Writes in 256 KiB chunks. Before each chunk write the `cancel` flag
+    /// is checked; if set, the function returns [`SshError::Cancelled`] and
+    /// leaves the (partial) remote file in place.
+    ///
+    /// `progress` is called after each successful chunk with the running
+    /// byte total.
+    pub async fn upload(
+        &self,
+        local_path: &std::path::Path,
+        remote_path: &str,
+        progress: ProgressSink,
+        cancel: CancelFlag,
+    ) -> Result<()> {
+        use tokio::io::AsyncReadExt;
+
+        self.pool.touch(&self.key);
+
+        let mut src = tokio::fs::File::open(local_path)
+            .await
+            .map_err(SshError::Io)?;
+
+        let handle = self
+            .session
+            .open(
+                remote_path,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+                FileAttributes::empty(),
+            )
+            .await
+            .map_err(map_sftp_err)?
+            .handle;
+
+        const CHUNK: usize = 256 * 1024;
+        let mut buf = vec![0u8; CHUNK];
+        let mut offset: u64 = 0;
+        let mut total: u64 = 0;
+
+        loop {
+            if cancel.is_cancelled() {
+                let _ = self.session.close(handle.as_str()).await;
+                return Err(SshError::Cancelled);
+            }
+
+            let n = src.read(&mut buf).await.map_err(SshError::Io)?;
+            if n == 0 {
+                break;
+            }
+
+            self.session
+                .write(handle.as_str(), offset, buf[..n].to_vec())
+                .await
+                .map_err(map_sftp_err)?;
+
+            offset += n as u64;
+            total += n as u64;
+            progress(total);
+        }
+
+        let _ = self.session.close(handle.as_str()).await;
+
+        self.pool.touch(&self.key);
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Server-side copy
+    // -----------------------------------------------------------------------
+
+    /// Attempt an in-server copy using the `copy-data` extension (OpenSSH
+    /// 8.8+). Returns [`SshError::SftpProtocol`] if the server does not
+    /// support the extension so the Swift layer can fall back to a
+    /// client-mediated download + upload.
+    pub async fn server_side_copy(&self, src_path: &str, dst_path: &str) -> Result<()> {
+        if !self.supports_copy_data {
+            return Err(SshError::SftpProtocol(
+                "copy-data extension not supported by server".into(),
+            ));
+        }
+
+        self.pool.touch(&self.key);
+
+        // Open source for reading.
+        let read_handle = self
+            .session
+            .open(src_path, OpenFlags::READ, FileAttributes::empty())
+            .await
+            .map_err(map_sftp_err)?
+            .handle;
+
+        // Open (or create) destination for writing.
+        let write_handle = self
+            .session
+            .open(
+                dst_path,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+                FileAttributes::empty(),
+            )
+            .await
+            .map_err(map_sftp_err)?
+            .handle;
+
+        // copy-data payload: read_handle (string), read_offset (uint64),
+        // read_length (uint64, 0 = whole file), write_handle (string),
+        // write_offset (uint64).  Serialised as SFTP wire encoding.
+        let payload = build_copy_data_payload(&read_handle, 0, 0, &write_handle, 0);
+
+        let result = self
+            .session
+            .extended("copy-data", payload)
+            .await
+            .map_err(map_sftp_err);
+
+        let _ = self.session.close(read_handle.as_str()).await;
+        let _ = self.session.close(write_handle.as_str()).await;
+
+        result?;
+
+        self.pool.touch(&self.key);
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// copy-data payload builder
+// ---------------------------------------------------------------------------
+
+/// Encode the `copy-data` extended request payload according to
+/// draft-ietf-secsh-filexfer-extensions-00 §7.  The wire format is:
+///
+/// ```text
+/// string   read-from-handle
+/// uint64   read-from-offset
+/// uint64   read-data-length   (0 = copy to EOF)
+/// string   write-to-handle
+/// uint64   write-to-offset
+/// ```
+fn build_copy_data_payload(
+    read_handle: &str,
+    read_offset: u64,
+    read_length: u64,
+    write_handle: &str,
+    write_offset: u64,
+) -> Vec<u8> {
+    let mut buf = Vec::new();
+    push_sftp_string(&mut buf, read_handle.as_bytes());
+    buf.extend_from_slice(&read_offset.to_be_bytes());
+    buf.extend_from_slice(&read_length.to_be_bytes());
+    push_sftp_string(&mut buf, write_handle.as_bytes());
+    buf.extend_from_slice(&write_offset.to_be_bytes());
+    buf
+}
+
+/// SFTP wire-encodes a `string` as a 4-byte big-endian length followed by
+/// the raw bytes.
+fn push_sftp_string(buf: &mut Vec<u8>, s: &[u8]) {
+    buf.extend_from_slice(&(s.len() as u32).to_be_bytes());
+    buf.extend_from_slice(s);
 }
 
 // ---------------------------------------------------------------------------

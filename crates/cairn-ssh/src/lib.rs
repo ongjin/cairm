@@ -10,6 +10,7 @@ pub mod known_hosts_hash;
 pub mod pool;
 pub mod proxy;
 pub mod sftp;
+pub mod transfer;
 pub mod types;
 
 pub use auth::PassphraseResolver;
@@ -18,4 +19,5 @@ pub use error::{Result, SshError};
 pub use hostkey::{sha256_fingerprint, HostKeyResolver, KnownHostsStore, KnownResult, TofuDecision};
 pub use pool::SshPool;
 pub use sftp::{RemoteEntry, RemoteStat, SftpHandle};
+pub use transfer::{CancelFlag, ProgressSink};
 pub use types::{ConnKey, ConnectSpec, ResolvedConfig, StrictMode};
