@@ -34,4 +34,8 @@ final class SshConfigService {
             $0.lastKnownState = state
         }
     }
+
+    func hideHost(_ host: String) {
+        metadata.update(host) { $0.hiddenFromSidebar = true }
+    }
 }

@@ -55,6 +55,29 @@ struct SidebarView: View {
                     }
                 }
 
+                let remoteHosts = app.sidebar.remoteHostItems(from: app.sshConfig, pool: app.ssh)
+                if !remoteHosts.isEmpty || true {  // always show section (empty state shows + button)
+                    Section(header: Text("Remote Hosts").font(.system(size: 11)).foregroundStyle(.secondary)) {
+                        ForEach(remoteHosts, id: \.id) { item in
+                            RemoteHostRow(
+                                item: item,
+                                onConnect: { connectHost(item.id) },
+                                onDisconnect: { disconnectHost(item.id) },
+                                onHide: { hideHost(item.id) },
+                                onRevealConfig: { revealConfig() },
+                                onCopySshCommand: { copySshCommand(item.id) }
+                            )
+                        }
+                        Button {
+                            openConnectSheet()
+                        } label: {
+                            Label("Connect\u{2026}", systemImage: "plus.circle")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
                 Section("Locations") {
                     // Home
                     SidebarAutoFavoriteRow(
@@ -201,5 +224,39 @@ struct SidebarView: View {
     private func isCurrent(_ url: URL) -> Bool {
         guard let current = scene.activeTab?.currentFolder else { return false }
         return url.standardizedFileURL.path == current.standardizedFileURL.path
+    }
+
+    // MARK: - Remote host helpers
+
+    private func connectHost(_ name: String) {
+        NotificationCenter.default.post(name: .openConnectSheet, object: name)
+    }
+
+    private func disconnectHost(_ name: String) {
+        Task { @MainActor in
+            if let target = app.ssh.sessions.keys.first(where: {
+                $0.hostname == name || app.sshConfig.configuredHosts.contains(name)
+            }) {
+                app.ssh.disconnect(target)
+            }
+        }
+    }
+
+    private func hideHost(_ name: String) {
+        app.sshConfig.hideHost(name)
+    }
+
+    private func revealConfig() {
+        guard let home = ProcessInfo.processInfo.environment["HOME"] else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: "\(home)/.ssh/config"))
+    }
+
+    private func copySshCommand(_ name: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("ssh \(name)", forType: .string)
+    }
+
+    private func openConnectSheet() {
+        NotificationCenter.default.post(name: .openConnectSheet, object: nil)
     }
 }

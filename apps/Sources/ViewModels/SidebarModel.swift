@@ -67,3 +67,44 @@ final class SidebarModel {
         return out
     }
 }
+
+extension SidebarModel {
+    struct RemoteHostItem: Identifiable, Hashable {
+        let id: String              // host nickname
+        let displaySummary: String
+        let state: State
+        let pinned: Bool
+        enum State: String { case connected, idle, error, disconnected }
+    }
+
+    @MainActor
+    func remoteHostItems(from svc: SshConfigService, pool: SshPoolService) -> [RemoteHostItem] {
+        svc.configuredHosts.compactMap { name in
+            let meta = svc.metadataFor(name)
+            if meta.hiddenFromSidebar { return nil }
+            let state: RemoteHostItem.State
+            if pool.sessions.values.contains(where: { $0.resolvedSummary.contains(name) }) {
+                state = .connected
+            } else {
+                state = .disconnected
+            }
+            return RemoteHostItem(
+                id: name,
+                displaySummary: meta.lastConnectedAt.map { "last connected \(relative($0))" } ?? "",
+                state: state,
+                pinned: meta.pinned
+            )
+        }.sorted { lhs, rhs in
+            if lhs.pinned != rhs.pinned { return lhs.pinned }
+            let lDate = svc.metadataFor(lhs.id).lastConnectedAt ?? .distantPast
+            let rDate = svc.metadataFor(rhs.id).lastConnectedAt ?? .distantPast
+            return lDate > rDate
+        }
+    }
+
+    private func relative(_ d: Date) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f.localizedString(for: d, relativeTo: Date())
+    }
+}

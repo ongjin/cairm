@@ -24,6 +24,7 @@ final class AppModel {
     let mountObserver: MountObserver
     let sidebar: SidebarModel
     let ssh: SshPoolService
+    let sshConfig: SshConfigService
 
     init(engine: CairnEngine = CairnEngine(),
          bookmarks: BookmarkStore = BookmarkStore(),
@@ -37,6 +38,8 @@ final class AppModel {
         self.mountObserver = observer
         self.sidebar = SidebarModel(mountObserver: observer)
         self.ssh = SshPoolService()
+        let metadataStore = HostMetadataStore()
+        self.sshConfig = MainActor.assumeIsolated { SshConfigService(metadata: metadataStore) }
         // Seed hidden-files default from settings; keeps Rust engine in sync.
         self.showHidden = settings.showHiddenByDefault
         engine.setShowHidden(settings.showHiddenByDefault)
