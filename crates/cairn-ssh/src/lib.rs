@@ -6,6 +6,7 @@ pub mod config;
 pub mod error;
 pub mod hostkey;
 pub mod known_hosts_hash;
+pub mod proxy;
 pub mod types;
 
 pub use config::{list_configured_hosts, resolve_host};
