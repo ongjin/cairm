@@ -136,12 +136,20 @@ final class Tab: Identifiable {
     /// once `SshPool.connect` returns: before the call the tab showed the
     /// "Connecting…" spinner over a local no-op provider; after it the tab
     /// behaves like one opened directly via the Connect sheet.
+    ///
+    /// Clears `folder` before flipping the phase so the user never sees the
+    /// local-home listing (loaded by the ContentView `.task` on placeholder
+    /// creation) bleed through while the remote `onChange(currentPath)` load
+    /// is still in flight. Stays on `.connecting` until the caller swaps to
+    /// `.connected` — the connectingView keeps the spinner on screen through
+    /// the remote directory fetch.
     func upgradeToRemote(path: FSPath, provider: FileSystemProvider) {
         self.provider = provider
         self.history = NavigationHistory()
         self.history.push(path)
         rebuildProviderServices(for: path)
-        self.connectionPhase = .connected
+        self.folder.clear()
+        self.connectionPhase = .connecting(detail: "Loading remote directory…")
     }
 
     /// Navigate to an arbitrary FSPath. The canonical entry point for

@@ -226,6 +226,11 @@ struct SidebarView: View {
             let resolvedPath = (try? await provider.realpath(".")) ?? "/"
             let initial = FSPath(provider: .ssh(target), path: resolvedPath)
             placeholder.upgradeToRemote(path: initial, provider: provider)
+            // Prime the remote listing ourselves rather than letting the
+            // onChange(currentPath) hop do it — keeps the spinner on screen
+            // continuously until data is on the table.
+            await placeholder.folder.load(initial, via: provider)
+            placeholder.connectionPhase = .connected
         } catch {
             // Placeholder tab can't retry on its own (no target/provider yet
             // and no ssh_config round-trip past here). Close it and surface
