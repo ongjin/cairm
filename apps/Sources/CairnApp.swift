@@ -24,7 +24,12 @@ struct CairnApp: App {
         // closes (SwiftUI's default anchors `.navigation`-placed items to the
         // detail column's leading edge, which slides with the sidebar).
         .windowToolbarStyle(.unified)
-        .windowResizability(.contentSize)
+        // `.contentMinSize` clamps only the minimum; default was `.contentSize`
+        // which made the window grow to each child's ideal width — with
+        // sidebar + two panes + inspector open, that blew past screen bounds
+        // and shoved both sidebars off the viewport edges. User resizes freely
+        // within [minSize, screen-max] now.
+        .windowResizability(.contentMinSize)
         .commands {
             // File > New Tab / Close Tab (slots after the default File > New).
             CommandGroup(after: .newItem) {

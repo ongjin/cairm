@@ -23,15 +23,13 @@ struct PaneColumn: View {
     var body: some View {
         VStack(spacing: 0) {
             TabBarView(scene: scene)
-                .opacity(isActive ? 1.0 : 0.55)
             inlineNavStrip
-                .opacity(isActive ? 1.0 : 0.55)
             contentColumn
         }
+        .opacity(isActive ? 1.0 : 0.72)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onTapGesture { onFocus() }
-        .overlay(alignment: .topLeading) { inactiveOverlay }
-        .overlay(activeBorder)
         .task {
             if let tab, let path = tab.currentPath {
                 await tab.folder.load(path, via: tab.provider)
@@ -124,26 +122,6 @@ struct PaneColumn: View {
             .animation(.easeInOut(duration: 0.2), value: tab.search.phase)
         } else {
             ProgressView().controlSize(.small)
-        }
-    }
-
-    // MARK: - Active/inactive styling
-
-    @ViewBuilder
-    private var activeBorder: some View {
-        RoundedRectangle(cornerRadius: 0)
-            .strokeBorder(
-                isActive ? Color(red: 0.42, green: 0.85, blue: 0.61) : Color.clear,
-                lineWidth: 2
-            )
-            .allowsHitTesting(false)
-    }
-
-    @ViewBuilder
-    private var inactiveOverlay: some View {
-        if !isActive {
-            Color.black.opacity(0.18)
-                .allowsHitTesting(false)
         }
     }
 
