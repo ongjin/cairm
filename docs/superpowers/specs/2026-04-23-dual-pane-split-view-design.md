@@ -97,8 +97,12 @@ menu command that reads `@FocusedValue(\.scene)` automatically targets the
 active pane — no downstream changes needed.
 
 Pane activation: a tap gesture on each `PaneColumn`'s background calls
-`dualPane.focus(side)`. Visual indicator: the inactive pane's tab bar dims
-slightly (opacity 0.85) so the user can see which side is live.
+`dualPane.focus(side)`. Visual indicator (strong, per user preference):
+- Active pane wears a 2 px accent-tinted (Cairn green) stroke around its
+  bounds and a soft outward shadow (radius 8, opacity 0.35).
+- Inactive pane's content area is overlaid with a translucent black panel
+  (~0.18 opacity) and its tab bar dims to opacity 0.55 so the eye snaps to
+  the live side without ambiguity.
 
 ### Keyboard / menu
 
