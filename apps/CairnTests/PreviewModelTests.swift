@@ -99,6 +99,26 @@ final class PreviewModelTests: XCTestCase {
         }
     }
 
+    // Regression: selecting a remote directory used to route through
+    // setRemoteFocus → readHead, which fails on SFTP because opening
+    // a directory as a file is a protocol error. That turned
+    // "scroll through a remote folder" into false `.failed` pane
+    // states once the inspector was re-enabled. setRemoteDirectoryFocus
+    // short-circuits to a `.directory(nil)` state without any async
+    // I/O — the state must flip synchronously and readHead must not
+    // be called (TrappingHeadStubProvider fatalError-s if it is).
+    func test_setRemoteDirectoryFocus_setsDirectoryState_withoutReadHead() {
+        let engine = CairnEngine()
+        let model = PreviewModel(engine: engine)
+        let path = FSPath(provider: .ssh(sshTarget(host: "server-a")), path: "/var/log")
+        model.setRemoteDirectoryFocus(path)
+        if case .directory(let count) = model.state {
+            XCTAssertNil(count, "remote directory preview should not claim a child count")
+        } else {
+            XCTFail("expected .directory state, got \(model.state)")
+        }
+    }
+
     func test_cache_twoSshHosts_sameBarePath_doNotAlias() {
         let engine = CairnEngine()
         let model = PreviewModel(engine: engine)

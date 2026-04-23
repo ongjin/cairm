@@ -110,16 +110,24 @@ struct ImagePreview: View {
 // MARK: - Directory
 
 struct DirectoryPreview: View {
-    let childCount: Int
+    /// `nil` on remote selections where we deliberately skip the
+    /// listing round-trip — show a neutral "Directory" label instead
+    /// of a misleading "0 items".
+    let childCount: Int?
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: "folder.fill")
                 .font(.system(size: 32))
                 .foregroundStyle(.blue)
-            Text(childCount == 1 ? "1 item" : "\(childCount) items")
+            Text(label)
                 .font(.system(size: 12))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var label: String {
+        guard let n = childCount else { return "Directory" }
+        return n == 1 ? "1 item" : "\(n) items"
     }
 }
 

@@ -8,7 +8,11 @@ enum PreviewState: Equatable {
     case loading                    // fetch in-flight
     case text(String)               // decoded text body (possibly truncated)
     case image(path: String)        // NSImage loaded lazily by the renderer
-    case directory(childCount: Int) // summary for a selected folder
+    /// Summary for a selected folder. `childCount == nil` for remote
+    /// directories where listing the folder just to count entries is
+    /// too heavy for selection scrubbing — the renderer shows a
+    /// neutral "Directory" instead of an item count.
+    case directory(childCount: Int?)
     case binary                     // binary / unsupported
     case failed(String)             // user-facing error string
     case pressSpaceForFullPreview   // remote binary/large file — hint to press Space for QL
@@ -139,6 +143,23 @@ final class PreviewModel {
             if Task.isCancelled { return }
             await self?.loadHead(captured, displayURL: displayURL, via: provider)
         }
+    }
+
+    /// Set the preview to "directory" for a remote folder selection
+    /// without firing `readHead`. SFTP open-as-file on a directory
+    /// returns a protocol error — calling `setRemoteFocus` for
+    /// directory entries would flip the inspector into `.failed` as
+    /// the user scrolls through a remote listing. Cache the result so
+    /// repeat selections are instant.
+    func setRemoteDirectoryFocus(_ path: FSPath) {
+        let displayURL = URL(fileURLWithPath: path.path)
+        remoteFocus = path
+        isApplyingRemoteFocus = true
+        focus = displayURL  // didSet → handleFocusChange; hit is (likely) a miss on first visit
+        isApplyingRemoteFocus = false
+        inflight?.cancel()
+        state = .directory(childCount: nil)
+        cache(state: .directory(childCount: nil), for: displayURL, remote: path)
     }
 
     private func loadHead(_ path: FSPath, displayURL: URL, via provider: FileSystemProvider) async {

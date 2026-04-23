@@ -1288,15 +1288,48 @@ final class FileListCoordinator: NSObject,
                     try? await self.provider.delete([tempRemotePath])
                     throw error
                 }
-                do {
-                    try await self.provider.rename(from: tempRemotePath, to: dstPath)
-                } catch {
-                    // A rename failure here means (a) the slot raced
-                    // in between probe and rename, or (b) a transport
-                    // hiccup. Either way, remove the temp so it
-                    // doesn't linger as a hidden file.
-                    try? await self.provider.delete([tempRemotePath])
-                    throw error
+                // Rename to the final name with collision retry.
+                // Two quick back-to-back pastes both pre-probe while
+                // the first upload is still queued → both pick the
+                // same "Untitled.png". When the second job reaches
+                // this rename, the target now exists; we re-probe
+                // (which will return "Untitled 2.png") and retry.
+                // Retries are bounded and bail out if the re-probe
+                // returns the SAME candidate — that signals a
+                // non-collision error (permission/transport) and
+                // spinning won't help.
+                var chosen = dstPath
+                let maxAttempts = 10
+                var attempt = 0
+                while true {
+                    do {
+                        try await self.provider.rename(from: tempRemotePath, to: chosen)
+                        return
+                    } catch let renameError {
+                        attempt += 1
+                        if attempt >= maxAttempts {
+                            try? await self.provider.delete([tempRemotePath])
+                            throw renameError
+                        }
+                        let next: FSPath
+                        do {
+                            next = try await RemoteNameResolver.uniqueRemotePath(
+                                base: "Untitled", ext: ext, in: target,
+                                probe: { try await self.provider.exists($0) }
+                            )
+                        } catch {
+                            try? await self.provider.delete([tempRemotePath])
+                            throw error
+                        }
+                        if next.path == chosen.path {
+                            // Probe agrees the name is free, yet rename
+                            // failed. Not a collision — surface the
+                            // original error instead of spinning.
+                            try? await self.provider.delete([tempRemotePath])
+                            throw renameError
+                        }
+                        chosen = next
+                    }
                 }
             }
         }
