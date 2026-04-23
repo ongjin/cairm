@@ -49,6 +49,8 @@ final class FolderModel {
     /// nil before the first load.
     private(set) var currentFolder: URL?
 
+    private(set) var currentPath: FSPath?
+
     private let engine: CairnEngine
 
     /// Memoized result of the last `sortedEntries` access. Invalidated to nil
@@ -70,13 +72,18 @@ final class FolderModel {
         state = .loaded
     }
 
-    /// Loads the folder. Caller must ensure security-scoped access is active.
+    /// Loads the folder via an abstract FSPath + provider. This is the canonical
+    /// entry point. Keeps `currentFolder` in sync for local paths so
+    /// callers that depend on the URL compatibility facade keep working.
     @MainActor
-    func load(_ url: URL) async {
+    func load(_ path: FSPath, via provider: FileSystemProvider) async {
         state = .loading
-        currentFolder = url
+        currentPath = path
+        if case .local = path.provider {
+            currentFolder = URL(fileURLWithPath: path.path)
+        }
         do {
-            let list = try await engine.listDirectory(url)
+            let list = try await provider.list(path)
             entries = list
             _sortedCache = nil
             state = .loaded
@@ -87,12 +94,21 @@ final class FolderModel {
         }
     }
 
+    /// Loads the folder. Caller must ensure security-scoped access is active.
+    /// Thin adapter over `load(_:via:)` — kept for call-sites that already hold a URL.
+    @MainActor
+    func load(_ url: URL) async {
+        let p = FSPath(provider: .local, path: url.path)
+        await load(p, via: LocalFileSystemProvider(engine: engine))
+    }
+
     func clear() {
         entries = []
         _sortedCache = nil
         selection = []
         state = .idle
         currentFolder = nil
+        currentPath = nil
     }
 
     func setSortDescriptor(_ desc: SortDescriptor) {

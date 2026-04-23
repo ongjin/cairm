@@ -38,30 +38,32 @@ struct ContentView: View {
                 .navigationTitle(tab?.currentFolder?.lastPathComponent ?? "Cairn")
                 .toolbar { mainToolbar }
                 .task {
-                    if let tab, let url = tab.currentFolder {
-                        await tab.folder.load(url)
+                    if let tab, let path = tab.currentPath {
+                        await tab.folder.load(path, via: tab.provider)
                     }
                 }
-                .onChange(of: tab?.currentFolder) { _, new in
+                .onChange(of: tab?.currentPath) { _, new in
                     guard let tab else { return }
-                    guard let url = new else { tab.folder.clear(); return }
-                    app.lastFolder.save(url)
-                    Task { await tab.folder.load(url) }
+                    guard let path = new else { tab.folder.clear(); return }
+                    if case .local = path.provider {
+                        app.lastFolder.save(URL(fileURLWithPath: path.path))
+                    }
+                    Task { await tab.folder.load(path, via: tab.provider) }
                     triggerSearchRefresh()
                 }
                 .onChange(of: scene.activeTabID) { _, _ in
                     // Tab switch — reload the newly-active tab's folder so its
-                    // FolderModel reflects its own currentFolder. T10 accepts the full
+                    // FolderModel reflects its own currentPath. T10 accepts the full
                     // reload; T12+ can optimize to reuse cached entries.
-                    guard let tab, let url = tab.currentFolder else { return }
-                    Task { await tab.folder.load(url) }
+                    guard let tab, let path = tab.currentPath else { return }
+                    Task { await tab.folder.load(path, via: tab.provider) }
                 }
                 .onChange(of: tab?.search.query) { _, _ in triggerSearchRefresh() }
                 .onChange(of: tab?.search.scope) { _, _ in triggerSearchRefresh() }
                 .onChange(of: tab?.folder.sortDescriptor) { _, _ in triggerSearchRefresh() }
                 .onChange(of: app.showHidden) { _, _ in
-                    if let tab, let url = tab.currentFolder {
-                        Task { await tab.folder.load(url) }
+                    if let tab, let path = tab.currentPath {
+                        Task { await tab.folder.load(path, via: tab.provider) }
                     }
                     triggerSearchRefresh()
                 }
@@ -200,8 +202,8 @@ struct ContentView: View {
             },
             onSelectionChanged: { handleSelectionChanged($0, tab: tab) },
             onMoved: {
-                guard let url = tab.currentFolder else { return }
-                Task { await tab.folder.load(url) }
+                guard let path = tab.currentPath else { return }
+                Task { await tab.folder.load(path, via: tab.provider) }
             },
             undoManager: tab.undoManager
         )
@@ -263,7 +265,7 @@ struct ContentView: View {
                 if let id = scene.activeTabID { scene.closeTab(id) }
             },
             PaletteCommand(id: "reload", label: "Reload", iconSF: "arrow.clockwise", shortcutHint: "⌘R") {
-                if let u = tab.currentFolder { Task { await tab.folder.load(u) } }
+                if let p = tab.currentPath { Task { await tab.folder.load(p, via: tab.provider) } }
             },
             PaletteCommand(id: "toggleHidden", label: "Toggle Hidden Files", iconSF: "eye", shortcutHint: "⌘⇧.") {
                 app.toggleShowHidden()

@@ -37,6 +37,12 @@ final class Tab: Identifiable {
 
     var history = NavigationHistory()
 
+    /// The active file system provider for this tab. Local tabs use
+    /// `LocalFileSystemProvider`; remote tabs will use `SshFileSystemProvider`
+    /// (added in Task 11). Stored as a class reference so it can be swapped
+    /// when the tab reconnects to a different host.
+    private(set) var provider: FileSystemProvider
+
     /// In-flight detached task that opens IndexService + GitService. Cancelled
     /// on a newer navigation so stale results never overwrite the current tab
     /// state.
@@ -55,8 +61,9 @@ final class Tab: Identifiable {
         self.folder = FolderModel(engine: engine)
         self.search = SearchModel(engine: engine)
         self.preview = PreviewModel(engine: engine)
-        self.history.push(initialURL)
-        rebuildServices(for: initialURL)
+        self.provider = LocalFileSystemProvider(engine: engine)
+        self.history.push(FSPath(provider: .local, path: initialURL.path))
+        rebuildProviderServices(for: FSPath(provider: .local, path: initialURL.path))
     }
 
     deinit {
@@ -64,8 +71,15 @@ final class Tab: Identifiable {
         if let entry = currentEntry { bookmarks.stopAccessing(entry) }
     }
 
-    /// The URL currently displayed (equal to `history.current` when present).
-    var currentFolder: URL? { history.current }
+    /// The URL currently displayed. Returns nil for non-local providers —
+    /// compatibility facade; prefer `currentPath` for new code.
+    var currentFolder: URL? {
+        guard let p = history.current, case .local = p.provider else { return nil }
+        return URL(fileURLWithPath: p.path)
+    }
+
+    /// The FSPath currently displayed (equal to `history.current`).
+    var currentPath: FSPath? { history.current }
 
     // MARK: - Navigation
 
@@ -82,48 +96,55 @@ final class Tab: Identifiable {
             return
         }
         currentEntry = entry
-        history.push(url)
-        rebuildServices(for: url)
+        let path = FSPath(provider: .local, path: url.path)
+        history.push(path)
+        rebuildProviderServices(for: path)
 
         if entry.kind == .pinned {
             try? bookmarks.register(url, kind: .recent)
         }
     }
 
-    /// Navigate to an arbitrary URL that we don't (yet) have a bookmark for.
-    /// Drops any current scope. Used by sidebar Locations items and breadcrumb
-    /// parent segments.
-    func navigate(to url: URL) {
-        if let prev = currentEntry {
+    /// Navigate to an arbitrary FSPath. The canonical entry point for
+    /// cross-provider navigation (local or SSH).
+    func navigate(to path: FSPath) {
+        if case .local = path.provider, let prev = currentEntry {
             bookmarks.stopAccessing(prev)
             currentEntry = nil
         }
-        history.push(url)
-        rebuildServices(for: url)
+        history.push(path)
+        rebuildProviderServices(for: path)
+    }
+
+    /// Navigate to an arbitrary URL that we don't (yet) have a bookmark for.
+    /// Drops any current scope. Used by sidebar Locations items and breadcrumb
+    /// parent segments. Thin adapter over `navigate(to: FSPath)`.
+    func navigate(to url: URL) {
+        navigate(to: FSPath(provider: .local, path: url.path))
     }
 
     /// Move up one level. No-op at `/`.
     func goUp() {
-        guard let cur = currentFolder else { return }
-        let parent = cur.deletingLastPathComponent()
-        guard parent.path != cur.path else { return }
+        guard let cur = currentPath, let parent = cur.parent() else { return }
         navigate(to: parent)
     }
 
     @discardableResult
     func goBack() -> URL? {
-        guard let url = history.goBack() else { return nil }
-        resumeScopedAccessIfNeeded(for: url)
-        rebuildServices(for: url)
-        return url
+        guard let path = history.goBack() else { return nil }
+        resumeScopedAccessIfNeeded(for: path)
+        rebuildProviderServices(for: path)
+        guard case .local = path.provider else { return nil }
+        return URL(fileURLWithPath: path.path)
     }
 
     @discardableResult
     func goForward() -> URL? {
-        guard let url = history.goForward() else { return nil }
-        resumeScopedAccessIfNeeded(for: url)
-        rebuildServices(for: url)
-        return url
+        guard let path = history.goForward() else { return nil }
+        resumeScopedAccessIfNeeded(for: path)
+        rebuildProviderServices(for: path)
+        guard case .local = path.provider else { return nil }
+        return URL(fileURLWithPath: path.path)
     }
 
     // MARK: - Pinning
@@ -141,10 +162,19 @@ final class Tab: Identifiable {
     /// bookmark's scope, reacquire that scope (stopping the previous one).
     /// Unscoped URLs drop the current scope. Prevents sandbox regression where
     /// a bookmarked folder's access was never resumed after ⌘←/⌘→.
-    private func resumeScopedAccessIfNeeded(for url: URL) {
-        let path = url.standardizedFileURL.path
-        let match = bookmarks.pinned.first { $0.lastKnownPath == path }
-            ?? bookmarks.recent.first { $0.lastKnownPath == path }
+    private func resumeScopedAccessIfNeeded(for path: FSPath) {
+        guard case .local = path.provider else {
+            // Remote paths have no sandbox scoping.
+            if let prev = currentEntry {
+                bookmarks.stopAccessing(prev)
+                currentEntry = nil
+            }
+            return
+        }
+        let url = URL(fileURLWithPath: path.path)
+        let stdPath = url.standardizedFileURL.path
+        let match = bookmarks.pinned.first { $0.lastKnownPath == stdPath }
+            ?? bookmarks.recent.first { $0.lastKnownPath == stdPath }
 
         if let prev = currentEntry, prev.id != match?.id {
             bookmarks.stopAccessing(prev)
@@ -157,6 +187,21 @@ final class Tab: Identifiable {
     }
 
     // MARK: - Services
+
+    /// Routes to the appropriate service rebuild based on provider type.
+    /// Index, Git and FolderWatcher are local-only — remote paths skip them.
+    private func rebuildProviderServices(for path: FSPath) {
+        if case .local = path.provider {
+            rebuildServices(for: URL(fileURLWithPath: path.path))
+        } else {
+            // Remote tab: cancel any in-flight local services and clear them.
+            servicesTask?.cancel()
+            servicesTask = nil
+            index = nil
+            git = nil
+            folderWatcher = nil
+        }
+    }
 
     /// Rebuilds per-folder services. IndexService and GitService both make
     /// synchronous FFI calls (tantivy open / libgit2 scan) that can take
