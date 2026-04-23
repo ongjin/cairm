@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Finder-parity sidebar: Favorites (auto + pinned) / Recent / Cloud / Locations (Home + AirDrop + Network + Trash).
+/// Finder-parity sidebar: Favorites (auto + pinned) / Cloud / Remote Hosts / Locations (Home + AirDrop + Network + Trash).
 /// Footer shows active tab's git branch + dirty count when in a repo.
 struct SidebarView: View {
     @Bindable var app: AppModel
@@ -34,14 +34,6 @@ struct SidebarView: View {
                     }
                     ForEach(app.bookmarks.pinned) { entry in
                         pinnedRow(entry)
-                    }
-                }
-
-                if !app.bookmarks.recent.isEmpty {
-                    Section("Recent") {
-                        ForEach(app.bookmarks.recent) { entry in
-                            recentRow(entry)
-                        }
                     }
                 }
 
@@ -173,25 +165,6 @@ struct SidebarView: View {
         }
     }
 
-    private func recentRow(_ entry: BookmarkEntry) -> some View {
-        let url = URL(fileURLWithPath: entry.lastKnownPath)
-        return SidebarItemRow(
-            icon: "clock",
-            label: url.lastPathComponent,
-            tint: nil,
-            isSelected: isCurrent(url)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture { scene.activeTab?.navigate(to: entry) }
-        .contextMenu {
-            Button("Add to Pinned") { try? app.bookmarks.togglePin(url: URL(fileURLWithPath: entry.lastKnownPath)) }
-            Button("Reveal in Finder") {
-                NSWorkspace.shared.selectFile(entry.lastKnownPath,
-                                              inFileViewerRootedAtPath: "")
-            }
-        }
-    }
-
     private func row(url: URL, icon: String, label: String, tint: Color?, canPin: Bool) -> some View {
         SidebarItemRow(icon: icon, label: label, tint: tint, isSelected: isCurrent(url))
             .contentShape(Rectangle())
@@ -229,7 +202,9 @@ struct SidebarView: View {
     // MARK: - Remote host helpers
 
     private func connectHost(_ name: String) {
-        NotificationCenter.default.post(name: .openConnectSheet, object: name)
+        let model = ConnectSheetModel()
+        model.server = name  // pre-fill from sidebar connect tap
+        scene.connectSheetModel = model
     }
 
     private func disconnectHost(_ name: String) {
@@ -255,6 +230,6 @@ struct SidebarView: View {
     }
 
     private func openConnectSheet() {
-        NotificationCenter.default.post(name: .openConnectSheet, object: nil)
+        scene.connectSheetModel = ConnectSheetModel()
     }
 }

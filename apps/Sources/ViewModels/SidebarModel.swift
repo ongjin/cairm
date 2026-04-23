@@ -5,8 +5,8 @@ import Observation
 /// bookmark-backed: iCloud Drive (a single well-known path) and Locations
 /// (computer root + live mounted volumes).
 ///
-/// Pinned and Recent are read directly from BookmarkStore by SidebarView — no
-/// reason to mirror them here.
+/// Pinned is read directly from BookmarkStore by SidebarView — no reason to
+/// mirror it here.
 @Observable
 final class SidebarModel {
     /// Well-known path to iCloud Drive's local mirror. Works without the iCloud

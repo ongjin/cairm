@@ -133,11 +133,14 @@ struct TabFileMenuItems: View {
 // MARK: - File > Connect to Server (⇧⌘K)
 
 struct ConnectFileMenuItems: View {
+    @FocusedValue(\.scene) private var scene: WindowSceneModel?
+
     var body: some View {
         Button("Connect to Server\u{2026}") {
-            NotificationCenter.default.post(name: .openConnectSheet, object: nil)
+            scene?.connectSheetModel = ConnectSheetModel()
         }
         .keyboardShortcut("k", modifiers: [.command, .shift])
+        .disabled(scene == nil)
     }
 }
 
@@ -158,6 +161,16 @@ struct NavigateCommands: Commands {
             Button("Open Selected") { Self.openSelected(scene: scene) }
                 .keyboardShortcut(.downArrow, modifiers: [.command])
                 .disabled(scene?.activeTab == nil)
+
+            // ⌘[ / ⌘] — Finder/Chrome parity for history navigation. Covers the
+            // case where a mouse driver rewrites the side button into this key
+            // combo instead of emitting an NSEvent.otherMouseDown we can catch.
+            Button("Back") { _ = scene?.activeTab?.goBack() }
+                .keyboardShortcut("[", modifiers: [.command])
+                .disabled(!(scene?.activeTab?.history.canGoBack ?? false))
+            Button("Forward") { _ = scene?.activeTab?.goForward() }
+                .keyboardShortcut("]", modifiers: [.command])
+                .disabled(!(scene?.activeTab?.history.canGoForward ?? false))
 
             Divider()
 

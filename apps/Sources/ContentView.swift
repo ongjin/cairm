@@ -14,7 +14,6 @@ struct ContentView: View {
 
     @State private var palette = CommandPaletteModel()
     @State private var showInspector: Bool = true
-    @State private var connectSheetModel: ConnectSheetModel? = nil
     /// Opaque token returned by `NSEvent.addLocalMonitorForEvents`. Held so we
     /// can remove the monitor on view teardown; losing it would leak the
     /// closure and keep dispatching events to a dead view.
@@ -95,19 +94,12 @@ struct ContentView: View {
                 palette.pollContent()
             }
         }
-        .sheet(item: $connectSheetModel) { model in
+        .sheet(item: Bindable(scene).connectSheetModel) { model in
             ConnectSheetView(
                 model: model,
                 onConnect: { Task { await performConnect(model: model) } },
-                onCancel: { connectSheetModel = nil }
+                onCancel: { scene.connectSheetModel = nil }
             )
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openConnectSheet)) { notif in
-            let model = ConnectSheetModel()
-            if let name = notif.object as? String {
-                model.server = name  // pre-fill from sidebar connect tap
-            }
-            connectSheetModel = model
         }
         .onAppear { installMouseNavMonitor() }
         .onDisappear { removeMouseNavMonitor() }
@@ -504,10 +496,10 @@ struct ContentView: View {
             if let newTab = scene.activeTab {
                 newTab.connectionPhase = .connected
             }
-            connectSheetModel = nil
+            scene.connectSheetModel = nil
         } catch {
             // Only surface the error if the sheet is still visible (user didn't cancel mid-flight)
-            if connectSheetModel != nil {
+            if scene.connectSheetModel != nil {
                 model.error = ErrorMessage.userFacing(error)
             }
         }

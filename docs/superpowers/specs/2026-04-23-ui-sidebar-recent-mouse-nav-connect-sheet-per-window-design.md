@@ -37,7 +37,7 @@ Scope: three small UI issues reported against current `main` (865f3ec).
 - Add `var connectSheetModel: ConnectSheetModel?` to `WindowSceneModel`.
 - `ContentView` binds its `.sheet(item:)` to `$scene.connectSheetModel` (via `@Bindable`) instead of the local `@State` + notification listener. Drop the `@State private var connectSheetModel` and the `.onReceive(...openConnectSheet)` subscription.
 - `SidebarView.openConnectSheet` / `connectHost` set `scene.connectSheetModel` directly.
-- Menu item "Connect to Server…" (⇧⌘K) needs the focused scene. Introduce a `FocusedValues.activeScene: WindowSceneModel?` key. `ContentView` publishes it via `.focusedSceneValue(\.activeScene, scene)`. `ConnectFileMenuItems` reads `@FocusedValue(\.activeScene)` and sets `scene?.connectSheetModel = ConnectSheetModel()`.
+- Menu item "Connect to Server…" (⇧⌘K) uses the existing `FocusedValues.scene` key (already published from `CairnApp.swift:72`). `ConnectFileMenuItems` reads `@FocusedValue(\.scene)` and sets `scene?.connectSheetModel = ConnectSheetModel()`.
 - Delete the `Notification.Name.openConnectSheet` definition and all references.
 
 **Invariant after fix.** No global notification is used for sheet presentation; sheet state lives on the window scene that owns it. Menu routing is focus-driven, so ⇧⌘K targets whichever window is key.
@@ -50,7 +50,7 @@ Scope: three small UI issues reported against current `main` (865f3ec).
 - `apps/Sources/ContentView.swift` — §2 (no change; monitor stays), §3 (sheet binding, focused value publish)
 - `apps/Sources/App/WindowSceneModel.swift` — §3 (connectSheetModel property)
 - `apps/Sources/App/AppNotifications.swift` — §3 (remove openConnectSheet name)
-- New: `FocusedValues.activeScene` key (co-located with existing paletteModel focused value)
+- (Reuse the existing `FocusedValues.scene` key; no new focused value needed.)
 
 ## Verification
 

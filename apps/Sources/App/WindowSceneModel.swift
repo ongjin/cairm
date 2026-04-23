@@ -12,6 +12,12 @@ final class WindowSceneModel {
     private(set) var tabs: [Tab] = []
     var activeTabID: Tab.ID?
 
+    /// Connect-to-Server sheet state for this window. Non-nil while the sheet
+    /// is presented; set by the sidebar or the ⇧⌘K menu on the focused window,
+    /// cleared on cancel/success. Per-scene so a second window's sheet can't
+    /// piggyback on another window's invocation.
+    var connectSheetModel: ConnectSheetModel?
+
     let engine: CairnEngine
     let bookmarks: BookmarkStore
 
