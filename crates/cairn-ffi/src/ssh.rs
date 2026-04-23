@@ -50,6 +50,25 @@ mod ffi {
         proxy_command_override: Option<String>,
     }
 
+    #[swift_bridge(swift_repr = "struct")]
+    struct HostKeyOffer {
+        algorithm: String,
+        blob_base64: String,
+        fingerprint: String,
+    }
+
+    extern "Swift" {
+        type HostKeyCallback;
+        #[swift_bridge(swift_name = "askHostKey")]
+        fn ask_host_key(&self, host: String, port: u16, offer: HostKeyOffer, state: String) -> String;
+    }
+
+    extern "Swift" {
+        type PassphraseCallback;
+        #[swift_bridge(swift_name = "askPassphrase")]
+        fn ask_passphrase(&self, key_path: String) -> Option<String>;
+    }
+
     extern "Rust" {
         type SshPoolBridge;
         type SftpHandleBridge;
@@ -62,6 +81,8 @@ mod ffi {
         fn ssh_pool_connect(
             pool: &SshPoolBridge,
             spec: ConnectSpecBridge,
+            hostkey_cb: HostKeyCallback,
+            passphrase_cb: PassphraseCallback,
         ) -> Result<ConnKeyBridge, String>;
         fn ssh_pool_disconnect(pool: &SshPoolBridge, key: ConnKeyBridge);
         fn ssh_pool_close_all(pool: &SshPoolBridge);
@@ -140,31 +161,60 @@ fn runtime() -> &'static tokio::runtime::Runtime {
 }
 
 // ---------------------------------------------------------------------------
-// Stub resolvers for v1 — Task 12 wires concrete Swift-side resolvers
+// Swift-backed resolver adapters
 // ---------------------------------------------------------------------------
 
-struct AutoAcceptHostKey;
+struct SwiftHostKeyAdapter {
+    cb: ffi::HostKeyCallback,
+}
+
+// Safety: the callback is invoked exclusively from within a single-threaded
+// block_on call; the Swift side serialises access via DispatchSemaphore.
+unsafe impl Send for SwiftHostKeyAdapter {}
+unsafe impl Sync for SwiftHostKeyAdapter {}
 
 #[async_trait]
-impl ssh::HostKeyResolver for AutoAcceptHostKey {
+impl ssh::HostKeyResolver for SwiftHostKeyAdapter {
     async fn resolve(
         &self,
-        _host: &str,
-        _port: u16,
-        _offered_algo: &str,
-        _offered_blob: &[u8],
-        _known: ssh::KnownResult,
+        host: &str,
+        port: u16,
+        offered_algo: &str,
+        offered_blob: &[u8],
+        known: ssh::KnownResult,
     ) -> ssh::TofuDecision {
-        ssh::TofuDecision::AcceptAndSave
+        use base64::prelude::*;
+        let offer = ffi::HostKeyOffer {
+            algorithm: offered_algo.to_string(),
+            blob_base64: BASE64_STANDARD.encode(offered_blob),
+            fingerprint: ssh::sha256_fingerprint(offered_blob),
+        };
+        let state = match known {
+            ssh::KnownResult::Match => "match".to_string(),
+            ssh::KnownResult::NotFound => "not_found".to_string(),
+            ssh::KnownResult::Mismatch { .. } => "mismatch".to_string(),
+        };
+        let result = self.cb.ask_host_key(host.to_string(), port, offer, state);
+        match result.as_str() {
+            "accept" => ssh::TofuDecision::Accept,
+            "accept_save" => ssh::TofuDecision::AcceptAndSave,
+            _ => ssh::TofuDecision::Reject,
+        }
     }
 }
 
-struct NullPassphrase;
+struct SwiftPassphraseAdapter {
+    cb: ffi::PassphraseCallback,
+}
+
+// Safety: same as SwiftHostKeyAdapter — single-threaded block_on + Semaphore.
+unsafe impl Send for SwiftPassphraseAdapter {}
+unsafe impl Sync for SwiftPassphraseAdapter {}
 
 #[async_trait]
-impl ssh::PassphraseResolver for NullPassphrase {
-    async fn resolve(&self, _path: &std::path::Path) -> Option<String> {
-        None
+impl ssh::PassphraseResolver for SwiftPassphraseAdapter {
+    async fn resolve(&self, key_path: &std::path::Path) -> Option<String> {
+        self.cb.ask_passphrase(key_path.to_string_lossy().into_owned())
     }
 }
 
@@ -186,6 +236,8 @@ fn ssh_pool_list_configured_hosts() -> Vec<String> {
 fn ssh_pool_connect(
     pool: &SshPoolBridge,
     spec: ConnectSpecBridge,
+    hostkey_cb: ffi::HostKeyCallback,
+    passphrase_cb: ffi::PassphraseCallback,
 ) -> Result<ConnKeyBridge, String> {
     let spec = ssh::ConnectSpec {
         host_alias: spec.host_alias,
@@ -194,12 +246,10 @@ fn ssh_pool_connect(
         identity_file_override: spec.identity_file_override.map(Into::into),
         proxy_command_override: spec.proxy_command_override,
     };
+    let hk = Arc::new(SwiftHostKeyAdapter { cb: hostkey_cb });
+    let pp = Arc::new(SwiftPassphraseAdapter { cb: passphrase_cb });
     let key = runtime()
-        .block_on(pool.inner.connect(
-            &spec,
-            Arc::new(NullPassphrase),
-            Arc::new(AutoAcceptHostKey),
-        ))
+        .block_on(pool.inner.connect(&spec, pp, hk))
         .map_err(|e| e.to_string())?;
     Ok(key_to_bridge(&key))
 }

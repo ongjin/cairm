@@ -219,6 +219,8 @@ typedef struct __swift_bridge__$FileStatBridge { uint64_t size; int64_t mtime; u
 typedef struct __swift_bridge__$Option$FileStatBridge { bool is_some; __swift_bridge__$FileStatBridge val; } __swift_bridge__$Option$FileStatBridge;
 typedef struct __swift_bridge__$ConnectSpecBridge { void* host_alias; void* user_override; struct __private__OptionU16 port_override; void* identity_file_override; void* proxy_command_override; } __swift_bridge__$ConnectSpecBridge;
 typedef struct __swift_bridge__$Option$ConnectSpecBridge { bool is_some; __swift_bridge__$ConnectSpecBridge val; } __swift_bridge__$Option$ConnectSpecBridge;
+typedef struct __swift_bridge__$HostKeyOffer { void* algorithm; void* blob_base64; void* fingerprint; } __swift_bridge__$HostKeyOffer;
+typedef struct __swift_bridge__$Option$HostKeyOffer { bool is_some; __swift_bridge__$HostKeyOffer val; } __swift_bridge__$Option$HostKeyOffer;
 typedef struct SftpListingBridge SftpListingBridge;
 void __swift_bridge__$SftpListingBridge$_free(void* self);
 
@@ -269,7 +271,7 @@ void* __swift_bridge__$Vec_SshPoolBridge$as_ptr(void* vec_ptr);
 
 void* __swift_bridge__$ssh_pool_new(void);
 void* __swift_bridge__$ssh_pool_list_configured_hosts(void);
-struct __swift_bridge__$ResultConnKeyBridgeAndString __swift_bridge__$ssh_pool_connect(void* pool, struct __swift_bridge__$ConnectSpecBridge spec);
+struct __swift_bridge__$ResultConnKeyBridgeAndString __swift_bridge__$ssh_pool_connect(void* pool, struct __swift_bridge__$ConnectSpecBridge spec, void* hostkey_cb, void* passphrase_cb);
 void __swift_bridge__$ssh_pool_disconnect(void* pool, struct __swift_bridge__$ConnKeyBridge key);
 void __swift_bridge__$ssh_pool_close_all(void* pool);
 struct __private__ResultPtrAndPtr __swift_bridge__$ssh_open_sftp(void* pool, struct __swift_bridge__$ConnKeyBridge key);

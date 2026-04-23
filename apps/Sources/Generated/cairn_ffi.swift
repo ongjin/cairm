@@ -1246,14 +1246,24 @@ extension GitFullSnapshot: Vectorizable {
 
 
 
+@_cdecl("__swift_bridge__$HostKeyCallback$ask_host_key")
+func __swift_bridge__HostKeyCallback_ask_host_key (_ this: UnsafeMutableRawPointer, _ host: UnsafeMutableRawPointer, _ port: UInt16, _ offer: __swift_bridge__$HostKeyOffer, _ state: UnsafeMutableRawPointer) -> UnsafeMutableRawPointer {
+    { let rustString = Unmanaged<HostKeyCallback>.fromOpaque(this).takeUnretainedValue().askHostKey(host: RustString(ptr: host), port: port, offer: offer.intoSwiftRepr(), state: RustString(ptr: state)).intoRustString(); rustString.isOwned = false; return rustString.ptr }()
+}
+
+@_cdecl("__swift_bridge__$PassphraseCallback$ask_passphrase")
+func __swift_bridge__PassphraseCallback_ask_passphrase (_ this: UnsafeMutableRawPointer, _ key_path: UnsafeMutableRawPointer) -> UnsafeMutableRawPointer? {
+    { if let rustString = optionalStringIntoRustString(Unmanaged<PassphraseCallback>.fromOpaque(this).takeUnretainedValue().askPassphrase(key_path: RustString(ptr: key_path))) { rustString.isOwned = false; return rustString.ptr } else { return nil } }()
+}
+
 public func ssh_pool_new() -> SshPoolBridge {
     SshPoolBridge(ptr: __swift_bridge__$ssh_pool_new())
 }
 public func ssh_pool_list_configured_hosts() -> RustVec<RustString> {
     RustVec(ptr: __swift_bridge__$ssh_pool_list_configured_hosts())
 }
-public func ssh_pool_connect(_ pool: SshPoolBridgeRef, _ spec: ConnectSpecBridge) throws -> ConnKeyBridge {
-    try { let val = __swift_bridge__$ssh_pool_connect(pool.ptr, spec.intoFfiRepr()); switch val.tag { case __swift_bridge__$ResultConnKeyBridgeAndString$ResultOk: return val.payload.ok.intoSwiftRepr() case __swift_bridge__$ResultConnKeyBridgeAndString$ResultErr: throw RustString(ptr: val.payload.err) default: fatalError() } }()
+public func ssh_pool_connect(_ pool: SshPoolBridgeRef, _ spec: ConnectSpecBridge, _ hostkey_cb: HostKeyCallback, _ passphrase_cb: PassphraseCallback) throws -> ConnKeyBridge {
+    try { let val = __swift_bridge__$ssh_pool_connect(pool.ptr, spec.intoFfiRepr(), Unmanaged.passRetained(hostkey_cb).toOpaque(), Unmanaged.passRetained(passphrase_cb).toOpaque()); switch val.tag { case __swift_bridge__$ResultConnKeyBridgeAndString$ResultOk: return val.payload.ok.intoSwiftRepr() case __swift_bridge__$ResultConnKeyBridgeAndString$ResultErr: throw RustString(ptr: val.payload.err) default: fatalError() } }()
 }
 public func ssh_pool_disconnect(_ pool: SshPoolBridgeRef, _ key: ConnKeyBridge) {
     __swift_bridge__$ssh_pool_disconnect(pool.ptr, key.intoFfiRepr())
@@ -1479,6 +1489,59 @@ extension __swift_bridge__$Option$ConnectSpecBridge {
         }
     }
 }
+public struct HostKeyOffer {
+    public var algorithm: RustString
+    public var blob_base64: RustString
+    public var fingerprint: RustString
+
+    public init(algorithm: RustString,blob_base64: RustString,fingerprint: RustString) {
+        self.algorithm = algorithm
+        self.blob_base64 = blob_base64
+        self.fingerprint = fingerprint
+    }
+
+    @inline(__always)
+    func intoFfiRepr() -> __swift_bridge__$HostKeyOffer {
+        { let val = self; return __swift_bridge__$HostKeyOffer(algorithm: { let rustString = val.algorithm.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), blob_base64: { let rustString = val.blob_base64.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), fingerprint: { let rustString = val.fingerprint.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); }()
+    }
+}
+extension __swift_bridge__$HostKeyOffer {
+    @inline(__always)
+    func intoSwiftRepr() -> HostKeyOffer {
+        { let val = self; return HostKeyOffer(algorithm: RustString(ptr: val.algorithm), blob_base64: RustString(ptr: val.blob_base64), fingerprint: RustString(ptr: val.fingerprint)); }()
+    }
+}
+extension __swift_bridge__$Option$HostKeyOffer {
+    @inline(__always)
+    func intoSwiftRepr() -> Optional<HostKeyOffer> {
+        if self.is_some {
+            return self.val.intoSwiftRepr()
+        } else {
+            return nil
+        }
+    }
+
+    @inline(__always)
+    static func fromSwiftRepr(_ val: Optional<HostKeyOffer>) -> __swift_bridge__$Option$HostKeyOffer {
+        if let v = val {
+            return __swift_bridge__$Option$HostKeyOffer(is_some: true, val: v.intoFfiRepr())
+        } else {
+            return __swift_bridge__$Option$HostKeyOffer(is_some: false, val: __swift_bridge__$HostKeyOffer())
+        }
+    }
+}
+
+@_cdecl("__swift_bridge__$HostKeyCallback$_free")
+func __swift_bridge__HostKeyCallback__free (ptr: UnsafeMutableRawPointer) {
+    let _ = Unmanaged<HostKeyCallback>.fromOpaque(ptr).takeRetainedValue()
+}
+
+
+@_cdecl("__swift_bridge__$PassphraseCallback$_free")
+func __swift_bridge__PassphraseCallback__free (ptr: UnsafeMutableRawPointer) {
+    let _ = Unmanaged<PassphraseCallback>.fromOpaque(ptr).takeRetainedValue()
+}
+
 
 public class SftpListingBridge: SftpListingBridgeRefMut {
     var isOwned: Bool = true

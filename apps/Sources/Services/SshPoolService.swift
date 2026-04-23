@@ -44,8 +44,10 @@ final class SshPoolService {
             identity_file_override: overrides.identityFile.map { RustString($0) },
             proxy_command_override: overrides.proxyCommand.map { RustString($0) }
         )
+        let hostKeyCallback = HostKeyCallback(resolver: self.hostKeyResolver)
+        let passphraseCallback = PassphraseCallback(resolver: self.passphraseResolver)
         let key = try await Task.detached(priority: .userInitiated) {
-            try ssh_pool_connect(pool, spec)
+            try ssh_pool_connect(pool, spec, hostKeyCallback, passphraseCallback)
         }.value
         let target = SshTarget(
             user: key.user.toString(),
@@ -113,4 +115,57 @@ struct ConnectSpecOverrides {
     var port: UInt16?
     var identityFile: String?
     var proxyCommand: String?
+}
+
+// ---------------------------------------------------------------------------
+// Swift callback wrappers — bridge the async Swift resolvers into blocking FFI
+// ---------------------------------------------------------------------------
+
+public final class HostKeyCallback {
+    private let resolver: HostKeyAlertResolver
+
+    init(resolver: HostKeyAlertResolver) {
+        self.resolver = resolver
+    }
+
+    public func askHostKey(host: RustString, port: UInt16, offer: HostKeyOffer, state: RustString) -> String {
+        let hostStr = host.toString()
+        let fingerprint = offer.fingerprint.toString()
+        let algorithm = offer.algorithm.toString()
+        let stateStr = state.toString()
+        let sem = DispatchSemaphore(value: 0)
+        var result = "reject"
+        Task {
+            result = await resolver.resolve(
+                host: hostStr,
+                port: port,
+                fingerprint: fingerprint,
+                algorithm: algorithm,
+                knownState: stateStr
+            )
+            sem.signal()
+        }
+        sem.wait()
+        return result
+    }
+}
+
+public final class PassphraseCallback {
+    private let resolver: PassphraseResolver
+
+    init(resolver: PassphraseResolver) {
+        self.resolver = resolver
+    }
+
+    public func askPassphrase(key_path: RustString) -> String? {
+        let path = key_path.toString()
+        let sem = DispatchSemaphore(value: 0)
+        var result: String?
+        Task {
+            result = await resolver.resolve(keyPath: path)
+            sem.signal()
+        }
+        sem.wait()
+        return result
+    }
 }

@@ -219,6 +219,7 @@ name = "cairn-ffi"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "base64",
  "cairn-core",
  "cairn-git",
  "cairn-index",
