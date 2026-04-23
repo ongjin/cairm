@@ -30,6 +30,7 @@ final class FileListCoordinatorTests: XCTestCase {
         let coord = FileListCoordinator(
             folder: folderA,
             provider: LocalFileSystemProvider(engine: CairnEngine()),
+            transfers: TransferController(),
             onActivate: { _ in aActivated += 1 },
             onAddToPinned: { _ in },
             isPinnedCheck: { _ in false },
@@ -43,6 +44,7 @@ final class FileListCoordinatorTests: XCTestCase {
         coord.updateBindings(
             folder: folderB,
             provider: LocalFileSystemProvider(engine: CairnEngine()),
+            transfers: TransferController(),
             onActivate: { _ in bActivated += 1 },
             onAddToPinned: { _ in },
             isPinnedCheck: { _ in false },
@@ -63,6 +65,7 @@ final class FileListCoordinatorTests: XCTestCase {
         let coord = FileListCoordinator(
             folder: folderA,
             provider: provider,
+            transfers: TransferController(),
             onActivate: { _ in },
             onAddToPinned: { _ in },
             isPinnedCheck: { _ in false },
@@ -73,6 +76,7 @@ final class FileListCoordinatorTests: XCTestCase {
         coord.updateBindings(
             folder: folderB,
             provider: provider,
+            transfers: TransferController(),
             onActivate: { _ in },
             onAddToPinned: { _ in },
             isPinnedCheck: { _ in false },
@@ -87,6 +91,7 @@ final class FileListCoordinatorTests: XCTestCase {
         let coord = FileListCoordinator(
             folder: folder,
             provider: LocalFileSystemProvider(engine: engine2),
+            transfers: TransferController(),
             onActivate: { _ in },
             onAddToPinned: { _ in },
             isPinnedCheck: { _ in false },

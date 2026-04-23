@@ -91,9 +91,11 @@ final class FileListCoordinator: NSObject,
     /// weakly because the Tab owns the manager's lifetime; if the tab goes
     /// away mid-operation we just skip registration.
     private weak var undoManager: UndoManager?
+    private var transfers: TransferController
 
     init(folder: FolderModel,
          provider: FileSystemProvider,
+         transfers: TransferController,
          onActivate: @escaping (FileEntry) -> Void,
          onAddToPinned: @escaping (FileEntry) -> Void,
          isPinnedCheck: @escaping (FileEntry) -> Bool,
@@ -102,6 +104,7 @@ final class FileListCoordinator: NSObject,
          undoManager: UndoManager? = nil) {
         self.folder = folder
         self.provider = provider
+        self.transfers = transfers
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
@@ -136,6 +139,7 @@ final class FileListCoordinator: NSObject,
     /// `applyModelSnapshot(table:)` call in `FileListView.updateNSView`.
     func updateBindings(folder: FolderModel,
                         provider: FileSystemProvider,
+                        transfers: TransferController,
                         onActivate: @escaping (FileEntry) -> Void,
                         onAddToPinned: @escaping (FileEntry) -> Void,
                         isPinnedCheck: @escaping (FileEntry) -> Bool,
@@ -145,6 +149,7 @@ final class FileListCoordinator: NSObject,
         let folderChanged = self.folder !== folder
         self.folder = folder
         self.provider = provider
+        self.transfers = transfers
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
@@ -1216,21 +1221,37 @@ final class FileListCoordinator: NSObject,
 
 // MARK: - Drag & drop (file move)
 //
-// Drag source: any selected row exports its absolute file URL via the standard
-// `.fileURL` pasteboard type, so files can be dragged out to Finder or any
-// other URL-aware target.
+// Drag source: local rows export the absolute file URL via the standard
+// `.fileURL` pasteboard type (Finder-compatible). Remote (SSH) rows export a
+// JSON-encoded FSPath via the custom `.cairnFSPath` type so cross-provider
+// drops can route to the correct transfer path.
 //
 // Drop target: when the proposed drop is .on a folder row, accept the drop
-// and `FileManager.moveItem` each pasteboard URL into that folder. We don't
-// accept `.above` drops on a list — reordering files in a folder isn't a
-// meaningful operation; if the user wants to move INTO the current folder
-// they should drop on the breadcrumb / sidebar instead.
+// and route by (source provider, destination provider):
+//   local→local:         FileManager.moveItem + undo (existing)
+//   local→ssh:           upload via TransferController
+//   ssh(same)→ssh(same): server-side copyInPlace
+//   ssh→local:           download via TransferController
+extension NSPasteboard.PasteboardType {
+    static let cairnFSPath = NSPasteboard.PasteboardType("com.cairn.fspath")
+}
+
 extension FileListCoordinator {
     func tableView(_ tableView: NSTableView,
                    pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard row >= 0, row < lastSnapshot.count else { return nil }
         let entry = lastSnapshot[row]
-        return URL(fileURLWithPath: entry.path.toString()) as NSURL
+        switch provider.identifier {
+        case .local:
+            return URL(fileURLWithPath: entry.path.toString()) as NSURL
+        case .ssh:
+            let item = NSPasteboardItem()
+            let path = FSPath(provider: provider.identifier, path: entry.path.toString())
+            if let data = try? JSONEncoder().encode(path) {
+                item.setData(data, forType: .cairnFSPath)
+            }
+            return item
+        }
     }
 
     func tableView(_ tableView: NSTableView,
@@ -1242,9 +1263,14 @@ extension FileListCoordinator {
               lastSnapshot[row].kind == .Directory else {
             return []
         }
+        let pb = info.draggingPasteboard
+        let hasFileURL = pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        let hasCairnPath = pb.data(forType: .cairnFSPath) != nil
+        guard hasFileURL || hasCairnPath else { return [] }
+
         let targetURL = URL(fileURLWithPath: lastSnapshot[row].path.toString())
-        // Block dropping a folder onto itself or one of its descendants.
-        if let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+        // Block dropping a local folder onto itself or one of its descendants.
+        if hasFileURL, let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
             for src in urls {
                 if src.standardizedFileURL.path == targetURL.standardizedFileURL.path { return [] }
                 if targetURL.standardizedFileURL.path.hasPrefix(src.standardizedFileURL.path + "/") { return [] }
@@ -1260,32 +1286,80 @@ extension FileListCoordinator {
         guard op == .on, row >= 0, row < lastSnapshot.count else { return false }
         let target = lastSnapshot[row]
         guard target.kind == .Directory else { return false }
-        let targetURL = URL(fileURLWithPath: target.path.toString())
+        let targetPath = FSPath(provider: provider.identifier, path: target.path.toString())
+        let pb = info.draggingPasteboard
 
-        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
+        // --- Remote source: .cairnFSPath ---
+        if let data = pb.data(forType: .cairnFSPath),
+           let sourcePath = try? JSONDecoder().decode(FSPath.self, from: data) {
+            switch (sourcePath.provider, provider.identifier) {
+            case (.ssh(let srcTarget), .ssh(let dstTarget)) where srcTarget == dstTarget:
+                // Same-host copy: server-side
+                let dstPath = targetPath.appending(sourcePath.lastComponent)
+                Task {
+                    try? await provider.copyInPlace(from: sourcePath, to: dstPath)
+                    await MainActor.run { self.onMoved() }
+                }
+                return true
+            case (.ssh, .local):
+                // Remote→local: download
+                let localDst = URL(fileURLWithPath: target.path.toString())
+                    .appendingPathComponent(sourcePath.lastComponent)
+                let dstPath = FSPath(provider: .local, path: localDst.path)
+                MainActor.assumeIsolated {
+                    transfers.enqueue(source: sourcePath, destination: dstPath, sizeHint: nil) { [weak self] job, progress in
+                        guard let self else { return }
+                        try await self.provider.downloadToLocal(sourcePath, toLocalURL: localDst, progress: progress, cancel: job.cancel)
+                    }
+                }
+                return true
+            default:
+                return false
+            }
+        }
+
+        // --- Local source: .fileURL ---
+        guard let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
             return false
         }
 
-        var moved: [(URL, URL)] = []
-        for src in urls {
-            let dest = targetURL.appendingPathComponent(src.lastPathComponent)
-            if FileManager.default.fileExists(atPath: dest.path) {
-                NSSound.beep()
-                continue
+        switch provider.identifier {
+        case .local:
+            // Existing local→local move
+            var moved: [(URL, URL)] = []
+            for src in urls {
+                let dest = URL(fileURLWithPath: target.path.toString()).appendingPathComponent(src.lastPathComponent)
+                if FileManager.default.fileExists(atPath: dest.path) { NSSound.beep(); continue }
+                do {
+                    try FileManager.default.moveItem(at: src, to: dest)
+                    moved.append((src, dest))
+                } catch { NSSound.beep() }
             }
-            do {
-                try FileManager.default.moveItem(at: src, to: dest)
-                moved.append((src, dest))
-            } catch {
-                NSSound.beep()
+            if !moved.isEmpty {
+                registerMoveUndo(moved)
+                onMoved()
+                return true
             }
+            return false
+
+        case .ssh:
+            // Local→remote: upload
+            var count = 0
+            for src in urls {
+                let dstPath = targetPath.appending(src.lastPathComponent)
+                let size = (try? FileManager.default.attributesOfItem(atPath: src.path))?[.size] as? Int64
+                MainActor.assumeIsolated {
+                    transfers.enqueue(source: FSPath(provider: .local, path: src.path),
+                                      destination: dstPath,
+                                      sizeHint: size) { [weak self] job, progress in
+                        guard let self else { return }
+                        try await self.provider.uploadFromLocal(src, to: dstPath, progress: progress, cancel: job.cancel)
+                    }
+                }
+                count += 1
+            }
+            return count > 0
         }
-        if !moved.isEmpty {
-            registerMoveUndo(moved)
-            onMoved()
-            return true
-        }
-        return false
     }
 
     /// Push "move dest back to src" onto the undo stack for each successful

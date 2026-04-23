@@ -53,6 +53,8 @@ struct FileListView: NSViewRepresentable {
     /// Active file-system provider for the tab. Routes rename/delete/mkdir
     /// through the correct backend (local vs. SSH).
     let provider: FileSystemProvider
+    /// Transfer controller for cross-provider drag-drop (upload / download).
+    let transfers: TransferController
 
     private static func makeGitColumn() -> NSTableColumn {
         let col = NSTableColumn(identifier: .git)
@@ -111,9 +113,9 @@ struct FileListView: NSViewRepresentable {
             table.addTableColumn(Self.makeGitColumn())
         }
 
-        // Drag & drop: export selected rows as file URLs and accept incoming
-        // file URL drops on folder rows (intra-app moves).
-        table.registerForDraggedTypes([.fileURL])
+        // Drag & drop: export selected rows as file URLs (local) or FSPath
+        // payloads (remote) and accept incoming drops on folder rows.
+        table.registerForDraggedTypes([.fileURL, .cairnFSPath])
         table.setDraggingSourceOperationMask([.move, .copy], forLocal: false)
         table.setDraggingSourceOperationMask(.move, forLocal: true)
 
@@ -161,6 +163,7 @@ struct FileListView: NSViewRepresentable {
         context.coordinator.updateBindings(
             folder: folder,
             provider: provider,
+            transfers: transfers,
             onActivate: onActivate,
             onAddToPinned: onAddToPinned,
             isPinnedCheck: isPinnedCheck,
@@ -188,6 +191,7 @@ struct FileListView: NSViewRepresentable {
     func makeCoordinator() -> FileListCoordinator {
         FileListCoordinator(folder: folder,
                             provider: provider,
+                            transfers: transfers,
                             onActivate: onActivate,
                             onAddToPinned: onAddToPinned,
                             isPinnedCheck: isPinnedCheck,

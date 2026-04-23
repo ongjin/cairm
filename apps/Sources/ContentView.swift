@@ -228,7 +228,8 @@ struct ContentView: View {
                 Task { await tab.folder.load(path, via: tab.provider) }
             },
             undoManager: tab.undoManager,
-            provider: tab.provider
+            provider: tab.provider,
+            transfers: app.transfers
         )
         .background {
             ZStack {
