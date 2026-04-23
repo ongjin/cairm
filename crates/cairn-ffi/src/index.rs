@@ -72,7 +72,6 @@ pub struct FileHitList {
     hits: Vec<ffi::FfiFileHit>,
 }
 
-
 impl FileHitList {
     fn len(&self) -> usize {
         self.hits.len()

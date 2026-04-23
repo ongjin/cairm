@@ -8,7 +8,10 @@ pub enum SshError {
     ConfigResolution { host: String, msg: String },
 
     #[error("Proxy command failed (exit {exit_code}): {stderr_preview}")]
-    ProxyCommandFailed { exit_code: i32, stderr_preview: String },
+    ProxyCommandFailed {
+        exit_code: i32,
+        stderr_preview: String,
+    },
 
     #[error("Couldn't spawn proxy command ({cmd}): {source}")]
     ProxyCommandSpawn {

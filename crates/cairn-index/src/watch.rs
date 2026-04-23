@@ -206,16 +206,13 @@ mod tests {
         let _w = watch(tmp.path(), store.clone()).unwrap();
 
         std::thread::sleep(Duration::from_millis(200));
-        fs::write(
-            tmp.path().join("hello.rs"),
-            "struct Foo; fn bar() {}",
-        )
-        .unwrap();
+        fs::write(tmp.path().join("hello.rs"), "struct Foo; fn bar() {}").unwrap();
         std::thread::sleep(Duration::from_millis(1500));
 
         let syms = store.query_symbols("bar", 16).unwrap();
         assert!(
-            syms.iter().any(|(rel, s)| rel == "hello.rs" && s.name == "bar"),
+            syms.iter()
+                .any(|(rel, s)| rel == "hello.rs" && s.name == "bar"),
             "symbol worker should have extracted `bar` from hello.rs"
         );
     }

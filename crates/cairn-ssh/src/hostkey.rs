@@ -18,7 +18,10 @@ pub fn sha256_fingerprint(pubkey_blob: &[u8]) -> String {
 pub enum KnownResult {
     Match,
     NotFound,
-    Mismatch { stored_algo: String, stored_blob: Vec<u8> },
+    Mismatch {
+        stored_algo: String,
+        stored_blob: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -50,20 +53,36 @@ impl KnownHostsStore {
         Self { paths }
     }
 
-    pub fn lookup(&self, host: &str, port: u16, offered_algo: &str, offered_blob: &[u8]) -> KnownResult {
+    pub fn lookup(
+        &self,
+        host: &str,
+        port: u16,
+        offered_algo: &str,
+        offered_blob: &[u8],
+    ) -> KnownResult {
         let target = host_key(host, port);
         let mut mismatch: Option<(String, Vec<u8>)> = None;
         for p in &self.paths {
-            let Ok(f) = File::open(p) else { continue; };
+            let Ok(f) = File::open(p) else {
+                continue;
+            };
             for line in BufReader::new(f).lines().map_while(Result::ok) {
                 let line = line.trim().to_string();
-                if line.is_empty() || line.starts_with('#') { continue; }
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
                 let parts: Vec<&str> = line.splitn(3, ' ').collect();
-                if parts.len() < 3 { continue; }
+                if parts.len() < 3 {
+                    continue;
+                }
                 let (hosts_field, algo, b64) = (parts[0], parts[1], parts[2]);
-                if !host_matches(hosts_field, host, port, &target) { continue; }
-                let blob = match BASE64_STANDARD.decode(b64.split_whitespace().next().unwrap_or("")) {
-                    Ok(v) => v, Err(_) => continue,
+                if !host_matches(hosts_field, host, port, &target) {
+                    continue;
+                }
+                let blob = match BASE64_STANDARD.decode(b64.split_whitespace().next().unwrap_or(""))
+                {
+                    Ok(v) => v,
+                    Err(_) => continue,
                 };
                 if algo == offered_algo && blob == offered_blob {
                     return KnownResult::Match;
@@ -73,16 +92,28 @@ impl KnownHostsStore {
             }
         }
         match mismatch {
-            Some((a, b)) => KnownResult::Mismatch { stored_algo: a, stored_blob: b },
-            None         => KnownResult::NotFound,
+            Some((a, b)) => KnownResult::Mismatch {
+                stored_algo: a,
+                stored_blob: b,
+            },
+            None => KnownResult::NotFound,
         }
     }
 
-    pub fn append(&self, host: &str, port: u16, algo: &str, blob: &[u8], hash_known_hosts: bool) -> std::io::Result<()> {
-        let path = self.paths.first().ok_or_else(|| std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "no user_known_hosts_file configured"
-        ))?;
+    pub fn append(
+        &self,
+        host: &str,
+        port: u16,
+        algo: &str,
+        blob: &[u8],
+        hash_known_hosts: bool,
+    ) -> std::io::Result<()> {
+        let path = self.paths.first().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no user_known_hosts_file configured",
+            )
+        })?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -101,7 +132,11 @@ fn open_mode_600(path: &std::path::Path) -> std::io::Result<std::fs::File> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        OpenOptions::new().create(true).append(true).mode(0o600).open(path)
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .mode(0o600)
+            .open(path)
     }
     #[cfg(not(unix))]
     {
@@ -110,7 +145,11 @@ fn open_mode_600(path: &std::path::Path) -> std::io::Result<std::fs::File> {
 }
 
 fn host_key(host: &str, port: u16) -> String {
-    if port == 22 { host.into() } else { format!("[{host}]:{port}") }
+    if port == 22 {
+        host.into()
+    } else {
+        format!("[{host}]:{port}")
+    }
 }
 
 fn host_matches(field: &str, host: &str, _port: u16, target: &str) -> bool {
@@ -126,7 +165,9 @@ fn host_matches(field: &str, host: &str, _port: u16, target: &str) -> bool {
     false
 }
 
-fn plain_host_field(host: &str, port: u16) -> String { host_key(host, port) }
+fn plain_host_field(host: &str, port: u16) -> String {
+    host_key(host, port)
+}
 
 fn hashed_host_field(host: &str, port: u16) -> String {
     use hmac::{Hmac, Mac};
@@ -138,5 +179,9 @@ fn hashed_host_field(host: &str, port: u16) -> String {
     let mut mac = HmacSha1::new_from_slice(&salt).expect("HMAC");
     mac.update(host_key(host, port).as_bytes());
     let digest = mac.finalize().into_bytes();
-    format!("|1|{}|{}", BASE64_STANDARD.encode(salt), BASE64_STANDARD.encode(digest))
+    format!(
+        "|1|{}|{}",
+        BASE64_STANDARD.encode(salt),
+        BASE64_STANDARD.encode(digest)
+    )
 }

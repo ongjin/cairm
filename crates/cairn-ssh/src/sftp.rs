@@ -112,19 +112,14 @@ impl SftpHandle {
                         entries.push(attrs_to_entry(file.filename, &file.attrs));
                     }
                 }
-                Err(SftpError::Status(ref status))
-                    if status.status_code == StatusCode::Eof =>
-                {
+                Err(SftpError::Status(ref status)) if status.status_code == StatusCode::Eof => {
                     break;
                 }
                 Err(e) => return Err(map_sftp_err(e)),
             }
         }
 
-        self.session
-            .close(handle)
-            .await
-            .map_err(map_sftp_err)?;
+        self.session.close(handle).await.map_err(map_sftp_err)?;
 
         self.pool.touch(&self.key);
         Ok(entries)
@@ -138,12 +133,7 @@ impl SftpHandle {
     pub async fn stat(&self, path: &str) -> Result<RemoteStat> {
         self.pool.touch(&self.key);
 
-        let attrs = self
-            .session
-            .stat(path)
-            .await
-            .map_err(map_sftp_err)?
-            .attrs;
+        let attrs = self.session.stat(path).await.map_err(map_sftp_err)?.attrs;
 
         self.pool.touch(&self.key);
         Ok(attrs_to_stat(&attrs))
@@ -174,10 +164,7 @@ impl SftpHandle {
     pub async fn rename(&self, from: &str, to: &str) -> Result<()> {
         self.pool.touch(&self.key);
 
-        self.session
-            .rename(from, to)
-            .await
-            .map_err(map_sftp_err)?;
+        self.session.rename(from, to).await.map_err(map_sftp_err)?;
 
         self.pool.touch(&self.key);
         Ok(())
@@ -207,10 +194,7 @@ impl SftpHandle {
             Err(e) => return Err(map_sftp_err(e)),
         }
 
-        self.session
-            .rmdir(path)
-            .await
-            .map_err(map_sftp_err)?;
+        self.session.rmdir(path).await.map_err(map_sftp_err)?;
 
         self.pool.touch(&self.key);
         Ok(())
@@ -240,9 +224,7 @@ impl SftpHandle {
         let data = match result {
             Ok(d) => d.data,
             // EOF on a file shorter than `max` is fine — return what we got.
-            Err(SftpError::Status(ref status))
-                if status.status_code == StatusCode::Eof =>
-            {
+            Err(SftpError::Status(ref status)) if status.status_code == StatusCode::Eof => {
                 vec![]
             }
             Err(e) => return Err(map_sftp_err(e)),
@@ -317,9 +299,7 @@ impl SftpHandle {
                         break;
                     }
                 }
-                Err(SftpError::Status(ref status))
-                    if status.status_code == StatusCode::Eof =>
-                {
+                Err(SftpError::Status(ref status)) if status.status_code == StatusCode::Eof => {
                     break;
                 }
                 Err(e) => {
@@ -531,9 +511,7 @@ fn attrs_to_stat(attrs: &FileAttributes) -> RemoteStat {
 fn map_sftp_err(e: SftpError) -> SshError {
     match e {
         SftpError::Status(status) => match status.status_code {
-            StatusCode::PermissionDenied => {
-                SshError::SftpPermissionDenied(status.error_message)
-            }
+            StatusCode::PermissionDenied => SshError::SftpPermissionDenied(status.error_message),
             StatusCode::NoSuchFile => SshError::SftpNotFound(status.error_message),
             other => SshError::SftpProtocol(format!("{other:?}: {}", status.error_message)),
         },

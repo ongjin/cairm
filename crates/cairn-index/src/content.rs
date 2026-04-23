@@ -40,11 +40,7 @@ impl ContentSearch {
                 cmd.arg("-F");
             }
             cmd.arg(&pat).arg(&root_path);
-            let mut child: Child = match cmd
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null())
-                .spawn()
-            {
+            let mut child: Child = match cmd.stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
                 Ok(c) => c,
                 Err(_) => return,
             };

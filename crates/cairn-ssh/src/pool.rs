@@ -292,27 +292,28 @@ impl client::Handler for CairnHandler {
         let known = self.known_hosts.lookup(host, port, algo, &blob);
 
         match self.resolved.strict_host_key_checking {
-            StrictMode::Yes => {
-                match &known {
-                    KnownResult::Match => Ok(true),
-                    KnownResult::NotFound => {
-                        warn!("StrictMode=yes: unknown host key for {host}");
-                        Ok(false)
-                    }
-                    KnownResult::Mismatch { .. } => {
-                        warn!("StrictMode=yes: host key MISMATCH for {host}");
-                        Ok(false)
-                    }
+            StrictMode::Yes => match &known {
+                KnownResult::Match => Ok(true),
+                KnownResult::NotFound => {
+                    warn!("StrictMode=yes: unknown host key for {host}");
+                    Ok(false)
                 }
-            }
+                KnownResult::Mismatch { .. } => {
+                    warn!("StrictMode=yes: host key MISMATCH for {host}");
+                    Ok(false)
+                }
+            },
             StrictMode::AcceptNew => match &known {
                 KnownResult::Match => Ok(true),
                 KnownResult::NotFound => {
                     // Auto-accept and save.
-                    if let Err(e) =
-                        self.known_hosts
-                            .append(host, port, algo, &blob, self.resolved.hash_known_hosts)
-                    {
+                    if let Err(e) = self.known_hosts.append(
+                        host,
+                        port,
+                        algo,
+                        &blob,
+                        self.resolved.hash_known_hosts,
+                    ) {
                         warn!("AcceptNew: couldn't save host key: {e}");
                     }
                     Ok(true)
@@ -330,10 +331,13 @@ impl client::Handler for CairnHandler {
                 match decision {
                     TofuDecision::Accept => Ok(true),
                     TofuDecision::AcceptAndSave => {
-                        if let Err(e) =
-                            self.known_hosts
-                                .append(host, port, algo, &blob, self.resolved.hash_known_hosts)
-                        {
+                        if let Err(e) = self.known_hosts.append(
+                            host,
+                            port,
+                            algo,
+                            &blob,
+                            self.resolved.hash_known_hosts,
+                        ) {
                             warn!("Ask/AcceptAndSave: couldn't save host key: {e}");
                         }
                         Ok(true)
@@ -368,9 +372,13 @@ async fn dial(
 
     // Establish transport (direct TCP or ProxyCommand).
     let mut handle = if let Some(proxy_cmd) = &resolved.proxy_command {
-        let stream =
-            crate::proxy::dial_with_proxy(proxy_cmd, &resolved.hostname, resolved.port, &resolved.user)
-                .await?;
+        let stream = crate::proxy::dial_with_proxy(
+            proxy_cmd,
+            &resolved.hostname,
+            resolved.port,
+            &resolved.user,
+        )
+        .await?;
         client::connect_stream(cfg, stream, handler)
             .await
             .map_err(|e| SshError::Russh(format!("{e:?}")))?
@@ -430,9 +438,7 @@ async fn try_agent_auth(
 
         for pub_key in identities {
             // authenticate_future takes ownership of the agent and returns it back.
-            let (agent_back, result) = handle
-                .authenticate_future(user, pub_key, agent)
-                .await;
+            let (agent_back, result) = handle.authenticate_future(user, pub_key, agent).await;
             agent = agent_back;
 
             match result {

@@ -1,5 +1,5 @@
-use cairn_ssh::known_hosts_hash::match_hashed_entry;
 use cairn_ssh::hostkey::{KnownHostsStore, KnownResult};
+use cairn_ssh::known_hosts_hash::match_hashed_entry;
 use std::io::Write;
 use tempfile::NamedTempFile;
 
@@ -7,7 +7,11 @@ use tempfile::NamedTempFile;
 fn plain_entry_match() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(f, "# comment").unwrap();
-    writeln!(f, "prod-api ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEVlxZqMX2ElimvprNnSjFEUnlz7di1kFQUBoy+IIPBC").unwrap();
+    writeln!(
+        f,
+        "prod-api ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEVlxZqMX2ElimvprNnSjFEUnlz7di1kFQUBoy+IIPBC"
+    )
+    .unwrap();
     f.flush().unwrap();
 
     let store = KnownHostsStore::new(vec![f.path().to_path_buf()]);
@@ -36,5 +40,9 @@ fn make_hashed_line(salt: &[u8], host: &str) -> String {
     let mut mac = HmacSha1::new_from_slice(salt).unwrap();
     mac.update(host.as_bytes());
     let result = mac.finalize().into_bytes();
-    format!("|1|{}|{} ssh-ed25519 AAAA...", BASE64_STANDARD.encode(salt), BASE64_STANDARD.encode(result))
+    format!(
+        "|1|{}|{} ssh-ed25519 AAAA...",
+        BASE64_STANDARD.encode(salt),
+        BASE64_STANDARD.encode(result)
+    )
 }

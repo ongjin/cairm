@@ -1,4 +1,4 @@
-use cairn_ssh::config::{parse_ssh_g_output, parse_host_blocks};
+use cairn_ssh::config::{parse_host_blocks, parse_ssh_g_output};
 
 #[test]
 fn parse_simple_ssh_g() {
@@ -33,7 +33,10 @@ user deploy
 proxycommand cloudflared access ssh --hostname %h
 ";
     let cfg = parse_ssh_g_output(out).unwrap();
-    assert_eq!(cfg.proxy_command.as_deref(), Some("cloudflared access ssh --hostname %h"));
+    assert_eq!(
+        cfg.proxy_command.as_deref(),
+        Some("cloudflared access ssh --hostname %h")
+    );
 }
 
 #[test]

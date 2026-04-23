@@ -16,7 +16,9 @@ pub mod types;
 pub use auth::PassphraseResolver;
 pub use config::{list_configured_hosts, resolve_host};
 pub use error::{Result, SshError};
-pub use hostkey::{sha256_fingerprint, HostKeyResolver, KnownHostsStore, KnownResult, TofuDecision};
+pub use hostkey::{
+    sha256_fingerprint, HostKeyResolver, KnownHostsStore, KnownResult, TofuDecision,
+};
 pub use pool::SshPool;
 pub use sftp::{RemoteEntry, RemoteStat, SftpHandle};
 pub use transfer::{CancelFlag, ProgressSink};

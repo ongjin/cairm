@@ -44,9 +44,9 @@ const PACKAGE_EXTENSIONS: &[&str] = &[
     ".xcassets",
     ".pkg",
     ".mpkg",
-    ".musiclibrary",   // Apple Music — TCC trigger
-    ".photoslibrary",  // Photos — TCC trigger
-    ".tvlibrary",      // Apple TV
+    ".musiclibrary",  // Apple Music — TCC trigger
+    ".photoslibrary", // Photos — TCC trigger
+    ".tvlibrary",     // Apple TV
     ".dmg",
 ];
 
@@ -76,22 +76,22 @@ const SKIP_DIR_NAMES: &[&str] = &[
     // root (depth=0 always passes), so contents at depth=1+ get indexed.
     "Library",
     "node_modules",
-    "target",        // Rust
-    "build",         // generic + Xcode
-    "Build",         // Xcode
-    "DerivedData",   // Xcode
-    "Pods",          // CocoaPods
-    ".next",         // Next.js
-    ".nuxt",         // Nuxt
-    ".svelte-kit",   // SvelteKit
-    "dist",          // generic JS bundlers
-    ".cache",        // generic
-    ".gradle",       // Gradle
-    ".venv",         // Python
-    "venv",          // Python
-    "__pycache__",   // Python
-    "vendor",        // PHP / Go / Ruby
-    ".terraform",    // Terraform
+    "target",      // Rust
+    "build",       // generic + Xcode
+    "Build",       // Xcode
+    "DerivedData", // Xcode
+    "Pods",        // CocoaPods
+    ".next",       // Next.js
+    ".nuxt",       // Nuxt
+    ".svelte-kit", // SvelteKit
+    "dist",        // generic JS bundlers
+    ".cache",      // generic
+    ".gradle",     // Gradle
+    ".venv",       // Python
+    "venv",        // Python
+    "__pycache__", // Python
+    "vendor",      // PHP / Go / Ruby
+    ".terraform",  // Terraform
 ];
 
 fn should_skip_dir(name: &str) -> bool {

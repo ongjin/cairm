@@ -50,7 +50,8 @@ impl IndexStore {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).ok();
         }
-        let db = redb::Database::create(db_path).map_err(|e| IndexError::from(redb::Error::from(e)))?;
+        let db =
+            redb::Database::create(db_path).map_err(|e| IndexError::from(redb::Error::from(e)))?;
         let tx = db.begin_write()?;
         {
             let _ = tx.open_table(TABLE_FILES)?;
@@ -149,10 +150,12 @@ impl IndexStore {
             let mut ts = tx.open_table(TABLE_SYMBOLS)?;
             let stale_sym_keys: Vec<(String, u32)> = ts
                 .iter()?
-                .filter_map(|e| e.ok().map(|(k, _)| {
-                    let kv = k.value();
-                    (kv.0.to_string(), kv.1)
-                }))
+                .filter_map(|e| {
+                    e.ok().map(|(k, _)| {
+                        let kv = k.value();
+                        (kv.0.to_string(), kv.1)
+                    })
+                })
                 .collect();
             for (rel, idx) in stale_sym_keys {
                 ts.remove((rel.as_str(), idx))?;

@@ -60,10 +60,7 @@ pub fn parse_ssh_g_output(out: &str) -> Result<ResolvedConfig> {
         }
     };
 
-    let identity_files = all("identityfile")
-        .into_iter()
-        .map(expand_tilde)
-        .collect();
+    let identity_files = all("identityfile").into_iter().map(expand_tilde).collect();
 
     let identity_agent = {
         let v = first("identityagent");
@@ -109,19 +106,11 @@ pub fn parse_ssh_g_output(out: &str) -> Result<ResolvedConfig> {
 
     let user_known_hosts_file = all("userknownhostsfile")
         .into_iter()
-        .flat_map(|s| {
-            s.split_whitespace()
-                .map(expand_tilde)
-                .collect::<Vec<_>>()
-        })
+        .flat_map(|s| s.split_whitespace().map(expand_tilde).collect::<Vec<_>>())
         .collect();
     let global_known_hosts_file = all("globalknownhostsfile")
         .into_iter()
-        .flat_map(|s| {
-            s.split_whitespace()
-                .map(expand_tilde)
-                .collect::<Vec<_>>()
-        })
+        .flat_map(|s| s.split_whitespace().map(expand_tilde).collect::<Vec<_>>())
         .collect();
 
     let host_key_algorithms = split_comma(first("hostkeyalgorithms"));
@@ -253,8 +242,11 @@ fn walk_includes(
                                 .file_name()
                                 .map(|s| s.to_string_lossy().to_string())
                                 .unwrap_or_default();
-                            let matches =
-                                if is_star { n.starts_with(&prefix) } else { n == fname };
+                            let matches = if is_star {
+                                n.starts_with(&prefix)
+                            } else {
+                                n == fname
+                            };
                             if matches && ep.is_file() {
                                 walk_includes(&ep, depth + 1, max_depth, buf, seen);
                             }

@@ -60,7 +60,13 @@ mod ffi {
     extern "Swift" {
         type HostKeyCallback;
         #[swift_bridge(swift_name = "askHostKey")]
-        fn ask_host_key(&self, host: String, port: u16, offer: HostKeyOffer, state: String) -> String;
+        fn ask_host_key(
+            &self,
+            host: String,
+            port: u16,
+            offer: HostKeyOffer,
+            state: String,
+        ) -> String;
     }
 
     extern "Swift" {
@@ -214,7 +220,8 @@ unsafe impl Sync for SwiftPassphraseAdapter {}
 #[async_trait]
 impl ssh::PassphraseResolver for SwiftPassphraseAdapter {
     async fn resolve(&self, key_path: &std::path::Path) -> Option<String> {
-        self.cb.ask_passphrase(key_path.to_string_lossy().into_owned())
+        self.cb
+            .ask_passphrase(key_path.to_string_lossy().into_owned())
     }
 }
 
@@ -263,10 +270,7 @@ fn ssh_pool_close_all(pool: &SshPoolBridge) {
     runtime().block_on(pool.inner.close_all());
 }
 
-fn ssh_open_sftp(
-    pool: &SshPoolBridge,
-    key: ConnKeyBridge,
-) -> Result<SftpHandleBridge, String> {
+fn ssh_open_sftp(pool: &SshPoolBridge, key: ConnKeyBridge) -> Result<SftpHandleBridge, String> {
     let k = bridge_to_key(key);
     let sftp = runtime()
         .block_on(ssh::SftpHandle::open(pool.inner.clone(), k))

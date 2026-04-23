@@ -41,10 +41,18 @@ impl ConnKey {
     pub fn from_resolved(resolved: &ResolvedConfig) -> Self {
         use sha2::{Digest, Sha256};
         let mut h = Sha256::new();
-        if let Some(pc) = &resolved.proxy_command { h.update(pc.as_bytes()); }
-        for id in &resolved.identity_files { h.update(id.to_string_lossy().as_bytes()); }
-        for algo in &resolved.host_key_algorithms { h.update(algo.as_bytes()); }
-        if let Some(ia) = &resolved.identity_agent { h.update(ia.to_string_lossy().as_bytes()); }
+        if let Some(pc) = &resolved.proxy_command {
+            h.update(pc.as_bytes());
+        }
+        for id in &resolved.identity_files {
+            h.update(id.to_string_lossy().as_bytes());
+        }
+        for algo in &resolved.host_key_algorithms {
+            h.update(algo.as_bytes());
+        }
+        if let Some(ia) = &resolved.identity_agent {
+            h.update(ia.to_string_lossy().as_bytes());
+        }
         let full = h.finalize();
         let mut out = [0u8; 16];
         out.copy_from_slice(&full[..16]);
@@ -61,7 +69,7 @@ impl ConnKey {
 /// top of the ssh_config-resolved defaults. All overrides are optional.
 #[derive(Debug, Clone)]
 pub struct ConnectSpec {
-    pub host_alias: String,       // ssh_config 이름 or bare hostname
+    pub host_alias: String, // ssh_config 이름 or bare hostname
     pub user_override: Option<String>,
     pub port_override: Option<u16>,
     pub identity_file_override: Option<PathBuf>,
