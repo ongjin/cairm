@@ -20,6 +20,7 @@
 
 pub mod git;
 pub mod index;
+pub mod ssh;
 
 use std::path::Path;
 

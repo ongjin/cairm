@@ -17,6 +17,10 @@ cairn-preview = { path = "../cairn-preview" }
 cairn-search = { path = "../cairn-search" }
 cairn-index = { path = "../cairn-index" }
 cairn-git = { path = "../cairn-git" }
+cairn-ssh = { path = "../cairn-ssh" }
+tokio     = { workspace = true }
+async-trait = "0.1"
+hex = "0.4"
 which = "6"
 swift-bridge = "0.1"
 

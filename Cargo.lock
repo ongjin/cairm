@@ -218,14 +218,18 @@ dependencies = [
 name = "cairn-ffi"
 version = "0.0.1"
 dependencies = [
+ "async-trait",
  "cairn-core",
  "cairn-git",
  "cairn-index",
  "cairn-preview",
  "cairn-search",
+ "cairn-ssh",
  "cairn-walker",
+ "hex",
  "swift-bridge",
  "swift-bridge-build",
+ "tokio",
  "which",
 ]
 

@@ -1246,3 +1246,538 @@ extension GitFullSnapshot: Vectorizable {
 
 
 
+public func ssh_pool_new() -> SshPoolBridge {
+    SshPoolBridge(ptr: __swift_bridge__$ssh_pool_new())
+}
+public func ssh_pool_list_configured_hosts() -> RustVec<RustString> {
+    RustVec(ptr: __swift_bridge__$ssh_pool_list_configured_hosts())
+}
+public func ssh_pool_connect(_ pool: SshPoolBridgeRef, _ spec: ConnectSpecBridge) throws -> ConnKeyBridge {
+    try { let val = __swift_bridge__$ssh_pool_connect(pool.ptr, spec.intoFfiRepr()); switch val.tag { case __swift_bridge__$ResultConnKeyBridgeAndString$ResultOk: return val.payload.ok.intoSwiftRepr() case __swift_bridge__$ResultConnKeyBridgeAndString$ResultErr: throw RustString(ptr: val.payload.err) default: fatalError() } }()
+}
+public func ssh_pool_disconnect(_ pool: SshPoolBridgeRef, _ key: ConnKeyBridge) {
+    __swift_bridge__$ssh_pool_disconnect(pool.ptr, key.intoFfiRepr())
+}
+public func ssh_pool_close_all(_ pool: SshPoolBridgeRef) {
+    __swift_bridge__$ssh_pool_close_all(pool.ptr)
+}
+public func ssh_open_sftp(_ pool: SshPoolBridgeRef, _ key: ConnKeyBridge) throws -> SftpHandleBridge {
+    try { let val = __swift_bridge__$ssh_open_sftp(pool.ptr, key.intoFfiRepr()); if val.is_ok { return SftpHandleBridge(ptr: val.ok_or_err!) } else { throw RustString(ptr: val.ok_or_err!) } }()
+}
+public func sftp_list<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ path: GenericIntoRustString) throws -> SftpListingBridge {
+    try { let val = __swift_bridge__$sftp_list(h.ptr, { let rustString = path.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); if val.is_ok { return SftpListingBridge(ptr: val.ok_or_err!) } else { throw RustString(ptr: val.ok_or_err!) } }()
+}
+public func sftp_stat<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ path: GenericIntoRustString) throws -> FileStatBridge {
+    try { let val = __swift_bridge__$sftp_stat(h.ptr, { let rustString = path.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); switch val.tag { case __swift_bridge__$ResultFileStatBridgeAndString$ResultOk: return val.payload.ok.intoSwiftRepr() case __swift_bridge__$ResultFileStatBridgeAndString$ResultErr: throw RustString(ptr: val.payload.err) default: fatalError() } }()
+}
+public func sftp_mkdir<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ path: GenericIntoRustString) throws -> () {
+    try { let val = __swift_bridge__$sftp_mkdir(h.ptr, { let rustString = path.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); if val != nil { throw RustString(ptr: val!) } else { return } }()
+}
+public func sftp_rename<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ from: GenericIntoRustString, _ to: GenericIntoRustString) throws -> () {
+    try { let val = __swift_bridge__$sftp_rename(h.ptr, { let rustString = from.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), { let rustString = to.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); if val != nil { throw RustString(ptr: val!) } else { return } }()
+}
+public func sftp_unlink<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ path: GenericIntoRustString) throws -> () {
+    try { let val = __swift_bridge__$sftp_unlink(h.ptr, { let rustString = path.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); if val != nil { throw RustString(ptr: val!) } else { return } }()
+}
+public func sftp_read_head<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ path: GenericIntoRustString, _ max: UInt32) throws -> RustVec<UInt8> {
+    try { let val = __swift_bridge__$sftp_read_head(h.ptr, { let rustString = path.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), max); if val.is_ok { return RustVec(ptr: val.ok_or_err!) } else { throw RustString(ptr: val.ok_or_err!) } }()
+}
+public func cancel_flag_new() -> CancelFlagBridge {
+    CancelFlagBridge(ptr: __swift_bridge__$cancel_flag_new())
+}
+public func cancel_flag_cancel(_ f: CancelFlagBridgeRef) {
+    __swift_bridge__$cancel_flag_cancel(f.ptr)
+}
+public func sftp_download_sync<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ remote: GenericIntoRustString, _ local: GenericIntoRustString, _ cancel: CancelFlagBridgeRef) throws -> () {
+    try { let val = __swift_bridge__$sftp_download_sync(h.ptr, { let rustString = remote.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), { let rustString = local.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), cancel.ptr); if val != nil { throw RustString(ptr: val!) } else { return } }()
+}
+public func sftp_upload_sync<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ local: GenericIntoRustString, _ remote: GenericIntoRustString, _ cancel: CancelFlagBridgeRef) throws -> () {
+    try { let val = __swift_bridge__$sftp_upload_sync(h.ptr, { let rustString = local.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), { let rustString = remote.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), cancel.ptr); if val != nil { throw RustString(ptr: val!) } else { return } }()
+}
+public func sftp_progress_poll(_ h: SftpHandleBridgeRef) -> UInt64 {
+    __swift_bridge__$sftp_progress_poll(h.ptr)
+}
+public func sftp_listing_len(_ listing: SftpListingBridgeRef) -> UInt {
+    __swift_bridge__$sftp_listing_len(listing.ptr)
+}
+public func sftp_listing_entry(_ listing: SftpListingBridgeRef, _ index: UInt) -> FileEntryBridge {
+    __swift_bridge__$sftp_listing_entry(listing.ptr, index).intoSwiftRepr()
+}
+public struct ConnKeyBridge {
+    public var user: RustString
+    public var hostname: RustString
+    public var port: UInt16
+    public var config_hash_hex: RustString
+
+    public init(user: RustString,hostname: RustString,port: UInt16,config_hash_hex: RustString) {
+        self.user = user
+        self.hostname = hostname
+        self.port = port
+        self.config_hash_hex = config_hash_hex
+    }
+
+    @inline(__always)
+    func intoFfiRepr() -> __swift_bridge__$ConnKeyBridge {
+        { let val = self; return __swift_bridge__$ConnKeyBridge(user: { let rustString = val.user.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), hostname: { let rustString = val.hostname.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), port: val.port, config_hash_hex: { let rustString = val.config_hash_hex.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); }()
+    }
+}
+extension __swift_bridge__$ConnKeyBridge {
+    @inline(__always)
+    func intoSwiftRepr() -> ConnKeyBridge {
+        { let val = self; return ConnKeyBridge(user: RustString(ptr: val.user), hostname: RustString(ptr: val.hostname), port: val.port, config_hash_hex: RustString(ptr: val.config_hash_hex)); }()
+    }
+}
+extension __swift_bridge__$Option$ConnKeyBridge {
+    @inline(__always)
+    func intoSwiftRepr() -> Optional<ConnKeyBridge> {
+        if self.is_some {
+            return self.val.intoSwiftRepr()
+        } else {
+            return nil
+        }
+    }
+
+    @inline(__always)
+    static func fromSwiftRepr(_ val: Optional<ConnKeyBridge>) -> __swift_bridge__$Option$ConnKeyBridge {
+        if let v = val {
+            return __swift_bridge__$Option$ConnKeyBridge(is_some: true, val: v.intoFfiRepr())
+        } else {
+            return __swift_bridge__$Option$ConnKeyBridge(is_some: false, val: __swift_bridge__$ConnKeyBridge())
+        }
+    }
+}
+public struct FileEntryBridge {
+    public var name: RustString
+    public var is_dir: Bool
+    public var size: UInt64
+    public var mtime: Int64
+    public var mode: UInt32
+
+    public init(name: RustString,is_dir: Bool,size: UInt64,mtime: Int64,mode: UInt32) {
+        self.name = name
+        self.is_dir = is_dir
+        self.size = size
+        self.mtime = mtime
+        self.mode = mode
+    }
+
+    @inline(__always)
+    func intoFfiRepr() -> __swift_bridge__$FileEntryBridge {
+        { let val = self; return __swift_bridge__$FileEntryBridge(name: { let rustString = val.name.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), is_dir: val.is_dir, size: val.size, mtime: val.mtime, mode: val.mode); }()
+    }
+}
+extension __swift_bridge__$FileEntryBridge {
+    @inline(__always)
+    func intoSwiftRepr() -> FileEntryBridge {
+        { let val = self; return FileEntryBridge(name: RustString(ptr: val.name), is_dir: val.is_dir, size: val.size, mtime: val.mtime, mode: val.mode); }()
+    }
+}
+extension __swift_bridge__$Option$FileEntryBridge {
+    @inline(__always)
+    func intoSwiftRepr() -> Optional<FileEntryBridge> {
+        if self.is_some {
+            return self.val.intoSwiftRepr()
+        } else {
+            return nil
+        }
+    }
+
+    @inline(__always)
+    static func fromSwiftRepr(_ val: Optional<FileEntryBridge>) -> __swift_bridge__$Option$FileEntryBridge {
+        if let v = val {
+            return __swift_bridge__$Option$FileEntryBridge(is_some: true, val: v.intoFfiRepr())
+        } else {
+            return __swift_bridge__$Option$FileEntryBridge(is_some: false, val: __swift_bridge__$FileEntryBridge())
+        }
+    }
+}
+public struct FileStatBridge {
+    public var size: UInt64
+    public var mtime: Int64
+    public var mode: UInt32
+    public var is_dir: Bool
+
+    public init(size: UInt64,mtime: Int64,mode: UInt32,is_dir: Bool) {
+        self.size = size
+        self.mtime = mtime
+        self.mode = mode
+        self.is_dir = is_dir
+    }
+
+    @inline(__always)
+    func intoFfiRepr() -> __swift_bridge__$FileStatBridge {
+        { let val = self; return __swift_bridge__$FileStatBridge(size: val.size, mtime: val.mtime, mode: val.mode, is_dir: val.is_dir); }()
+    }
+}
+extension __swift_bridge__$FileStatBridge {
+    @inline(__always)
+    func intoSwiftRepr() -> FileStatBridge {
+        { let val = self; return FileStatBridge(size: val.size, mtime: val.mtime, mode: val.mode, is_dir: val.is_dir); }()
+    }
+}
+extension __swift_bridge__$Option$FileStatBridge {
+    @inline(__always)
+    func intoSwiftRepr() -> Optional<FileStatBridge> {
+        if self.is_some {
+            return self.val.intoSwiftRepr()
+        } else {
+            return nil
+        }
+    }
+
+    @inline(__always)
+    static func fromSwiftRepr(_ val: Optional<FileStatBridge>) -> __swift_bridge__$Option$FileStatBridge {
+        if let v = val {
+            return __swift_bridge__$Option$FileStatBridge(is_some: true, val: v.intoFfiRepr())
+        } else {
+            return __swift_bridge__$Option$FileStatBridge(is_some: false, val: __swift_bridge__$FileStatBridge())
+        }
+    }
+}
+public struct ConnectSpecBridge {
+    public var host_alias: RustString
+    public var user_override: Optional<RustString>
+    public var port_override: Optional<UInt16>
+    public var identity_file_override: Optional<RustString>
+    public var proxy_command_override: Optional<RustString>
+
+    public init(host_alias: RustString,user_override: Optional<RustString>,port_override: Optional<UInt16>,identity_file_override: Optional<RustString>,proxy_command_override: Optional<RustString>) {
+        self.host_alias = host_alias
+        self.user_override = user_override
+        self.port_override = port_override
+        self.identity_file_override = identity_file_override
+        self.proxy_command_override = proxy_command_override
+    }
+
+    @inline(__always)
+    func intoFfiRepr() -> __swift_bridge__$ConnectSpecBridge {
+        { let val = self; return __swift_bridge__$ConnectSpecBridge(host_alias: { let rustString = val.host_alias.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), user_override: { if let rustString = optionalStringIntoRustString(val.user_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }(), port_override: val.port_override.intoFfiRepr(), identity_file_override: { if let rustString = optionalStringIntoRustString(val.identity_file_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }(), proxy_command_override: { if let rustString = optionalStringIntoRustString(val.proxy_command_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }()); }()
+    }
+}
+extension __swift_bridge__$ConnectSpecBridge {
+    @inline(__always)
+    func intoSwiftRepr() -> ConnectSpecBridge {
+        { let val = self; return ConnectSpecBridge(host_alias: RustString(ptr: val.host_alias), user_override: { let val = val.user_override; if val != nil { return RustString(ptr: val!) } else { return nil } }(), port_override: val.port_override.intoSwiftRepr(), identity_file_override: { let val = val.identity_file_override; if val != nil { return RustString(ptr: val!) } else { return nil } }(), proxy_command_override: { let val = val.proxy_command_override; if val != nil { return RustString(ptr: val!) } else { return nil } }()); }()
+    }
+}
+extension __swift_bridge__$Option$ConnectSpecBridge {
+    @inline(__always)
+    func intoSwiftRepr() -> Optional<ConnectSpecBridge> {
+        if self.is_some {
+            return self.val.intoSwiftRepr()
+        } else {
+            return nil
+        }
+    }
+
+    @inline(__always)
+    static func fromSwiftRepr(_ val: Optional<ConnectSpecBridge>) -> __swift_bridge__$Option$ConnectSpecBridge {
+        if let v = val {
+            return __swift_bridge__$Option$ConnectSpecBridge(is_some: true, val: v.intoFfiRepr())
+        } else {
+            return __swift_bridge__$Option$ConnectSpecBridge(is_some: false, val: __swift_bridge__$ConnectSpecBridge())
+        }
+    }
+}
+
+public class SftpListingBridge: SftpListingBridgeRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$SftpListingBridge$_free(ptr)
+        }
+    }
+}
+public class SftpListingBridgeRefMut: SftpListingBridgeRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class SftpListingBridgeRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension SftpListingBridge: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_SftpListingBridge$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_SftpListingBridge$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: SftpListingBridge) {
+        __swift_bridge__$Vec_SftpListingBridge$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_SftpListingBridge$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (SftpListingBridge(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SftpListingBridgeRef> {
+        let pointer = __swift_bridge__$Vec_SftpListingBridge$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SftpListingBridgeRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SftpListingBridgeRefMut> {
+        let pointer = __swift_bridge__$Vec_SftpListingBridge$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SftpListingBridgeRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<SftpListingBridgeRef> {
+        UnsafePointer<SftpListingBridgeRef>(OpaquePointer(__swift_bridge__$Vec_SftpListingBridge$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_SftpListingBridge$len(vecPtr)
+    }
+}
+
+
+public class CancelFlagBridge: CancelFlagBridgeRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$CancelFlagBridge$_free(ptr)
+        }
+    }
+}
+public class CancelFlagBridgeRefMut: CancelFlagBridgeRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class CancelFlagBridgeRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension CancelFlagBridge: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_CancelFlagBridge$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_CancelFlagBridge$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: CancelFlagBridge) {
+        __swift_bridge__$Vec_CancelFlagBridge$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_CancelFlagBridge$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (CancelFlagBridge(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<CancelFlagBridgeRef> {
+        let pointer = __swift_bridge__$Vec_CancelFlagBridge$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return CancelFlagBridgeRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<CancelFlagBridgeRefMut> {
+        let pointer = __swift_bridge__$Vec_CancelFlagBridge$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return CancelFlagBridgeRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<CancelFlagBridgeRef> {
+        UnsafePointer<CancelFlagBridgeRef>(OpaquePointer(__swift_bridge__$Vec_CancelFlagBridge$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_CancelFlagBridge$len(vecPtr)
+    }
+}
+
+
+public class SftpHandleBridge: SftpHandleBridgeRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$SftpHandleBridge$_free(ptr)
+        }
+    }
+}
+public class SftpHandleBridgeRefMut: SftpHandleBridgeRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class SftpHandleBridgeRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension SftpHandleBridge: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_SftpHandleBridge$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_SftpHandleBridge$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: SftpHandleBridge) {
+        __swift_bridge__$Vec_SftpHandleBridge$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_SftpHandleBridge$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (SftpHandleBridge(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SftpHandleBridgeRef> {
+        let pointer = __swift_bridge__$Vec_SftpHandleBridge$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SftpHandleBridgeRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SftpHandleBridgeRefMut> {
+        let pointer = __swift_bridge__$Vec_SftpHandleBridge$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SftpHandleBridgeRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<SftpHandleBridgeRef> {
+        UnsafePointer<SftpHandleBridgeRef>(OpaquePointer(__swift_bridge__$Vec_SftpHandleBridge$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_SftpHandleBridge$len(vecPtr)
+    }
+}
+
+
+public class SshPoolBridge: SshPoolBridgeRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$SshPoolBridge$_free(ptr)
+        }
+    }
+}
+public class SshPoolBridgeRefMut: SshPoolBridgeRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class SshPoolBridgeRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension SshPoolBridge: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_SshPoolBridge$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_SshPoolBridge$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: SshPoolBridge) {
+        __swift_bridge__$Vec_SshPoolBridge$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_SshPoolBridge$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (SshPoolBridge(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SshPoolBridgeRef> {
+        let pointer = __swift_bridge__$Vec_SshPoolBridge$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SshPoolBridgeRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SshPoolBridgeRefMut> {
+        let pointer = __swift_bridge__$Vec_SshPoolBridge$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SshPoolBridgeRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<SshPoolBridgeRef> {
+        UnsafePointer<SshPoolBridgeRef>(OpaquePointer(__swift_bridge__$Vec_SshPoolBridge$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_SshPoolBridge$len(vecPtr)
+    }
+}
+
+
+
