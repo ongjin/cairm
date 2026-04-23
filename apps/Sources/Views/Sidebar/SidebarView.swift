@@ -5,8 +5,13 @@ import AppKit
 /// Footer shows active tab's git branch + dirty count when in a repo.
 struct SidebarView: View {
     @Bindable var app: AppModel
-    @Bindable var scene: WindowSceneModel
+    @Environment(WindowDualPaneModel.self) private var dualPane
     @Environment(\.cairnTheme) private var theme
+
+    /// Sidebar clicks always target the currently-focused pane (left or
+    /// right). Computed at render time so the pane dot state and navigation
+    /// both track `dualPane.activeSide` without a cached copy getting stale.
+    private var activeScene: WindowSceneModel { dualPane.activePane }
 
     private let home = FileManager.default.homeDirectoryForCurrentUser
 
@@ -29,7 +34,7 @@ struct SidebarView: View {
                             label: fav.label,
                             url: fav.url,
                             isSelected: isCurrent(fav.url),
-                            onActivate: { scene.activeTab?.navigate(to: fav.url) }
+                            onActivate: { activeScene.activeTab?.navigate(to: fav.url) }
                         )
                     }
                     ForEach(app.bookmarks.pinned) { entry in
@@ -81,7 +86,7 @@ struct SidebarView: View {
                         label: NSUserName(),
                         url: home,
                         isSelected: isCurrent(home),
-                        onActivate: { scene.activeTab?.navigate(to: home) }
+                        onActivate: { activeScene.activeTab?.navigate(to: home) }
                     )
 
                     ForEach(app.sidebar.locations, id: \.self) { loc in
@@ -96,7 +101,7 @@ struct SidebarView: View {
                     SidebarItemRow(icon: "dot.radiowaves.up.forward", label: "AirDrop", tint: nil, isSelected: false)
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            let selected = scene.activeTab?.folder.selection ?? []
+                            let selected = activeScene.activeTab?.folder.selection ?? []
                             let urls = selected.map { URL(fileURLWithPath: $0) }
                             if urls.isEmpty {
                                 NSSound.beep()
@@ -113,7 +118,7 @@ struct SidebarView: View {
                     let trash = home.appendingPathComponent(".Trash")
                     SidebarItemRow(icon: "trash", label: "Trash", tint: nil, isSelected: isCurrent(trash))
                         .contentShape(Rectangle())
-                        .onTapGesture { scene.activeTab?.navigate(to: trash) }
+                        .onTapGesture { activeScene.activeTab?.navigate(to: trash) }
                         .contextMenu {
                             Button("Empty Trash") {
                                 let fm = FileManager.default
@@ -127,7 +132,7 @@ struct SidebarView: View {
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
 
-            if let snap = scene.activeTab?.git?.snapshot, let branch = snap.branch {
+            if let snap = activeScene.activeTab?.git?.snapshot, let branch = snap.branch {
                 GitBranchFooter(branch: branch, dirtyCount: snap.dirtyCount)
             }
         }
@@ -159,7 +164,7 @@ struct SidebarView: View {
             isSelected: isCurrent(url)
         )
         .contentShape(Rectangle())
-        .onTapGesture { scene.activeTab?.navigate(to: entry) }
+        .onTapGesture { activeScene.activeTab?.navigate(to: entry) }
         .contextMenu {
             Button("Unpin") { app.bookmarks.unpin(entry) }
             Button("Reveal in Finder") {
@@ -172,7 +177,7 @@ struct SidebarView: View {
     private func row(url: URL, icon: String, label: String, tint: Color?, canPin: Bool) -> some View {
         SidebarItemRow(icon: icon, label: label, tint: tint, isSelected: isCurrent(url))
             .contentShape(Rectangle())
-            .onTapGesture { scene.activeTab?.navigate(to: url) }
+            .onTapGesture { activeScene.activeTab?.navigate(to: url) }
             .contextMenu {
                 if canPin {
                     if app.bookmarks.isPinned(url: url) {
@@ -199,7 +204,7 @@ struct SidebarView: View {
     /// path form so `/tmp/foo` and `/private/tmp/foo` and `/tmp/./foo` all
     /// match one another.
     private func isCurrent(_ url: URL) -> Bool {
-        guard let current = scene.activeTab?.currentFolder else { return false }
+        guard let current = activeScene.activeTab?.currentFolder else { return false }
         return url.standardizedFileURL.path == current.standardizedFileURL.path
     }
 
@@ -213,12 +218,13 @@ struct SidebarView: View {
     /// existing RemoteErrorCard (Retry / Edit ssh_config / Open Terminal).
     private func connectHost(_ name: String) {
         let savedPassword = KeychainPasswordStore.load(for: name)
-        let placeholder = scene.newEstablishingTab(alias: name)
+        let placeholder = activeScene.newEstablishingTab(alias: name)
         Task { await attemptSilentConnect(alias: name, password: savedPassword, placeholder: placeholder) }
     }
 
     @MainActor
     private func attemptSilentConnect(alias: String, password: String?, placeholder: Tab) async {
+        let pane = activeScene
         do {
             let overrides = ConnectSpecOverrides(password: password)
             let target = try await app.ssh.connect(hostAlias: alias, overrides: overrides)
@@ -236,14 +242,14 @@ struct SidebarView: View {
             // and no ssh_config round-trip past here). Close it and surface
             // the Connect sheet with the alias + error so the user can fix
             // credentials or tweak ssh_config and try again.
-            scene.closeTab(placeholder.id)
+            pane.closeTab(placeholder.id)
             let model = ConnectSheetModel()
             model.server = alias
             if password != nil {
                 model.authMode = .password
             }
             model.error = ErrorMessage.userFacing(error)
-            scene.connectSheetModel = model
+            pane.connectSheetModel = model
         }
     }
 
@@ -270,6 +276,6 @@ struct SidebarView: View {
     }
 
     private func openConnectSheet() {
-        scene.connectSheetModel = ConnectSheetModel()
+        activeScene.connectSheetModel = ConnectSheetModel()
     }
 }

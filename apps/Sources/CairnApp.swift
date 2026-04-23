@@ -55,6 +55,7 @@ struct CairnApp: App {
 struct WindowScene: View {
     let app: AppModel
     @State private var scene: WindowSceneModel
+    @State private var dualPane: WindowDualPaneModel
 
     init(app: AppModel) {
         self.app = app
@@ -66,21 +67,24 @@ struct WindowScene: View {
         sceneModel.app = app
         app.register(scene: sceneModel)
         _scene = State(initialValue: sceneModel)
+        _dualPane = State(initialValue: WindowDualPaneModel(left: sceneModel))
     }
 
     var body: some View {
         ContentView()
             .environment(app)
             .environment(scene)
+            .environment(dualPane)
             .environment(\.cairnTheme, .glass)
             .frame(minWidth: 800, minHeight: 500)
             .background(VisualEffectBlur(material: .sidebar).ignoresSafeArea())
-            // Publish this scene's models so `@FocusedValue`-reading
-            // `CommandMenu`s can act on whichever window is frontmost.
-            // T13: drives ⌘T/W/1-9/⌥←→, ⌘R, ⌘⇧., ⌘D.
-            .focusedSceneValue(\.scene, scene)
+            // Publish focused values. `\.scene` resolves to the *active*
+            // pane so menu commands (⌘T/W/1-9/⌥←→, ⌘R, ⌘⇧., ⌘D, etc.)
+            // route to whichever side the user just interacted with.
+            .focusedSceneValue(\.scene, dualPane.activePane)
             .focusedSceneValue(\.appModel, app)
-            .focusedSceneValue(\.tabUndoManager, scene.activeTab?.undoManager)
+            .focusedSceneValue(\.dualPane, dualPane)
+            .focusedSceneValue(\.tabUndoManager, dualPane.activePane.activeTab?.undoManager)
     }
 }
 
@@ -95,6 +99,7 @@ private struct FocusedSceneKey: FocusedValueKey { typealias Value = WindowSceneM
 private struct FocusedAppKey: FocusedValueKey { typealias Value = AppModel }
 struct FocusedPaletteKey: FocusedValueKey { typealias Value = CommandPaletteModel }
 private struct FocusedUndoKey: FocusedValueKey { typealias Value = UndoManager }
+private struct FocusedDualPaneKey: FocusedValueKey { typealias Value = WindowDualPaneModel }
 
 extension FocusedValues {
     var scene: WindowSceneModel? {
@@ -112,6 +117,10 @@ extension FocusedValues {
     var tabUndoManager: UndoManager? {
         get { self[FocusedUndoKey.self] }
         set { self[FocusedUndoKey.self] = newValue }
+    }
+    var dualPane: WindowDualPaneModel? {
+        get { self[FocusedDualPaneKey.self] }
+        set { self[FocusedDualPaneKey.self] = newValue }
     }
 }
 
@@ -226,6 +235,7 @@ struct NavigateCommands: Commands {
 struct ViewCommands: Commands {
     @FocusedValue(\.scene) private var scene: WindowSceneModel?
     @FocusedValue(\.appModel) private var app: AppModel?
+    @FocusedValue(\.dualPane) private var dualPane: WindowDualPaneModel?
 
     var body: some Commands {
         CommandMenu("View") {
@@ -247,6 +257,15 @@ struct ViewCommands: Commands {
             }
             .keyboardShortcut("d", modifiers: [.command])
             .disabled(scene?.activeTab?.currentFolder == nil)
+
+            Divider()
+
+            Button(dualPane?.isSplit == true ? "Collapse Split View" : "Split View") {
+                guard let dualPane, let app else { return }
+                dualPane.toggleSplit(engine: app.engine, bookmarks: app.bookmarks, app: app)
+            }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
+            .disabled(dualPane == nil || app == nil)
 
             Divider()
 
