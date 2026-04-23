@@ -17,6 +17,15 @@ import Observation
 final class Tab: Identifiable {
     let id = UUID()
 
+    var connectionPhase: ConnectionPhase = .idle
+
+    enum ConnectionPhase: Equatable {
+        case idle
+        case connecting(detail: String)
+        case connected
+        case error(title: String, detail: String)
+    }
+
     let folder: FolderModel
     let search: SearchModel
     let preview: PreviewModel

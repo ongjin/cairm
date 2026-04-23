@@ -177,29 +177,98 @@ struct ContentView: View {
     private func contentBody(tab: Tab) -> some View {
         let folder = tab.folder
         let searchModel = tab.search
-        if searchModel.isActive
-            && searchModel.results.isEmpty
-            && searchModel.phase != .running
-        {
-            EmptyStateView.searchNoMatch(query: searchModel.query)
-        } else if !searchModel.isActive
-            && folder.state == .loaded
-            && folder.entries.isEmpty
-        {
-            EmptyStateView.emptyFolder()
-        } else if case .failed(let msg) = folder.state, !searchModel.isActive {
-            EmptyStateView.permissionDenied(message: msg) {
-                app.reopenFolder(startingAt: tab.currentFolder) { url in
-                    if tab.currentFolder == url {
-                        Task { await folder.load(url) }
-                    } else {
-                        tab.navigate(to: url)
+
+        // SSH connection state takes priority over folder state
+        switch tab.connectionPhase {
+        case .connecting(let detail):
+            connectingView(tab: tab, detail: detail)
+        case .error(let title, let detail):
+            remoteErrorView(tab: tab, title: title, detail: detail)
+        default:
+            // Local / idle / connected: existing logic
+            if searchModel.isActive
+                && searchModel.results.isEmpty
+                && searchModel.phase != .running
+            {
+                EmptyStateView.searchNoMatch(query: searchModel.query)
+            } else if !searchModel.isActive
+                && folder.state == .loaded
+                && folder.entries.isEmpty
+            {
+                EmptyStateView.emptyFolder()
+            } else if case .failed(let msg) = folder.state, !searchModel.isActive {
+                if case .ssh = tab.provider.identifier {
+                    remoteErrorView(tab: tab, title: "Listing failed", detail: msg)
+                } else {
+                    EmptyStateView.permissionDenied(message: msg) {
+                        app.reopenFolder(startingAt: tab.currentFolder) { url in
+                            if tab.currentFolder == url {
+                                Task { await folder.load(url) }
+                            } else {
+                                tab.navigate(to: url)
+                            }
+                        }
                     }
                 }
+            } else {
+                fileList(tab: tab)
             }
-        } else {
-            fileList(tab: tab)
         }
+    }
+
+    @ViewBuilder
+    private func connectingView(tab: Tab, detail: String) -> some View {
+        VStack(spacing: 12) {
+            ProgressView().controlSize(.large)
+            Text("Connecting…")
+                .font(.headline)
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func remoteErrorView(tab: Tab, title: String, detail: String) -> some View {
+        RemoteErrorCard(title: title, detail: detail, actions: remoteErrorActions(tab: tab, detail: detail))
+    }
+
+    private func remoteErrorActions(tab: Tab, detail: String) -> [RemoteErrorCard.Action] {
+        var actions: [RemoteErrorCard.Action] = [
+            .init(label: "Retry") { retrySSHTab(tab) },
+            .init(label: "Edit ssh_config") { revealSshConfig() },
+            .init(label: "Open Terminal") { openTerminalForTab(tab) },
+        ]
+        if detail.contains("ProxyCommand") || detail.contains("stderr:") {
+            actions.append(.init(label: "Copy Error") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(detail, forType: .string)
+            })
+        }
+        return actions
+    }
+
+    private func retrySSHTab(_ tab: Tab) {
+        tab.connectionPhase = .idle
+        guard let path = tab.currentPath else { return }
+        Task { await tab.folder.load(path, via: tab.provider) }
+    }
+
+    private func revealSshConfig() {
+        let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".ssh/config")
+        NSWorkspace.shared.open(url)
+    }
+
+    private func openTerminalForTab(_ tab: Tab) {
+        guard let path = tab.currentPath,
+              case .ssh(let target) = path.provider else { return }
+        let script = "ssh \(target.user)@\(target.hostname) -p \(target.port)"
+        let src = "tell application \"Terminal\" to do script \"\(script)\""
+        if let s = NSAppleScript(source: src) { s.executeAndReturnError(nil) }
     }
 
     private func fileList(tab: Tab) -> some View {
@@ -405,6 +474,9 @@ struct ContentView: View {
             let provider = SshFileSystemProvider(pool: app.ssh, target: target, supportsServerSideCopy: false)
             let initial = FSPath(provider: .ssh(target), path: model.path.isEmpty ? "/" : model.path)
             scene.newRemoteTab(initialPath: initial, provider: provider)
+            if let newTab = scene.activeTab {
+                newTab.connectionPhase = .connected
+            }
             connectSheetModel = nil
         } catch {
             // Only surface the error if the sheet is still visible (user didn't cancel mid-flight)
