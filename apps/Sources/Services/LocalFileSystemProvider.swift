@@ -63,4 +63,8 @@ final class LocalFileSystemProvider: FileSystemProvider {
     func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: (Int64) -> Void, cancel: CancelToken) async throws {
         try FileManager.default.copyItem(at: URL(fileURLWithPath: remotePath.path), to: toLocalURL)
     }
+
+    func realpath(_ path: String) async throws -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path
+    }
 }

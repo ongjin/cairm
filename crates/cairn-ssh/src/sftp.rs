@@ -84,6 +84,22 @@ impl SftpHandle {
         self.supports_copy_data
     }
 
+    /// Resolve a server-side path to its absolute canonical form.
+    /// Used to translate "." / "~" / relative paths into a stable absolute
+    /// path — SFTP itself has no ~ expansion; the shell does. Right after
+    /// login, `canonicalize(".")` returns the user's home directory.
+    pub async fn realpath(&self, path: &str) -> Result<String> {
+        self.pool.touch(&self.key);
+        let name = self.session.realpath(path).await.map_err(map_sftp_err)?;
+        // RawSftpSession.realpath returns a Name with one file entry — its
+        // filename field carries the canonical absolute path.
+        name.files
+            .into_iter()
+            .next()
+            .map(|f| f.filename)
+            .ok_or(SshError::SftpProtocol("realpath: empty response".into()))
+    }
+
     // -----------------------------------------------------------------------
     // Directory listing
     // -----------------------------------------------------------------------

@@ -491,7 +491,12 @@ struct ContentView: View {
             )
             let target = try await app.ssh.connect(hostAlias: alias, overrides: overrides)
             let provider = SshFileSystemProvider(pool: app.ssh, target: target, supportsServerSideCopy: false)
-            let initial = FSPath(provider: .ssh(target), path: model.path.isEmpty ? "/" : model.path)
+            // Resolve the initial path server-side. SFTP itself does not expand
+            // "~" (that's a shell feature) — canonicalize(".") returns the
+            // login user's home directory, which is what we want by default.
+            let rawPath = model.path.isEmpty || model.path == "~" ? "." : model.path
+            let resolvedPath = (try? await provider.realpath(rawPath)) ?? rawPath
+            let initial = FSPath(provider: .ssh(target), path: resolvedPath)
             scene.newRemoteTab(initialPath: initial, provider: provider)
             if let newTab = scene.activeTab {
                 newTab.connectionPhase = .connected

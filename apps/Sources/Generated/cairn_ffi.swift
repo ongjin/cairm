@@ -1277,6 +1277,9 @@ public func ssh_open_sftp(_ pool: SshPoolBridgeRef, _ key: ConnKeyBridge) throws
 public func sftp_list<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ path: GenericIntoRustString) throws -> SftpListingBridge {
     try { let val = __swift_bridge__$sftp_list(h.ptr, { let rustString = path.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); if val.is_ok { return SftpListingBridge(ptr: val.ok_or_err!) } else { throw RustString(ptr: val.ok_or_err!) } }()
 }
+public func sftp_realpath<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ path: GenericIntoRustString) throws -> RustString {
+    try { let val = __swift_bridge__$sftp_realpath(h.ptr, { let rustString = path.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); if val.is_ok { return RustString(ptr: val.ok_or_err!) } else { throw RustString(ptr: val.ok_or_err!) } }()
+}
 public func sftp_stat<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ path: GenericIntoRustString) throws -> FileStatBridge {
     try { let val = __swift_bridge__$sftp_stat(h.ptr, { let rustString = path.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); switch val.tag { case __swift_bridge__$ResultFileStatBridgeAndString$ResultOk: return val.payload.ok.intoSwiftRepr() case __swift_bridge__$ResultFileStatBridgeAndString$ResultErr: throw RustString(ptr: val.payload.err) default: fatalError() } }()
 }

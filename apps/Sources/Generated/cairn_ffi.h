@@ -276,6 +276,7 @@ void __swift_bridge__$ssh_pool_disconnect(void* pool, struct __swift_bridge__$Co
 void __swift_bridge__$ssh_pool_close_all(void* pool);
 struct __private__ResultPtrAndPtr __swift_bridge__$ssh_open_sftp(void* pool, struct __swift_bridge__$ConnKeyBridge key);
 struct __private__ResultPtrAndPtr __swift_bridge__$sftp_list(void* h, void* path);
+struct __private__ResultPtrAndPtr __swift_bridge__$sftp_realpath(void* h, void* path);
 struct __swift_bridge__$ResultFileStatBridgeAndString __swift_bridge__$sftp_stat(void* h, void* path);
 void* __swift_bridge__$sftp_mkdir(void* h, void* path);
 void* __swift_bridge__$sftp_rename(void* h, void* from, void* to);

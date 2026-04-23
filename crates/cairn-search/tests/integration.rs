@@ -110,10 +110,7 @@ fn gitignore_respected_when_hidden_off() {
         },
     );
     let names = collect_all(h);
-    assert!(
-        !names.contains(&"secret.txt".to_string()),
-        "got {names:?}"
-    );
+    assert!(!names.contains(&"secret.txt".to_string()), "got {names:?}");
     assert!(names.contains(&"keep.txt".to_string()));
 }
 

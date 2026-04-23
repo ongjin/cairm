@@ -118,6 +118,11 @@ final class SshFileSystemProvider: FileSystemProvider {
         defer { cancelTask.cancel() }
         try sftp_download_sync(h, remotePath.path, toLocalURL.path, flag)
     }
+
+    func realpath(_ path: String) async throws -> String {
+        let h = try await handle()
+        return try sftp_realpath(h, path).toString()
+    }
 }
 
 private extension FileEntryBridge {

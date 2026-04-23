@@ -101,6 +101,7 @@ mod ffi {
         // sftp_list returns an opaque SftpListingBridge to work around
         // the swift-bridge limitation that Vec<swift_repr="struct"> is unsupported.
         fn sftp_list(h: &SftpHandleBridge, path: String) -> Result<SftpListingBridge, String>;
+        fn sftp_realpath(h: &SftpHandleBridge, path: String) -> Result<String, String>;
         fn sftp_stat(h: &SftpHandleBridge, path: String) -> Result<FileStatBridge, String>;
         fn sftp_mkdir(h: &SftpHandleBridge, path: String) -> Result<(), String>;
         fn sftp_rename(h: &SftpHandleBridge, from: String, to: String) -> Result<(), String>;
@@ -285,6 +286,12 @@ fn sftp_list(h: &SftpHandleBridge, path: String) -> Result<SftpListingBridge, St
     runtime()
         .block_on(h.inner.list(&path))
         .map(|entries| SftpListingBridge { entries })
+        .map_err(|e| e.to_string())
+}
+
+fn sftp_realpath(h: &SftpHandleBridge, path: String) -> Result<String, String> {
+    runtime()
+        .block_on(h.inner.realpath(&path))
         .map_err(|e| e.to_string())
 }
 
