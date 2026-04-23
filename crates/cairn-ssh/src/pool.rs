@@ -9,7 +9,9 @@ use russh::client;
 use russh::keys::{self, key, PublicKeyBase64};
 use tracing::{debug, warn};
 
-use crate::auth::{format_tried, planned_methods, AuthMethod, PassphraseResolver, PasswordResolver};
+use crate::auth::{
+    format_tried, planned_methods, AuthMethod, PassphraseResolver, PasswordResolver,
+};
 use crate::config::resolve_host;
 use crate::error::{Result, SshError};
 use crate::hostkey::{HostKeyResolver, KnownHostsStore, KnownResult, TofuDecision};
