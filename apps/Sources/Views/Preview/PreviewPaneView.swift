@@ -72,7 +72,15 @@ struct PreviewPaneView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.head)
-            if let size = fileSize(for: url) {
+            // Size row is only shown for local focuses. Remote
+            // focuses synthesize a local `URL(fileURLWithPath:)` for
+            // display; feeding that into `FileManager` would either
+            // silently return the local-disk size for collision
+            // paths (`/etc/hosts`, `/var/log/...`) or `nil` — both
+            // wrong. Plumbing true remote size would need a
+            // dedicated stat round-trip on selection; defer that and
+            // just suppress the line.
+            if preview.remoteFocus == nil, let size = fileSize(for: url) {
                 Text(size)
                     .font(theme.headerFont)
                     .foregroundStyle(.tertiary)

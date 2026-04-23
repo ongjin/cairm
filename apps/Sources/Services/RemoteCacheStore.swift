@@ -15,6 +15,13 @@ actor RemoteCacheStore {
         let cancel: CancelToken
     }
     private var inflight: [URL: InflightEntry] = [:]
+    /// Barrier task set while a `clear()` is running. New `fetch()`
+    /// calls `await` this before starting new work so the post-clear
+    /// `removeItem(root)` can't race with a fresh download writing
+    /// into the same directory. Actor reentrancy would otherwise let
+    /// a fetch sneak in between `clear()`'s cancel+await and its
+    /// remove/recreate step.
+    private var clearBarrier: Task<Void, Never>?
 
     init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -44,6 +51,13 @@ actor RemoteCacheStore {
     }
 
     func fetch(remotePath: FSPath, via provider: FileSystemProvider) async throws -> URL {
+        // Await any in-flight clear before starting new work. The
+        // while loop re-checks after every await because actor
+        // reentrancy lets another clear set the barrier while we
+        // were suspended.
+        while let barrier = clearBarrier {
+            await barrier.value
+        }
         let url = cacheURL(for: remotePath)
         // Deduplicate concurrent downloads for the same cache URL
         if let existing = inflight[url] {
@@ -103,20 +117,35 @@ actor RemoteCacheStore {
     }
 
     func clear() async {
-        // Flip every in-flight cancel token so the underlying SFTP
-        // transfers stop writing to disk, then await each task so the
-        // cache root recreate below races nothing. Without this, a
-        // cancelled download could finish writing its temp file AFTER
-        // we remove `root`, repopulating a supposedly-cleared cache
-        // from the wrong environment.
+        // Coalesce concurrent clears: callers joining while another
+        // clear is running simply wait for it and return.
+        if let existing = clearBarrier {
+            await existing.value
+            return
+        }
+        // Snapshot in-flight entries under actor isolation before
+        // entering the async barrier task. Flipping the cancel tokens
+        // stops the underlying SFTP transfers from writing to disk.
         let entries = Array(inflight.values)
         for entry in entries { entry.cancel.cancel() }
         inflight.removeAll()
-        for entry in entries {
-            _ = try? await entry.task.value
+        // The barrier task awaits cancelled downloads, then removes
+        // and recreates the cache root. We hold `clearBarrier` from
+        // BEFORE the await so any fetch that enters mid-clear sees
+        // the barrier and parks in its while-loop. `root` is captured
+        // by value (URL is Sendable) so the detached task doesn't
+        // reach back into actor-isolated state.
+        let rootLocal = root
+        let task = Task<Void, Never>.detached {
+            for entry in entries {
+                _ = try? await entry.task.value
+            }
+            try? FileManager.default.removeItem(at: rootLocal)
+            try? FileManager.default.createDirectory(at: rootLocal, withIntermediateDirectories: true)
         }
-        try? FileManager.default.removeItem(at: root)
-        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        clearBarrier = task
+        await task.value
+        clearBarrier = nil
     }
 
     private func enforceLimit() {

@@ -48,8 +48,14 @@ final class PreviewModel {
     }
     var state: PreviewState = .idle
 
+    /// Exposed read-only so the preview header can suppress header
+    /// rows that would otherwise derive from `FileManager` on a
+    /// synthesized local URL. Views mutate remote focus through
+    /// `setRemoteFocus` / `setRemoteDirectoryFocus`, never by
+    /// assigning this directly.
+    private(set) var remoteFocus: FSPath?
+
     private let engine: CairnEngine
-    private var remoteFocus: FSPath?
     private var isApplyingRemoteFocus = false
 
     /// Insertion-ordered (oldest → newest) for cheap LRU eviction.
