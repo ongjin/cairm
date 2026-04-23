@@ -1247,9 +1247,8 @@ extension FileListCoordinator {
         case .ssh:
             let item = NSPasteboardItem()
             let path = FSPath(provider: provider.identifier, path: entry.path.toString())
-            if let data = try? JSONEncoder().encode(path) {
-                item.setData(data, forType: .cairnFSPath)
-            }
+            guard let data = try? JSONEncoder().encode(path) else { return nil }
+            item.setData(data, forType: .cairnFSPath)
             return item
         }
     }
@@ -1267,6 +1266,16 @@ extension FileListCoordinator {
         let hasFileURL = pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
         let hasCairnPath = pb.data(forType: .cairnFSPath) != nil
         guard hasFileURL || hasCairnPath else { return [] }
+
+        // Reject cross-host ssh→ssh: can't server-side copy across hosts.
+        if hasCairnPath,
+           let data = pb.data(forType: .cairnFSPath),
+           let srcPath = try? JSONDecoder().decode(FSPath.self, from: data),
+           case .ssh(let srcTarget) = srcPath.provider,
+           case .ssh(let dstTarget) = provider.identifier,
+           srcTarget != dstTarget {
+            return []
+        }
 
         let targetURL = URL(fileURLWithPath: lastSnapshot[row].path.toString())
         // Block dropping a local folder onto itself or one of its descendants.
@@ -1296,9 +1305,14 @@ extension FileListCoordinator {
             case (.ssh(let srcTarget), .ssh(let dstTarget)) where srcTarget == dstTarget:
                 // Same-host copy: server-side
                 let dstPath = targetPath.appending(sourcePath.lastComponent)
-                Task {
-                    try? await provider.copyInPlace(from: sourcePath, to: dstPath)
-                    await MainActor.run { self.onMoved() }
+                Task { [weak self] in
+                    guard let self else { return }
+                    do {
+                        try await provider.copyInPlace(from: sourcePath, to: dstPath)
+                        await MainActor.run { self.onMoved() }
+                    } catch {
+                        await MainActor.run { NSSound.beep() }
+                    }
                 }
                 return true
             case (.ssh, .local):
@@ -1306,8 +1320,9 @@ extension FileListCoordinator {
                 let localDst = URL(fileURLWithPath: target.path.toString())
                     .appendingPathComponent(sourcePath.lastComponent)
                 let dstPath = FSPath(provider: .local, path: localDst.path)
-                MainActor.assumeIsolated {
-                    transfers.enqueue(source: sourcePath, destination: dstPath, sizeHint: nil) { [weak self] job, progress in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.transfers.enqueue(source: sourcePath, destination: dstPath, sizeHint: nil) { [weak self] job, progress in
                         guard let self else { return }
                         try await self.provider.downloadToLocal(sourcePath, toLocalURL: localDst, progress: progress, cancel: job.cancel)
                     }
@@ -1344,19 +1359,19 @@ extension FileListCoordinator {
 
         case .ssh:
             // Local→remote: upload
-            var count = 0
-            for src in urls {
-                let dstPath = targetPath.appending(src.lastPathComponent)
-                let size = (try? FileManager.default.attributesOfItem(atPath: src.path))?[.size] as? Int64
-                MainActor.assumeIsolated {
-                    transfers.enqueue(source: FSPath(provider: .local, path: src.path),
-                                      destination: dstPath,
-                                      sizeHint: size) { [weak self] job, progress in
+            let count = urls.count
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                for src in urls {
+                    let dstPath = targetPath.appending(src.lastPathComponent)
+                    let size = (try? FileManager.default.attributesOfItem(atPath: src.path))?[.size] as? Int64
+                    self.transfers.enqueue(source: FSPath(provider: .local, path: src.path),
+                                          destination: dstPath,
+                                          sizeHint: size) { [weak self] job, progress in
                         guard let self else { return }
                         try await self.provider.uploadFromLocal(src, to: dstPath, progress: progress, cancel: job.cancel)
                     }
                 }
-                count += 1
             }
             return count > 0
         }
