@@ -13,11 +13,7 @@ struct ContentView: View {
     private var tab: Tab? { dualPane.activePane.activeTab }
 
     @State private var palette = CommandPaletteModel()
-    /// Preview pane is temporarily disabled. Kept the state here so future
-    /// re-enable only needs to restore the `.inspector` modifier and the
-    /// toolbar toggle. Do NOT flip this to true until the remote-file
-    /// preview path is settled.
-    @State private var showInspector: Bool = false
+    @State private var showInspector: Bool = true
     /// Opaque token returned by `NSEvent.addLocalMonitorForEvents`. Held so we
     /// can remove the monitor on view teardown; losing it would leak the
     /// closure and keep dispatching events to a dead view.
@@ -30,9 +26,13 @@ struct ContentView: View {
             } detail: {
                 detailColumn
             }
-            // Inspector (preview pane) disabled for now. Re-enable by
-            // restoring `.inspector(isPresented: $showInspector) { … }` and
-            // the toolbar toggle in `mainToolbar`.
+            .inspector(isPresented: $showInspector) {
+                if let tab {
+                    PreviewPaneView(preview: tab.preview)
+                } else {
+                    Color.clear
+                }
+            }
             .navigationTitle({
                 guard let tab, let path = tab.currentPath else { return "Cairn" }
                 if case .ssh(let target) = path.provider {
@@ -153,7 +153,13 @@ struct ContentView: View {
             .help(dualPane.isSplit ? "Collapse Split View" : "Split View (⌘⇧D)")
             // Shortcut lives on the View menu entry so it doesn't double-fire.
         }
-        // Preview pane toggle intentionally removed — inspector is disabled.
+        ToolbarItem(placement: .primaryAction) {
+            Button(action: { showInspector.toggle() }) {
+                Image(systemName: "sidebar.right")
+            }
+            .help("Toggle Preview Pane")
+            .keyboardShortcut("i", modifiers: [.command, .option])
+        }
     }
 
     private func toggleSplit() {

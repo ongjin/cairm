@@ -9,20 +9,24 @@ struct PreviewPaneView: View {
     @Environment(\.cairnTheme) private var theme
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let url = preview.focus, !isIdle {
-                header(for: url)
-                Divider()
+        if preview.isRemoteFocus {
+            remotePreviewUnsupportedPlaceholder
+        } else {
+            VStack(spacing: 0) {
+                if let url = preview.focus, !isIdle {
+                    header(for: url)
+                    Divider()
+                }
+                renderer
             }
-            renderer
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            ZStack {
-                VisualEffectBlur(material: .contentBackground)
-                theme.panelTint.opacity(0.4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                ZStack {
+                    VisualEffectBlur(material: .contentBackground)
+                    theme.panelTint.opacity(0.4)
+                }
+                .ignoresSafeArea()
             }
-            .ignoresSafeArea()
         }
     }
 
@@ -58,6 +62,31 @@ struct PreviewPaneView: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var remotePreviewUnsupportedPlaceholder: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 32, weight: .regular))
+                .foregroundStyle(.secondary)
+            Text("Preview not available for remote files yet")
+                .font(.headline)
+            Text("Open the file or use Quick Look from the context menu.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 260)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
+        .background {
+            ZStack {
+                VisualEffectBlur(material: .contentBackground)
+                theme.panelTint.opacity(0.4)
+            }
+            .ignoresSafeArea()
         }
     }
 

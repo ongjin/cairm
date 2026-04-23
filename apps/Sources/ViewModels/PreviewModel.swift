@@ -31,11 +31,16 @@ final class PreviewModel {
     static let cacheCapacity = 16
 
     var focus: URL? {
-        didSet { handleFocusChange(from: oldValue) }
+        didSet {
+            remoteFocus = nil
+            handleFocusChange(from: oldValue)
+        }
     }
     var state: PreviewState = .idle
+    var isRemoteFocus: Bool { remoteFocus != nil }
 
     private let engine: CairnEngine
+    private var remoteFocus: FSPath?
 
     /// Insertion-ordered (oldest → newest) for cheap LRU eviction.
     /// Keyed on standardizedFileURL.path so duplicate URL forms alias.
@@ -95,6 +100,7 @@ final class PreviewModel {
     func setRemoteFocus(_ path: FSPath, via provider: FileSystemProvider) {
         let displayURL = URL(fileURLWithPath: path.path)
         focus = displayURL  // triggers handleFocusChange (starts local task, but we override it)
+        remoteFocus = path
         // Immediately cancel the local-file task and replace with remote load
         inflight?.cancel()
         let captured = path
