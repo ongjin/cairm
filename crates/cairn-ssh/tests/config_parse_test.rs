@@ -1,5 +1,4 @@
 use cairn_ssh::config::{parse_ssh_g_output, parse_host_blocks};
-use std::path::PathBuf;
 
 #[test]
 fn parse_simple_ssh_g() {
