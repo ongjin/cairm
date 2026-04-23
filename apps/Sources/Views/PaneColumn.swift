@@ -18,14 +18,15 @@ struct PaneColumn: View {
     let isActive: Bool
     let onFocus: () -> Void
 
-    /// Pane frame in screen coordinates. Captured via GeometryReader in
-    /// `.background` and consulted by the NSEvent mouse-down monitor to
-    /// route pane-focus without depending on SwiftUI gestures firing —
-    /// NSTableView-backed file list swallows clicks before
-    /// `simultaneousGesture` runs, and selection-change onChange misses
-    /// clicks on the already-selected row. Window-coordinate monitor is
-    /// the only reliable hook.
-    @State private var frameOnScreen: CGRect = .zero
+    /// Pane frame in SwiftUI global (= window content-area, top-left
+    /// origin) coordinates. Captured via GeometryReader in `.background`
+    /// and consulted by the NSEvent mouse-down monitor to route pane-focus
+    /// without depending on SwiftUI gestures firing — NSTableView-backed
+    /// file list swallows clicks before `simultaneousGesture` runs, and
+    /// selection-change onChange misses clicks on the already-selected row.
+    /// The monitor converts AppKit `event.locationInWindow` into the same
+    /// coordinate space before the contains() check.
+    @State private var frameInWindow: CGRect = .zero
     @State private var mouseDownMonitor: Any?
 
     private var tab: Tab? { scene.activeTab }
@@ -37,9 +38,9 @@ struct PaneColumn: View {
             .background(
                 GeometryReader { proxy in
                     Color.clear
-                        .onAppear { frameOnScreen = proxy.frame(in: .global) }
+                        .onAppear { frameInWindow = proxy.frame(in: .global) }
                         .onChange(of: proxy.frame(in: .global)) { _, new in
-                            frameOnScreen = new
+                            frameInWindow = new
                         }
                 }
             )
@@ -93,11 +94,19 @@ struct PaneColumn: View {
     private func installMouseDownMonitor() {
         guard mouseDownMonitor == nil else { return }
         mouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
-            guard let window = event.window else { return event }
-            // Event.locationInWindow → screen coordinates via the window rect.
-            let windowPoint = event.locationInWindow
-            let screenPoint = window.convertPoint(toScreen: windowPoint)
-            if frameOnScreen.contains(screenPoint) {
+            guard let window = event.window,
+                  let contentView = window.contentView else { return event }
+            // Bridge AppKit window coords (bottom-left origin, Y up) to
+            // SwiftUI global coords (top-left origin, Y down) so the
+            // contains() check lines up with the frame GeometryReader
+            // reports. Convert window → contentView first to strip any
+            // titlebar offset, then flip Y against contentView height.
+            let contentPoint = contentView.convert(event.locationInWindow, from: nil)
+            let swiftUIPoint = CGPoint(
+                x: contentPoint.x,
+                y: contentView.frame.height - contentPoint.y
+            )
+            if frameInWindow.contains(swiftUIPoint) {
                 onFocus()
             }
             return event
