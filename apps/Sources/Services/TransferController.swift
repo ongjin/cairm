@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 
+@MainActor
 @Observable
 final class TransferController {
     private(set) var jobs: [TransferJob] = []
@@ -19,7 +20,7 @@ final class TransferController {
         let job = TransferJob(source: source, destination: destination, sizeHint: sizeHint, cancel: CancelToken())
         jobs.append(job)
         pendingExecutors[job.id] = execute
-        Task { await maybeStartNext() }
+        maybeStartNext()
     }
 
     func cancel(_ id: UUID) {
@@ -43,16 +44,14 @@ final class TransferController {
         for id in jobs.map(\.id) { cancel(id) }
     }
 
-    private func maybeStartNext() async {
-        let startable = jobs.enumerated().filter { _, j in
-            j.state == .queued && runningPerHost[j.remoteHostKey] == nil
-        }
-        for (idx, _) in startable {
-            await MainActor.run { self.startJob(at: idx) }
+    private func maybeStartNext() {
+        // Evaluate per-iteration so startJob's lane update is visible to the next check.
+        for (idx, j) in jobs.enumerated() {
+            guard j.state == .queued, runningPerHost[j.remoteHostKey] == nil else { continue }
+            startJob(at: idx)
         }
     }
 
-    @MainActor
     private func startJob(at idx: Int) {
         guard idx < jobs.count else { return }
         let host = jobs[idx].remoteHostKey
@@ -75,7 +74,7 @@ final class TransferController {
                         self.jobs[i].finishedAt = Date()
                     }
                     self.runningPerHost[host] = nil
-                    Task { await self.maybeStartNext() }
+                    self.maybeStartNext()
                 }
             } catch is CancellationError {
                 await MainActor.run {
@@ -84,7 +83,7 @@ final class TransferController {
                         self.jobs[i].finishedAt = Date()
                     }
                     self.runningPerHost[host] = nil
-                    Task { await self.maybeStartNext() }
+                    self.maybeStartNext()
                 }
             } catch {
                 await MainActor.run {
@@ -93,7 +92,7 @@ final class TransferController {
                         self.jobs[i].finishedAt = Date()
                     }
                     self.runningPerHost[host] = nil
-                    Task { await self.maybeStartNext() }
+                    self.maybeStartNext()
                 }
             }
         }

@@ -1,6 +1,7 @@
 import XCTest
 @testable import Cairn
 
+@MainActor
 final class TransferControllerTests: XCTestCase {
     func testSerialPerHost() async throws {
         let controller = TransferController()
