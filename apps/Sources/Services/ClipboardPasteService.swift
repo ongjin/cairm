@@ -7,11 +7,15 @@ enum PasteOp {
     case move
 }
 
-/// What the pasteboard contains, in the priority Cairn cares about. File URLs
-/// always win over image data (matches Finder's behavior when a user drags an
-/// image out of an app into Finder — Finder pastes the file, not the bytes).
+/// What the pasteboard contains, in the priority Cairn cares about. Remote
+/// paths (com.cairn.fspath) win over file URLs — when both are present we
+/// want to use the richer source info. File URLs always win over image data
+/// (matches Finder's behavior when a user drags an image out of an app into
+/// Finder — Finder pastes the file, not the bytes).
 enum PasteContent {
     case files([URL])
+    /// One or more Cairn FSPaths (typically from an SSH tab copy).
+    case remoteFiles([FSPath])
     /// Raw bytes ready to write to disk with the given extension.
     case image(data: Data, ext: String)
 }
@@ -29,7 +33,22 @@ enum CollisionRule {
 /// to unit test in isolation.
 enum ClipboardPasteService {
     static func read(from pb: NSPasteboard) -> PasteContent? {
-        // 1. File URLs — Finder's ⌘C stages this; Cairn drag-drop uses it too.
+        // 1. Cairn FSPath items — one JSON payload per item. Takes precedence
+        //    over .fileURL because SSH rows also write fake local URLs for
+        //    drag-to-Finder compatibility; we want the real provider info here.
+        if let items = pb.pasteboardItems {
+            var paths: [FSPath] = []
+            for item in items {
+                if let data = item.data(forType: .cairnFSPath),
+                   let p = try? JSONDecoder().decode(FSPath.self, from: data) {
+                    paths.append(p)
+                }
+            }
+            if !paths.isEmpty {
+                return .remoteFiles(paths)
+            }
+        }
+        // 2. File URLs — Finder's ⌘C stages this; Cairn drag-drop uses it too.
         if let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
            !urls.isEmpty {
             return .files(urls)
@@ -105,5 +124,25 @@ enum ClipboardPasteService {
     static func writeFileURLs(_ urls: [URL], to pb: NSPasteboard) {
         pb.clearContents()
         pb.writeObjects(urls as [NSURL])
+    }
+
+    /// Write one NSPasteboardItem per FSPath, each carrying both a
+    /// `.cairnFSPath` payload (preferred by Cairn) and — for local paths —
+    /// a `.fileURL` so ⌘C → Finder still works.
+    static func writeFSPaths(_ paths: [FSPath], to pb: NSPasteboard) {
+        pb.clearContents()
+        var items: [NSPasteboardItem] = []
+        for path in paths {
+            let item = NSPasteboardItem()
+            if let data = try? JSONEncoder().encode(path) {
+                item.setData(data, forType: .cairnFSPath)
+            }
+            if case .local = path.provider {
+                item.setString(URL(fileURLWithPath: path.path).absoluteString,
+                               forType: .fileURL)
+            }
+            items.append(item)
+        }
+        pb.writeObjects(items)
     }
 }

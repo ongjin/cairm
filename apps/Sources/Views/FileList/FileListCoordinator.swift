@@ -1100,12 +1100,13 @@ final class FileListCoordinator: NSObject,
         guard let table else { return }
         let indexes = table.selectedRowIndexes
         guard !indexes.isEmpty else { NSSound.beep(); return }
-        let urls = indexes.compactMap { idx -> URL? in
+        let paths = indexes.compactMap { idx -> FSPath? in
             guard idx >= 0, idx < lastSnapshot.count else { return nil }
-            return URL(fileURLWithPath: lastSnapshot[idx].path.toString())
+            return FSPath(provider: provider.identifier,
+                          path: lastSnapshot[idx].path.toString())
         }
-        guard !urls.isEmpty else { return }
-        ClipboardPasteService.writeFileURLs(urls, to: .general)
+        guard !paths.isEmpty else { return }
+        ClipboardPasteService.writeFSPaths(paths, to: .general)
     }
 
     /// Entry point for ⌘V and ⌥⌘V. Reads the general pasteboard, dispatches
@@ -1114,13 +1115,28 @@ final class FileListCoordinator: NSObject,
     /// Currently handles `.files` + `.copy`. `.files` + `.move` and `.image`
     /// branches are added in later tasks.
     func pasteFromClipboard(operation: PasteOp) {
+        guard let currentPath = folder.currentPath else { NSSound.beep(); return }
+        guard let content = ClipboardPasteService.read(from: .general) else {
+            NSSound.beep(); return
+        }
+
+        // Remote-source paste: route by (source, target) like drag-drop.
+        if case .remoteFiles(let sources) = content {
+            pasteRemote(sources: sources, into: currentPath)
+            return
+        }
+
+        // Local-source paste targeting an SSH tab: upload.
+        if case .files(let urls) = content, case .ssh = provider.identifier {
+            pasteLocalToSSH(urls: urls, into: currentPath)
+            return
+        }
+
+        // Local-source, local-target: existing FileManager paths.
         guard let dir = folder.currentFolder else { NSSound.beep(); return }
         guard FileManager.default.isWritableFile(atPath: dir.path) else {
             showPasteAlert("The current folder isn't writable.")
             return
-        }
-        guard let content = ClipboardPasteService.read(from: .general) else {
-            NSSound.beep(); return
         }
         switch (content, operation) {
         case (.files(let urls), .copy):
@@ -1128,9 +1144,70 @@ final class FileListCoordinator: NSObject,
         case (.files(let urls), .move):
             pasteMove(urls: urls, into: dir)
         case (.image(let data, let ext), _):
-            // Operation is ignored for images — clipboard images don't have a
-            // source file to move. ⌘V and ⌥⌘V both "paste" the image.
             pasteImage(data: data, ext: ext, into: dir)
+        case (.remoteFiles, _):
+            break  // handled above
+        }
+    }
+
+    private func pasteRemote(sources: [FSPath], into target: FSPath) {
+        for src in sources {
+            let dst = target.appending(src.lastComponent)
+            switch (src.provider, target.provider) {
+            case (.ssh(let sT), .ssh(let dT)) where sT == dT:
+                Task { [weak self] in
+                    guard let self else { return }
+                    do {
+                        try await self.provider.copyInPlace(from: src, to: dst)
+                        await MainActor.run { self.onMoved() }
+                    } catch {
+                        await MainActor.run { NSSound.beep() }
+                    }
+                }
+            case (.ssh(let sT), .local):
+                guard let srcProvider = remoteProviderResolver(sT) else {
+                    NSSound.beep(); continue
+                }
+                let localDst = URL(fileURLWithPath: target.path)
+                    .appendingPathComponent(src.lastComponent)
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.transfers.enqueue(source: src, destination: dst, sizeHint: nil) { job, progress in
+                        try await srcProvider.downloadToLocal(src, toLocalURL: localDst, progress: progress, cancel: job.cancel)
+                    }
+                }
+            case (.local, .ssh):
+                let localSrc = URL(fileURLWithPath: src.path)
+                let size = (try? FileManager.default.attributesOfItem(atPath: localSrc.path))?[.size] as? Int64
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.transfers.enqueue(source: src, destination: dst, sizeHint: size) { [weak self] job, progress in
+                        guard let self else { return }
+                        try await self.provider.uploadFromLocal(localSrc, to: dst, progress: progress, cancel: job.cancel)
+                    }
+                }
+            case (.local, .local):
+                if let dir = folder.currentFolder {
+                    pasteCopy(urls: [URL(fileURLWithPath: src.path)], into: dir)
+                }
+            default:
+                NSSound.beep()  // unsupported (e.g. ssh→ssh cross-host)
+            }
+        }
+    }
+
+    private func pasteLocalToSSH(urls: [URL], into target: FSPath) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            for src in urls {
+                let dst = target.appending(src.lastPathComponent)
+                let size = (try? FileManager.default.attributesOfItem(atPath: src.path))?[.size] as? Int64
+                self.transfers.enqueue(source: FSPath(provider: .local, path: src.path),
+                                       destination: dst, sizeHint: size) { [weak self] job, progress in
+                    guard let self else { return }
+                    try await self.provider.uploadFromLocal(src, to: dst, progress: progress, cancel: job.cancel)
+                }
+            }
         }
     }
 
@@ -1308,11 +1385,6 @@ extension FileListCoordinator {
                    validateDrop info: NSDraggingInfo,
                    proposedRow row: Int,
                    proposedDropOperation op: NSTableView.DropOperation) -> NSDragOperation {
-        guard op == .on,
-              row >= 0, row < lastSnapshot.count,
-              lastSnapshot[row].kind == .Directory else {
-            return []
-        }
         let pb = info.draggingPasteboard
         let hasFileURL = pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
         let hasCairnPath = pb.data(forType: .cairnFSPath) != nil
@@ -1328,25 +1400,50 @@ extension FileListCoordinator {
             return []
         }
 
-        let targetURL = URL(fileURLWithPath: lastSnapshot[row].path.toString())
-        // Block dropping a local folder onto itself or one of its descendants.
-        if hasFileURL, let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
-            for src in urls {
-                if src.standardizedFileURL.path == targetURL.standardizedFileURL.path { return [] }
-                if targetURL.standardizedFileURL.path.hasPrefix(src.standardizedFileURL.path + "/") { return [] }
+        // Drop modes:
+        //   .on + directory row  → drop into that folder (existing)
+        //   empty-space / below-all-rows → drop into currently-displayed folder
+        // We retarget empty-space drops by rewriting proposedRow / op.
+        let droppingOnRow = op == .on && row >= 0 && row < lastSnapshot.count
+            && lastSnapshot[row].kind == .Directory
+
+        if droppingOnRow {
+            let targetURL = URL(fileURLWithPath: lastSnapshot[row].path.toString())
+            if hasFileURL, let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+                for src in urls {
+                    if src.standardizedFileURL.path == targetURL.standardizedFileURL.path { return [] }
+                    if targetURL.standardizedFileURL.path.hasPrefix(src.standardizedFileURL.path + "/") { return [] }
+                }
             }
+            return .move
         }
-        return .move
+
+        // Empty-space drop: retarget to the current folder (row = count, op = .above).
+        // Highlights the whole table as the drop zone instead of a stray last row.
+        if folder.currentPath != nil {
+            tableView.setDropRow(lastSnapshot.count, dropOperation: .above)
+            return .move
+        }
+        return []
     }
 
     func tableView(_ tableView: NSTableView,
                    acceptDrop info: NSDraggingInfo,
                    row: Int,
                    dropOperation op: NSTableView.DropOperation) -> Bool {
-        guard op == .on, row >= 0, row < lastSnapshot.count else { return false }
-        let target = lastSnapshot[row]
-        guard target.kind == .Directory else { return false }
-        let targetPath = FSPath(provider: provider.identifier, path: target.path.toString())
+        // Determine the target directory:
+        //   .on a directory row      → that row
+        //   .above / past-end / etc. → currently-displayed folder
+        let targetPath: FSPath
+        if op == .on, row >= 0, row < lastSnapshot.count,
+           lastSnapshot[row].kind == .Directory {
+            targetPath = FSPath(provider: provider.identifier,
+                                path: lastSnapshot[row].path.toString())
+        } else if let current = folder.currentPath {
+            targetPath = current
+        } else {
+            return false
+        }
         let pb = info.draggingPasteboard
 
         // --- Remote source: .cairnFSPath ---
@@ -1375,7 +1472,7 @@ extension FileListCoordinator {
                     NSSound.beep()
                     return false
                 }
-                let localDst = URL(fileURLWithPath: target.path.toString())
+                let localDst = URL(fileURLWithPath: targetPath.path)
                     .appendingPathComponent(sourcePath.lastComponent)
                 let dstPath = FSPath(provider: .local, path: localDst.path)
                 Task { @MainActor [weak self] in
@@ -1400,7 +1497,7 @@ extension FileListCoordinator {
             // Existing local→local move
             var moved: [(URL, URL)] = []
             for src in urls {
-                let dest = URL(fileURLWithPath: target.path.toString()).appendingPathComponent(src.lastPathComponent)
+                let dest = URL(fileURLWithPath: targetPath.path).appendingPathComponent(src.lastPathComponent)
                 if FileManager.default.fileExists(atPath: dest.path) { NSSound.beep(); continue }
                 do {
                     try FileManager.default.moveItem(at: src, to: dest)

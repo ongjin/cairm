@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A single tab "chip" rendered in `TabBarView`. Displays a folder icon, the
 /// folder's last path component, and a close button that appears on hover or
@@ -18,6 +19,10 @@ struct TabChip: View {
 
     @Environment(\.cairnTheme) private var theme
     @State private var hovering = false
+    /// True while a drag is hovering over the chip. Used to trigger spring-
+    /// loaded tab activation so the user can drop into the newly-switched tab.
+    @State private var dragTargeted = false
+    @State private var springLoadTask: Task<Void, Never>?
 
     var body: some View {
         HStack(spacing: 6) {
@@ -59,5 +64,30 @@ struct TabChip: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onActivate)
         .onHover { hovering = $0 }
+        // Spring-loaded activation: hover with a drag for ~400ms to switch to
+        // this tab, enabling cross-tab drag-drop without dropping first.
+        // `.fileURL` + `.cairnFSPath` cover both local and SSH sources.
+        .onDrop(
+            of: [UTType.fileURL] + (UTType("com.cairn.fspath").map { [$0] } ?? []),
+            isTargeted: Binding(
+                get: { dragTargeted },
+                set: { newValue in
+                    dragTargeted = newValue
+                    if newValue, !isActive {
+                        springLoadTask?.cancel()
+                        springLoadTask = Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            if !Task.isCancelled, dragTargeted, !isActive {
+                                onActivate()
+                            }
+                        }
+                    } else {
+                        springLoadTask?.cancel()
+                        springLoadTask = nil
+                    }
+                }
+            ),
+            perform: { _ in false }  // never consume; the drop belongs to the tab's content
+        )
     }
 }
