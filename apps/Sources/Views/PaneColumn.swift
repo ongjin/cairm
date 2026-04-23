@@ -18,21 +18,33 @@ struct PaneColumn: View {
     let isActive: Bool
     let onFocus: () -> Void
 
+    /// Pane frame in screen coordinates. Captured via GeometryReader in
+    /// `.background` and consulted by the NSEvent mouse-down monitor to
+    /// route pane-focus without depending on SwiftUI gestures firing —
+    /// NSTableView-backed file list swallows clicks before
+    /// `simultaneousGesture` runs, and selection-change onChange misses
+    /// clicks on the already-selected row. Window-coordinate monitor is
+    /// the only reliable hook.
+    @State private var frameOnScreen: CGRect = .zero
+    @State private var mouseDownMonitor: Any?
+
     private var tab: Tab? { scene.activeTab }
 
     var body: some View {
         paneStack
             .opacity(isActive ? 1.0 : 0.72)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
-            // Pane focus: plain `.onTapGesture` doesn't fire when the click
-            // lands inside the NSTableView-backed file list (AppKit swallows
-            // the event). `simultaneousGesture` runs alongside the child's
-            // handling. We also auto-focus on selection change or tab switch
-            // inside the pane — any interaction inside this side = "this
-            // side is active".
-            .simultaneousGesture(TapGesture().onEnded { onFocus() })
-            .onChange(of: tab?.folder.selection) { _, _ in onFocus() }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { frameOnScreen = proxy.frame(in: .global) }
+                        .onChange(of: proxy.frame(in: .global)) { _, new in
+                            frameOnScreen = new
+                        }
+                }
+            )
+            .onAppear { installMouseDownMonitor() }
+            .onDisappear { removeMouseDownMonitor() }
             .task {
                 if let tab, let path = tab.currentPath {
                     await tab.folder.load(path, via: tab.provider)
@@ -73,6 +85,29 @@ struct PaneColumn: View {
             TabBarView(scene: scene)
             inlineNavStrip
             contentColumn
+        }
+    }
+
+    // MARK: - Click-to-focus (NSEvent mouse-down monitor)
+
+    private func installMouseDownMonitor() {
+        guard mouseDownMonitor == nil else { return }
+        mouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            guard let window = event.window else { return event }
+            // Event.locationInWindow → screen coordinates via the window rect.
+            let windowPoint = event.locationInWindow
+            let screenPoint = window.convertPoint(toScreen: windowPoint)
+            if frameOnScreen.contains(screenPoint) {
+                onFocus()
+            }
+            return event
+        }
+    }
+
+    private func removeMouseDownMonitor() {
+        if let token = mouseDownMonitor {
+            NSEvent.removeMonitor(token)
+            mouseDownMonitor = nil
         }
     }
 
