@@ -119,9 +119,16 @@ struct FileListView: NSViewRepresentable {
 
         // Drag & drop: export selected rows as file URLs (local) or FSPath
         // payloads (remote) and accept incoming drops on folder rows.
+        //
+        // The source mask must include `.copy` for intra-app drags because
+        // local→ssh and ssh→local drops report `.copy` in validateDrop (the
+        // upload/download is non-destructive). If we only allowed `.move`
+        // here, AppKit would intersect the source mask with the target's
+        // requested op and find `.none`, silently rejecting the drop before
+        // acceptDrop ever ran.
         table.registerForDraggedTypes([.fileURL, .cairnFSPath])
         table.setDraggingSourceOperationMask([.move, .copy], forLocal: false)
-        table.setDraggingSourceOperationMask(.move, forLocal: true)
+        table.setDraggingSourceOperationMask([.move, .copy], forLocal: true)
 
         // Coordinator wears both hats.
         table.dataSource = context.coordinator
