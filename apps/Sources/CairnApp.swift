@@ -140,6 +140,15 @@ struct NavigateCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Navigate") {
+            // ⌘↓ — Finder parity: descend into a selected folder, or open a
+            // selected file in its default app. Companion to ⌘↑ (Go Up),
+            // which is wired on the toolbar's parent-folder button.
+            Button("Open Selected") { Self.openSelected(scene: scene) }
+                .keyboardShortcut(.downArrow, modifiers: [.command])
+                .disabled(scene?.activeTab == nil)
+
+            Divider()
+
             Button("Next Tab") { scene?.activateNext() }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
                 .disabled((scene?.tabs.count ?? 0) < 2)
@@ -154,6 +163,23 @@ struct NavigateCommands: Commands {
                     .keyboardShortcut(KeyEquivalent(Character("\(n)")), modifiers: [.command])
                     .disabled((scene?.tabs.count ?? 0) < n)
             }
+        }
+    }
+
+    /// Resolve the active tab's single-selection against its currently-visible
+    /// entries (search-aware — uses `search.results` when a query is active,
+    /// otherwise `folder.sortedEntries`). Directories navigate in-tab; files
+    /// open via NSWorkspace like double-click. Beeps on empty or multi-select.
+    private static func openSelected(scene: WindowSceneModel?) {
+        guard let tab = scene?.activeTab else { return }
+        let entries = tab.search.isActive ? tab.search.results : tab.folder.sortedEntries
+        let matched = entries.filter { tab.folder.selection.contains($0.path.toString()) }
+        guard matched.count == 1, let entry = matched.first else { NSSound.beep(); return }
+        let url = URL(fileURLWithPath: entry.path.toString())
+        if entry.kind == .Directory {
+            tab.navigate(to: url)
+        } else {
+            NSWorkspace.shared.open(url)
         }
     }
 }

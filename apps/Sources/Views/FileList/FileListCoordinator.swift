@@ -28,10 +28,20 @@ final class MenuPayload: NSObject {
 final class FileListCoordinator: NSObject,
                                  NSTableViewDataSource,
                                  NSTableViewDelegate,
+                                 NSTextFieldDelegate,
                                  QLPreviewPanelDataSource,
                                  QLPreviewPanelDelegate {
     private var folder: FolderModel
     private var onActivate: (FileEntry) -> Void
+
+    /// Row index currently being inline-renamed. -1 when no rename is active.
+    /// Set in `renameSelected()` before `editColumn` runs and cleared in
+    /// `controlTextDidEndEditing(_:)` once the commit path has finished.
+    private var renamingRow: Int = -1
+    /// Original basename captured at edit-start. Used to skip the FS move when
+    /// the user commits an empty/whitespace-only name or presses Escape (which
+    /// AppKit already reverts — we just need to avoid firing a no-op rename).
+    private var renamingOriginalName: String = ""
 
     /// Cache of Open With app lists keyed by lowercased path extension.
     /// Invalidated on `attach(table:)` (folder switch).
@@ -266,6 +276,19 @@ final class FileListCoordinator: NSObject,
             cell.imageView?.image = systemImage(for: entry)
             cell.textField?.stringValue = entry.name.toString()
             cell.textField?.alignment = .left
+            // Name fields are editable-capable (see makeCell) but must look like
+            // labels until the user explicitly starts a rename. Cells are
+            // recycled across rows, so reset the edit-mode chrome on every
+            // bind — otherwise a previously-renamed row could leak its bezel
+            // to whatever row reuses its view after scrolling.
+            if row != renamingRow {
+                if let tf = cell.textField {
+                    tf.isEditable = false
+                    tf.isSelectable = false
+                    tf.isBordered = false
+                    tf.drawsBackground = false
+                }
+            }
         case .size:
             cell.textField?.stringValue = entry.kind == .Directory
                 ? "—"
@@ -373,15 +396,134 @@ final class FileListCoordinator: NSObject,
         onActivate(lastSnapshot[row])
     }
 
-    /// Called by FileListNSTableView's keyDown when ⏎ / Enter is pressed.
-    /// When multiple rows are selected, AppKit's `selectedRow` returns the
-    /// focused row only — we activate just that one. Phase 2 may add a
-    /// bulk-activation path (open all selected in their default apps).
-    func activateSelected() {
-        guard let table = table else { return }
-        let row = table.selectedRow
+    // MARK: - Inline rename (⏎)
+
+    /// Kicks off Finder-style inline rename on the focused row. Bound to
+    /// ⏎/numpad-Enter via `FileListNSTableView.renameHandler`. Opening a file
+    /// is intentionally NOT bound here — that path lives on double-click and
+    /// ⌘↓ so Enter is free for the (far more frequent) rename gesture.
+    ///
+    /// Multi-selection: beeps. Batch rename would need a dedicated sheet and
+    /// isn't worth the complexity at this stage.
+    func renameSelected() {
+        guard let table = self.table else { return }
+        let rows = table.selectedRowIndexes
+        guard rows.count == 1, let row = rows.first, row < lastSnapshot.count else {
+            NSSound.beep(); return
+        }
+        guard let nameColIdx = table.tableColumns.firstIndex(where: { $0.identifier == .name }) else { return }
+        guard let cell = table.view(atColumn: nameColIdx, row: row, makeIfNecessary: true) as? NSTableCellView,
+              let tf = cell.textField else { return }
+
+        renamingRow = row
+        renamingOriginalName = lastSnapshot[row].name.toString()
+
+        tf.isEditable = true
+        tf.isSelectable = true
+        tf.isBordered = true
+        tf.drawsBackground = true
+        tf.backgroundColor = .textBackgroundColor
+
+        table.editColumn(nameColIdx, row: row, with: nil, select: false)
+
+        // Finder selects just the basename (without extension). If the entry
+        // is a directory or has no extension, everything is selected.
+        if let editor = tf.currentEditor() as? NSTextView {
+            let full = tf.stringValue as NSString
+            let ext = full.pathExtension
+            // NSRange is UTF-16-based to match NSString/NSTextView; using
+            // `count` on a Swift String would drift on extended grapheme
+            // clusters (emoji filenames etc.).
+            let length = (ext.isEmpty || lastSnapshot[row].kind == .Directory)
+                ? full.length
+                : (full.deletingPathExtension as NSString).length
+            editor.setSelectedRange(NSRange(location: 0, length: length))
+        }
+    }
+
+    /// NSTextFieldDelegate — Return, Tab, click-out, Escape all land here.
+    /// Escape is pre-handled by AppKit (it reverts `stringValue` before the
+    /// notification fires), so the unchanged-value branch covers it.
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let tf = notification.object as? NSTextField else { return }
+
+        let row = renamingRow
+        renamingRow = -1
+
+        // Restore label chrome so the row looks identical to its neighbours.
+        tf.isEditable = false
+        tf.isSelectable = false
+        tf.isBordered = false
+        tf.drawsBackground = false
+
         guard row >= 0, row < lastSnapshot.count else { return }
-        onActivate(lastSnapshot[row])
+        let newName = tf.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let oldName = renamingOriginalName
+
+        if newName.isEmpty || newName == oldName {
+            tf.stringValue = oldName
+            return
+        }
+        // Path separators would create a move, not a rename. Reject like Finder.
+        if newName.contains("/") || newName.contains(":") {
+            tf.stringValue = oldName
+            NSSound.beep(); return
+        }
+
+        let entry = lastSnapshot[row]
+        let oldURL = URL(fileURLWithPath: entry.path.toString())
+        let newURL = oldURL.deletingLastPathComponent().appendingPathComponent(newName)
+
+        if FileManager.default.fileExists(atPath: newURL.path) {
+            tf.stringValue = oldName
+            NSSound.beep(); return
+        }
+
+        do {
+            try FileManager.default.moveItem(at: oldURL, to: newURL)
+            registerRenameUndo(from: oldURL, to: newURL)
+            onMoved()
+        } catch {
+            tf.stringValue = oldName
+            NSSound.beep()
+        }
+    }
+
+    private func registerRenameUndo(from oldURL: URL, to newURL: URL) {
+        guard let undoManager else { return }
+        let onMoved = self.onMoved
+        let target = self
+        undoManager.registerUndo(withTarget: target) { _ in
+            try? FileManager.default.moveItem(at: newURL, to: oldURL)
+            onMoved()
+            undoManager.registerUndo(withTarget: target) { coord in
+                coord.replayRename(from: oldURL, to: newURL)
+            }
+        }
+        undoManager.setActionName("Rename")
+    }
+
+    private func replayRename(from oldURL: URL, to newURL: URL) {
+        if (try? FileManager.default.moveItem(at: oldURL, to: newURL)) != nil {
+            registerRenameUndo(from: oldURL, to: newURL)
+            onMoved()
+        }
+    }
+
+    // MARK: - Activation (⌘↓ + double-click)
+
+    /// Invoked by ⌘↓ (toolbar button). Enters a single-selected folder; beeps
+    /// on multi-selection or a non-folder selection. Files are intentionally
+    /// not opened here — Cairn routes that through double-click / NSWorkspace.
+    func descendIntoSelected() {
+        guard let table = self.table else { return }
+        let rows = table.selectedRowIndexes
+        guard rows.count == 1, let row = rows.first, row < lastSnapshot.count else {
+            NSSound.beep(); return
+        }
+        let entry = lastSnapshot[row]
+        guard entry.kind == .Directory else { NSSound.beep(); return }
+        onActivate(entry)
     }
 
     // MARK: - Right-click menu
@@ -733,7 +875,23 @@ final class FileListCoordinator: NSObject,
         let cell = NSTableCellView()
         cell.identifier = identifier
 
-        let textField = NSTextField(labelWithString: "")
+        let textField: NSTextField
+        if kind == .name {
+            // Name cells must be able to flip into an editable field when the
+            // user presses ⏎ (see renameSelected). `labelWithString(_:)` hard-
+            // wires isEditable/isSelectable=false and can't be reverted
+            // reliably, so we build a plain NSTextField configured to *look*
+            // like a label.
+            textField = NSTextField()
+            textField.isBordered = false
+            textField.drawsBackground = false
+            textField.isEditable = false
+            textField.isSelectable = false
+            textField.textColor = .labelColor
+            textField.delegate = self
+        } else {
+            textField = NSTextField(labelWithString: "")
+        }
         textField.translatesAutoresizingMaskIntoConstraints = false
         textField.lineBreakMode = .byTruncatingMiddle
         textField.font = .systemFont(ofSize: 12)

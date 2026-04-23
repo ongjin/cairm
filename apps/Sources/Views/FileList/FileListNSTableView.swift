@@ -7,8 +7,10 @@ import QuickLookUI
 /// selected files, and implements Finder-style marquee (rubber-band) selection
 /// when the user drags from empty space.
 final class FileListNSTableView: NSTableView {
-    /// Fired on ⏎ / numpad-Enter.
-    var activationHandler: (() -> Void)?
+    /// Fired on ⏎ / numpad-Enter. Matches Finder: Enter renames the selected
+    /// row in place. Opening a file/folder is still done via double-click or
+    /// ⌘↓ (which AppKit routes through the toolbar button).
+    var renameHandler: (() -> Void)?
 
     /// Fired on ⌘⌫ — Finder's "Move to Trash" shortcut. Coordinator owns the
     /// trash logic so it can iterate over the model's selected indexes
@@ -35,7 +37,7 @@ final class FileListNSTableView: NSTableView {
         // 36 = Return, 76 = numpad Enter, 49 = Space, 51 = Delete (backspace).
         switch event.keyCode {
         case 36, 76:
-            activationHandler?()
+            renameHandler?()
         case 49:
             if let panel = QLPreviewPanel.shared() {
                 panel.makeKeyAndOrderFront(nil)

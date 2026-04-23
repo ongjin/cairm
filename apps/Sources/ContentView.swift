@@ -14,6 +14,10 @@ struct ContentView: View {
 
     @State private var palette = CommandPaletteModel()
     @State private var showInspector: Bool = true
+    /// Opaque token returned by `NSEvent.addLocalMonitorForEvents`. Held so we
+    /// can remove the monitor on view teardown; losing it would leak the
+    /// closure and keep dispatching events to a dead view.
+    @State private var mouseNavMonitor: Any?
 
     var body: some View {
         ZStack {
@@ -80,6 +84,42 @@ struct ContentView: View {
             if palette.mode == .content {
                 palette.pollContent()
             }
+        }
+        .onAppear { installMouseNavMonitor() }
+        .onDisappear { removeMouseNavMonitor() }
+    }
+
+    /// Mouse button 3 / 4 (the "Back" / "Forward" side buttons found on most
+    /// external mice) route to the active tab's history. Wired via a local
+    /// NSEvent monitor because NSView overrides only fire when the table is
+    /// first responder — the user expects the side button to work everywhere
+    /// in the window (breadcrumb, sidebar, preview pane, empty state).
+    ///
+    /// Button 3 is "back" on standard Mac mappings (Logitech, Razer, Apple's
+    /// own USB Overdrive defaults). Button 4 is "forward". Returning the event
+    /// unchanged for other buttons preserves middle-click and horizontal-wheel
+    /// behaviour elsewhere; returning nil for 3/4 swallows it so it doesn't
+    /// bubble to NSWindow as an unhandled click.
+    private func installMouseNavMonitor() {
+        guard mouseNavMonitor == nil else { return }
+        mouseNavMonitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { event in
+            switch event.buttonNumber {
+            case 3:
+                _ = tab?.goBack()
+                return nil
+            case 4:
+                _ = tab?.goForward()
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    private func removeMouseNavMonitor() {
+        if let token = mouseNavMonitor {
+            NSEvent.removeMonitor(token)
+            mouseNavMonitor = nil
         }
     }
 

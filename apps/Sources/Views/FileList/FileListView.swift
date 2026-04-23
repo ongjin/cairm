@@ -125,9 +125,10 @@ struct FileListView: NSViewRepresentable {
         // Initial sort indicator on Name column.
         table.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
 
-        // Subclass needs a back-pointer for ⏎ activation.
-        table.activationHandler = { [weak coord = context.coordinator] in
-            coord?.activateSelected()
+        // Enter kicks off inline rename (Finder parity). Opening a file/folder
+        // stays on double-click + ⌘↓.
+        table.renameHandler = { [weak coord = context.coordinator] in
+            coord?.renameSelected()
         }
         table.deleteHandler = { [weak coord = context.coordinator] in
             coord?.deleteSelected()
