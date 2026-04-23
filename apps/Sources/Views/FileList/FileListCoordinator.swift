@@ -1207,10 +1207,22 @@ final class FileListCoordinator: NSObject,
 
     private func pasteImageToSSH(data: Data, ext: String, into target: FSPath) {
         // Stage clipboard bytes in a local temp file so the existing upload
-        // pipeline can ship them. Remote destination is picked by probing
-        // SFTP stat in a Finder-style "Untitled" → "Untitled 2" loop —
-        // SFTP upload truncates existing targets, so we MUST guarantee a
-        // non-existing destination before calling `uploadFromLocal`.
+        // pipeline can ship them. Remote destination is picked in two
+        // stages to close the full TOCTOU / partial-file window:
+        //
+        //   1. Upload bytes to a hidden temp remote path
+        //      (`.cairn-upload-<uuid>.<ext>`). A cancel or mid-transfer
+        //      failure now leaves (at worst) a hidden temp file, not a
+        //      partial file at the user-visible destination.
+        //   2. Probe for a free `Untitled` / `Untitled 2` slot and
+        //      `rename` the temp into it. Default SFTP rename on
+        //      OpenSSH fails if the target exists — that's exactly the
+        //      no-clobber semantics we want, atomic at the server
+        //      side. On rename failure we remove the temp and beep.
+        //
+        // This is stricter than "probe then upload": even if another
+        // writer creates the same `Untitled` name after our probe, the
+        // rename fails rather than silently overwriting.
         let tmpURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("cairn-paste-\(UUID().uuidString).\(ext)")
         do {
@@ -1220,11 +1232,16 @@ final class FileListCoordinator: NSObject,
             return
         }
         let size = Int64(data.count)
+        let tempRemoteName = ".cairn-upload-\(UUID().uuidString).\(ext)"
+        let tempRemotePath = target.appending(tempRemoteName)
         Task { @MainActor [weak self] in
             guard let self else {
                 try? FileManager.default.removeItem(at: tmpURL)
                 return
             }
+            // Probe ahead of the upload so the HUD can display the final
+            // name. A subsequent rename failure (target raced in after
+            // probe) is handled below by cleaning up the temp.
             let dstPath: FSPath
             do {
                 dstPath = try await RemoteNameResolver.uniqueRemotePath(
@@ -1233,10 +1250,10 @@ final class FileListCoordinator: NSObject,
                     in: target,
                     probe: { [weak self] candidate in
                         // Must throw on transport/permission errors —
-                        // swallowing them would let uploadFromLocal
-                        // truncate an existing remote file when the
-                        // session is flaky. Only a true "not found"
-                        // result counts as "name is available".
+                        // swallowing them would let the subsequent
+                        // rename land on an unverified slot. Only a
+                        // true "not found" result counts as "name is
+                        // available".
                         guard let self else { return true }
                         return try await self.provider.exists(candidate)
                     }
@@ -1257,12 +1274,30 @@ final class FileListCoordinator: NSObject,
                     return
                 }
                 defer { try? FileManager.default.removeItem(at: tmpURL) }
-                try await self.provider.uploadFromLocal(
-                    tmpURL,
-                    to: dstPath,
-                    progress: progress,
-                    cancel: job.cancel
-                )
+                do {
+                    try await self.provider.uploadFromLocal(
+                        tmpURL,
+                        to: tempRemotePath,
+                        progress: progress,
+                        cancel: job.cancel
+                    )
+                } catch {
+                    // Upload may have created a partial temp file on
+                    // the server — best-effort cleanup before the
+                    // error propagates to the TransferController.
+                    try? await self.provider.delete([tempRemotePath])
+                    throw error
+                }
+                do {
+                    try await self.provider.rename(from: tempRemotePath, to: dstPath)
+                } catch {
+                    // A rename failure here means (a) the slot raced
+                    // in between probe and rename, or (b) a transport
+                    // hiccup. Either way, remove the temp so it
+                    // doesn't linger as a hidden file.
+                    try? await self.provider.delete([tempRemotePath])
+                    throw error
+                }
             }
         }
     }

@@ -32,7 +32,13 @@ final class PreviewModel {
 
     var focus: URL? {
         didSet {
-            remoteFocus = nil
+            // External writes to `focus` represent a local-file selection.
+            // `setRemoteFocus` flips this guard so it can populate both
+            // `remoteFocus` and `focus` atomically before the cache
+            // lookup in `handleFocusChange` fires.
+            if !isApplyingRemoteFocus {
+                remoteFocus = nil
+            }
             handleFocusChange(from: oldValue)
         }
     }
@@ -40,6 +46,7 @@ final class PreviewModel {
 
     private let engine: CairnEngine
     private var remoteFocus: FSPath?
+    private var isApplyingRemoteFocus = false
 
     /// Insertion-ordered (oldest → newest) for cheap LRU eviction.
     /// Keyed on standardizedFileURL.path so duplicate URL forms alias.
@@ -68,10 +75,23 @@ final class PreviewModel {
 
     // MARK: - Cache
 
+    /// Composite cache key — provider identity + path. Two selections that
+    /// share a POSIX path but live on different providers (local `/etc/hosts`
+    /// vs host A `/etc/hosts` vs host B `/etc/hosts`) must NOT alias in the
+    /// LRU; otherwise restoring the inspector after a provider switch
+    /// shows the wrong body. `configHashHex` is included so two ssh_config
+    /// aliases that point at the same user/host/port still hash distinctly.
+    private func cacheKey(for url: URL, remote: FSPath?) -> String {
+        if let r = remote, case .ssh(let t) = r.provider {
+            return "ssh:\(t.user)@\(t.hostname):\(t.port):\(t.configHashHex):\(r.path)"
+        }
+        return "local:\(url.standardizedFileURL.path)"
+    }
+
     /// Test/internal helper — directly poke a value into the cache without
     /// invoking the engine. Production callers set `focus` instead.
-    func cache(state: PreviewState, for url: URL) {
-        let key = url.standardizedFileURL.path
+    func cache(state: PreviewState, for url: URL, remote: FSPath? = nil) {
+        let key = cacheKey(for: url, remote: remote)
         if cacheValues[key] != nil {
             cacheKeys.removeAll { $0 == key }
         }
@@ -80,8 +100,8 @@ final class PreviewModel {
         evictIfNeeded()
     }
 
-    func cached(for url: URL) -> PreviewState? {
-        cacheValues[url.standardizedFileURL.path]
+    func cached(for url: URL, remote: FSPath? = nil) -> PreviewState? {
+        cacheValues[cacheKey(for: url, remote: remote)]
     }
 
     private func evictIfNeeded() {
@@ -98,9 +118,20 @@ final class PreviewModel {
     /// the local-file inflight with a remote readHead fetch.
     func setRemoteFocus(_ path: FSPath, via provider: FileSystemProvider) {
         let displayURL = URL(fileURLWithPath: path.path)
-        focus = displayURL  // triggers handleFocusChange (starts local task, but we override it)
+        // Populate `remoteFocus` before flipping `focus` so the cache lookup
+        // inside `handleFocusChange(didSet)` sees the correct provider
+        // context. Without this ordering, the first SSH-file selection
+        // after a local-file selection looks up the cache with
+        // `remote = nil` and either misses (harmless) or aliases onto a
+        // same-path local entry (wrong body shown).
         remoteFocus = path
-        // Immediately cancel the local-file task and replace with remote load
+        isApplyingRemoteFocus = true
+        focus = displayURL  // didSet → handleFocusChange (may apply a cached hit for this remote)
+        isApplyingRemoteFocus = false
+        // Immediately cancel the cached/debounced local task and replace
+        // with the remote head fetch. If the cache hit was a stale entry
+        // we still override with fresh bytes (`loadHead` re-caches on
+        // success, so subsequent revisits see the fresh value).
         inflight?.cancel()
         let captured = path
         inflight = Task { [weak self] in
@@ -121,10 +152,10 @@ final class PreviewModel {
                     ?? String(bytes: data, encoding: .isoLatin1)
                     ?? ""
                 state = .text(text)
-                cache(state: .text(text), for: displayURL)
+                cache(state: .text(text), for: displayURL, remote: path)
             } else {
                 state = .pressSpaceForFullPreview
-                cache(state: .pressSpaceForFullPreview, for: displayURL)
+                cache(state: .pressSpaceForFullPreview, for: displayURL, remote: path)
             }
         } catch {
             if !Task.isCancelled {
@@ -149,7 +180,9 @@ final class PreviewModel {
             return
         }
         // Cache hit: apply instantly, no debounce, no loading flash.
-        if let hit = cached(for: focus) {
+        // Pass `remoteFocus` so SSH entries are keyed separately from
+        // their same-path local cousins.
+        if let hit = cached(for: focus, remote: remoteFocus) {
             state = hit
             return
         }

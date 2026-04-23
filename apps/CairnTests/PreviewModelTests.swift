@@ -68,6 +68,58 @@ final class PreviewModelTests: XCTestCase {
             XCTFail("expected .pressSpaceForFullPreview, got \(model.state)")
         }
     }
+
+    // Regression: PreviewModel used to key the LRU purely by URL path, so
+    // a same-path selection across local / host-A / host-B would hit the
+    // same cache slot and restore the wrong content after an inspector
+    // toggle. The provider-aware key must keep them distinct.
+
+    private func sshTarget(host: String) -> SshTarget {
+        SshTarget(user: "alice", hostname: host, port: 22, configHashHex: "deadbeef")
+    }
+
+    func test_cache_localAndRemote_sameBarePath_doNotAlias() {
+        let engine = CairnEngine()
+        let model = PreviewModel(engine: engine)
+        let url = URL(fileURLWithPath: "/etc/hosts")
+        let remote = FSPath(provider: .ssh(sshTarget(host: "server-a")), path: "/etc/hosts")
+
+        model.cache(state: .text("local body"), for: url, remote: nil)
+        model.cache(state: .text("remote body"), for: url, remote: remote)
+
+        if case .text(let localHit) = model.cached(for: url, remote: nil) {
+            XCTAssertEqual(localHit, "local body")
+        } else {
+            XCTFail("local cache miss")
+        }
+        if case .text(let remoteHit) = model.cached(for: url, remote: remote) {
+            XCTAssertEqual(remoteHit, "remote body")
+        } else {
+            XCTFail("remote cache miss")
+        }
+    }
+
+    func test_cache_twoSshHosts_sameBarePath_doNotAlias() {
+        let engine = CairnEngine()
+        let model = PreviewModel(engine: engine)
+        let url = URL(fileURLWithPath: "/etc/hosts")
+        let remoteA = FSPath(provider: .ssh(sshTarget(host: "server-a")), path: "/etc/hosts")
+        let remoteB = FSPath(provider: .ssh(sshTarget(host: "server-b")), path: "/etc/hosts")
+
+        model.cache(state: .text("A body"), for: url, remote: remoteA)
+        model.cache(state: .text("B body"), for: url, remote: remoteB)
+
+        if case .text(let a) = model.cached(for: url, remote: remoteA) {
+            XCTAssertEqual(a, "A body")
+        } else {
+            XCTFail("server-a cache miss")
+        }
+        if case .text(let b) = model.cached(for: url, remote: remoteB) {
+            XCTAssertEqual(b, "B body")
+        } else {
+            XCTFail("server-b cache miss")
+        }
+    }
 }
 
 /// Minimal FileSystemProvider stub — only `readHead` is wired up because
