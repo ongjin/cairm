@@ -13,7 +13,6 @@ struct ContentView: View {
     private var tab: Tab? { dualPane.activePane.activeTab }
 
     @State private var palette = CommandPaletteModel()
-    @State private var showInspector: Bool = true
     /// Opaque token returned by `NSEvent.addLocalMonitorForEvents`. Held so we
     /// can remove the monitor on view teardown; losing it would leak the
     /// closure and keep dispatching events to a dead view.
@@ -25,13 +24,6 @@ struct ContentView: View {
                 SidebarView(app: app)
             } detail: {
                 detailColumn
-            }
-            .inspector(isPresented: $showInspector) {
-                if let tab {
-                    PreviewPaneView(preview: tab.preview)
-                } else {
-                    Color.clear
-                }
             }
             .navigationTitle({
                 guard let tab, let path = tab.currentPath else { return "Cairn" }
@@ -152,13 +144,6 @@ struct ContentView: View {
             }
             .help(dualPane.isSplit ? "Collapse Split View" : "Split View (⌘⇧D)")
             // Shortcut lives on the View menu entry so it doesn't double-fire.
-        }
-        ToolbarItem(placement: .primaryAction) {
-            Button(action: { showInspector.toggle() }) {
-                Image(systemName: "sidebar.right")
-            }
-            .help("Toggle Preview Pane")
-            .keyboardShortcut("i", modifiers: [.command, .option])
         }
     }
 

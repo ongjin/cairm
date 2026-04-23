@@ -43,7 +43,6 @@ struct FileListView: NSViewRepresentable {
     let onAddToPinned: (FileEntry) -> Void
     /// Predicate used to label the menu item "Unpin" vs "Add to Pinned".
     let isPinnedCheck: (FileEntry) -> Bool
-    let onSelectionChanged: (FileEntry?) -> Void
     /// Called after a drop-move successfully relocates files. The host should
     /// reload the folder so the moved entries disappear from this list.
     var onMoved: () -> Void = {}
@@ -179,7 +178,6 @@ struct FileListView: NSViewRepresentable {
             onActivate: onActivate,
             onAddToPinned: onAddToPinned,
             isPinnedCheck: isPinnedCheck,
-            onSelectionChanged: onSelectionChanged,
             onMoved: onMoved,
             undoManager: undoManager
         )
@@ -208,7 +206,6 @@ struct FileListView: NSViewRepresentable {
                             onActivate: onActivate,
                             onAddToPinned: onAddToPinned,
                             isPinnedCheck: isPinnedCheck,
-                            onSelectionChanged: onSelectionChanged,
                             onMoved: onMoved,
                             undoManager: undoManager)
     }

@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// Per-tab state container. One folder context lives here: FolderModel +
-/// SearchModel + PreviewModel + IndexService + GitService + NavigationHistory
+/// SearchModel + IndexService + GitService + NavigationHistory
 /// + scoped-bookmark access.
 ///
 /// Moved out of AppModel in M1.8 T10 so multi-tab / multi-window becomes
@@ -32,7 +32,6 @@ final class Tab: Identifiable {
 
     let folder: FolderModel
     let search: SearchModel
-    let preview: PreviewModel
     /// Per-tab undo stack for file system mutations (drag-drop move, ⌘⌫
     /// trash, context-menu trash). Lives on the tab so each tab's history
     /// is independent — undoing in one tab won't surprise-resurrect a file
@@ -73,7 +72,6 @@ final class Tab: Identifiable {
         self.bookmarks = bookmarks
         self.folder = FolderModel(engine: engine)
         self.search = SearchModel(engine: engine)
-        self.preview = PreviewModel(engine: engine)
         self.provider = LocalFileSystemProvider(engine: engine)
         self.history.push(FSPath(provider: .local, path: initialURL.path))
         rebuildProviderServices(for: FSPath(provider: .local, path: initialURL.path))
@@ -86,7 +84,6 @@ final class Tab: Identifiable {
         self.bookmarks = bookmarks
         self.folder = FolderModel(engine: engine)
         self.search = SearchModel(engine: engine)
-        self.preview = PreviewModel(engine: engine)
         self.provider = provider
         self.history.push(initialPath)
         rebuildProviderServices(for: initialPath)

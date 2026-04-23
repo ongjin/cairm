@@ -411,7 +411,6 @@ private struct PaneContentBody: View {
             isPinnedCheck: { entry in
                 app.bookmarks.isPinned(url: URL(fileURLWithPath: entry.path.toString()))
             },
-            onSelectionChanged: { handleSelectionChanged($0) },
             onMoved: {
                 guard let path = tab.currentPath else { return }
                 Task { await tab.folder.load(path, via: tab.provider) }
@@ -450,25 +449,4 @@ private struct PaneContentBody: View {
         }
     }
 
-    private func handleSelectionChanged(_ entry: FileEntry?) {
-        if let e = entry {
-            if case .ssh = tab.provider.identifier {
-                let path = FSPath(provider: tab.provider.identifier, path: e.path.toString())
-                // Remote directories would fail `readHead` with a protocol
-                // error (SFTP open-as-file on a dir), so route dirs to a
-                // dedicated code path that sets `.directory(nil)`
-                // synchronously — no remote I/O, no false-failure pane
-                // while scrolling a listing.
-                if e.kind == .Directory {
-                    tab.preview.setRemoteDirectoryFocus(path)
-                } else {
-                    tab.preview.setRemoteFocus(path, via: tab.provider)
-                }
-            } else {
-                tab.preview.focus = URL(fileURLWithPath: e.path.toString())
-            }
-        } else {
-            tab.preview.focus = nil
-        }
-    }
 }

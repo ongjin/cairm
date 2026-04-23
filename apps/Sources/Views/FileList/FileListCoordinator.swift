@@ -80,7 +80,6 @@ final class FileListCoordinator: NSObject,
 
     private var onAddToPinned: (FileEntry) -> Void
     private var isPinnedCheck: (FileEntry) -> Bool
-    private var onSelectionChanged: (FileEntry?) -> Void
     /// Called after a successful drop-move so the host can reload the folder
     /// (and trigger any side effects like search refresh). The Rust index
     /// watcher will eventually pick up the FS change too, but reloading here
@@ -105,7 +104,6 @@ final class FileListCoordinator: NSObject,
          onActivate: @escaping (FileEntry) -> Void,
          onAddToPinned: @escaping (FileEntry) -> Void,
          isPinnedCheck: @escaping (FileEntry) -> Bool,
-         onSelectionChanged: @escaping (FileEntry?) -> Void,
          onMoved: @escaping () -> Void = {},
          undoManager: UndoManager? = nil) {
         self.folder = folder
@@ -115,7 +113,6 @@ final class FileListCoordinator: NSObject,
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
-        self.onSelectionChanged = onSelectionChanged
         self.onMoved = onMoved
         self.undoManager = undoManager
         super.init()
@@ -151,7 +148,6 @@ final class FileListCoordinator: NSObject,
                         onActivate: @escaping (FileEntry) -> Void,
                         onAddToPinned: @escaping (FileEntry) -> Void,
                         isPinnedCheck: @escaping (FileEntry) -> Bool,
-                        onSelectionChanged: @escaping (FileEntry?) -> Void,
                         onMoved: @escaping () -> Void = {},
                         undoManager: UndoManager? = nil) {
         let folderChanged = self.folder !== folder
@@ -162,7 +158,6 @@ final class FileListCoordinator: NSObject,
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
-        self.onSelectionChanged = onSelectionChanged
         self.onMoved = onMoved
         self.undoManager = undoManager
         if folderChanged {
@@ -397,13 +392,6 @@ final class FileListCoordinator: NSObject,
             return lastSnapshot[row].path.toString()
         }
         folder.setSelection(Set(paths))
-
-        // Preview focus: first-selected row's entry (row-order, not Set-order).
-        let firstRow = rows.min()
-        let firstEntry: FileEntry? = firstRow.flatMap { row in
-            row < lastSnapshot.count ? lastSnapshot[row] : nil
-        }
-        onSelectionChanged(firstEntry)
     }
 
     // MARK: - Activation (double-click + ⏎)

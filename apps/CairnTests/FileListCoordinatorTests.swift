@@ -33,8 +33,7 @@ final class FileListCoordinatorTests: XCTestCase {
             transfers: TransferController(),
             onActivate: { _ in aActivated += 1 },
             onAddToPinned: { _ in },
-            isPinnedCheck: { _ in false },
-            onSelectionChanged: { _ in }
+            isPinnedCheck: { _ in false }
         )
 
         coord.fireActivate(entry: entry)
@@ -47,8 +46,7 @@ final class FileListCoordinatorTests: XCTestCase {
             transfers: TransferController(),
             onActivate: { _ in bActivated += 1 },
             onAddToPinned: { _ in },
-            isPinnedCheck: { _ in false },
-            onSelectionChanged: { _ in }
+            isPinnedCheck: { _ in false }
         )
 
         coord.fireActivate(entry: entry)
@@ -68,8 +66,7 @@ final class FileListCoordinatorTests: XCTestCase {
             transfers: TransferController(),
             onActivate: { _ in },
             onAddToPinned: { _ in },
-            isPinnedCheck: { _ in false },
-            onSelectionChanged: { _ in }
+            isPinnedCheck: { _ in false }
         )
         XCTAssertTrue(coord.folderRefForTest === folderA)
 
@@ -79,8 +76,7 @@ final class FileListCoordinatorTests: XCTestCase {
             transfers: TransferController(),
             onActivate: { _ in },
             onAddToPinned: { _ in },
-            isPinnedCheck: { _ in false },
-            onSelectionChanged: { _ in }
+            isPinnedCheck: { _ in false }
         )
         XCTAssertTrue(coord.folderRefForTest === folderB)
     }
@@ -94,8 +90,7 @@ final class FileListCoordinatorTests: XCTestCase {
             transfers: TransferController(),
             onActivate: { _ in },
             onAddToPinned: { _ in },
-            isPinnedCheck: { _ in false },
-            onSelectionChanged: { _ in }
+            isPinnedCheck: { _ in false }
         )
         let table = FileListNSTableView()
         // Seed the usual 3 columns so moveColumn works during the add path.
