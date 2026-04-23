@@ -390,7 +390,10 @@ struct ContentView: View {
             scene.newRemoteTab(initialPath: initial, provider: provider)
             connectSheetModel = nil
         } catch {
-            model.error = (error as NSError).localizedDescription
+            // Only surface the error if the sheet is still visible (user didn't cancel mid-flight)
+            if connectSheetModel != nil {
+                model.error = (error as NSError).localizedDescription
+            }
         }
     }
 }

@@ -234,9 +234,7 @@ struct SidebarView: View {
 
     private func disconnectHost(_ name: String) {
         Task { @MainActor in
-            if let target = app.ssh.sessions.keys.first(where: {
-                $0.hostname == name || app.sshConfig.configuredHosts.contains(name)
-            }) {
+            if let target = app.ssh.sessions.keys.first(where: { $0.hostname == name }) {
                 app.ssh.disconnect(target)
             }
         }

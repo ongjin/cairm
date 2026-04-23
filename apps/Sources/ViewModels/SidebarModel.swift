@@ -74,6 +74,7 @@ extension SidebarModel {
         let displaySummary: String
         let state: State
         let pinned: Bool
+        let lastConnectedAt: Date?
         enum State: String { case connected, idle, error, disconnected }
     }
 
@@ -92,13 +93,12 @@ extension SidebarModel {
                 id: name,
                 displaySummary: meta.lastConnectedAt.map { "last connected \(relative($0))" } ?? "",
                 state: state,
-                pinned: meta.pinned
+                pinned: meta.pinned,
+                lastConnectedAt: meta.lastConnectedAt
             )
-        }.sorted { lhs, rhs in
-            if lhs.pinned != rhs.pinned { return lhs.pinned }
-            let lDate = svc.metadataFor(lhs.id).lastConnectedAt ?? .distantPast
-            let rDate = svc.metadataFor(rhs.id).lastConnectedAt ?? .distantPast
-            return lDate > rDate
+        }.sorted {
+            if $0.pinned != $1.pinned { return $0.pinned }
+            return ($0.lastConnectedAt ?? .distantPast) > ($1.lastConnectedAt ?? .distantPast)
         }
     }
 
