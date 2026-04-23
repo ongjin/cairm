@@ -34,5 +34,6 @@ struct RemoteErrorCard: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red.opacity(0.3)))
         .padding(24)
         .frame(maxWidth: 480, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

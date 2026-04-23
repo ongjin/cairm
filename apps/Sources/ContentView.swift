@@ -218,9 +218,15 @@ struct ContentView: View {
 
     @ViewBuilder
     private func connectingView(tab: Tab, detail: String) -> some View {
+        let hostname: String = {
+            if let path = tab.currentPath, case .ssh(let t) = path.provider {
+                return t.hostname
+            }
+            return "…"
+        }()
         VStack(spacing: 12) {
             ProgressView().controlSize(.large)
-            Text("Connecting…")
+            Text("Connecting to \(hostname)")
                 .font(.headline)
             if !detail.isEmpty {
                 Text(detail)
@@ -253,9 +259,17 @@ struct ContentView: View {
     }
 
     private func retrySSHTab(_ tab: Tab) {
-        tab.connectionPhase = .idle
         guard let path = tab.currentPath else { return }
-        Task { await tab.folder.load(path, via: tab.provider) }
+        tab.connectionPhase = .connecting(detail: "Reconnecting…")
+        tab.folder.clear()
+        Task {
+            await tab.folder.load(path, via: tab.provider)
+            if case .failed(let msg) = tab.folder.state {
+                tab.connectionPhase = .error(title: "Connection failed", detail: msg)
+            } else {
+                tab.connectionPhase = .connected
+            }
+        }
     }
 
     private func revealSshConfig() {
@@ -266,9 +280,14 @@ struct ContentView: View {
     private func openTerminalForTab(_ tab: Tab) {
         guard let path = tab.currentPath,
               case .ssh(let target) = path.provider else { return }
-        let script = "ssh \(target.user)@\(target.hostname) -p \(target.port)"
-        let src = "tell application \"Terminal\" to do script \"\(script)\""
-        if let s = NSAppleScript(source: src) { s.executeAndReturnError(nil) }
+        var comps = URLComponents()
+        comps.scheme = "ssh"
+        comps.user = target.user
+        comps.host = target.hostname
+        if target.port != 22 { comps.port = Int(target.port) }
+        if let url = comps.url {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func fileList(tab: Tab) -> some View {
