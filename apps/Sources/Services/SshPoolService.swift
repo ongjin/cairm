@@ -10,6 +10,13 @@ final class SshPoolService {
 
     private(set) var sessions: [SshTarget: SessionState] = [:]
 
+    /// Records which ssh_config alias opened each session. Needed because a
+    /// ConnKey (user@host:port+config_hash) does not carry the alias, and
+    /// comparing by substring of `resolvedSummary` breaks when the alias does
+    /// not appear in the HostName (e.g. `app-cf` → `10.0.0.1`). Populated on
+    /// `connect`, cleared on `disconnect` / `closeAll`.
+    private(set) var aliasToTarget: [String: SshTarget] = [:]
+
     struct SessionState {
         enum Status { case connecting, active, idle, error(String) }
         var status: Status
@@ -71,6 +78,7 @@ final class SshPoolService {
             lastActivity: Date(),
             resolvedSummary: "\(target.user)@\(target.hostname):\(target.port)"
         )
+        aliasToTarget[hostAlias] = target
         return target
     }
 
@@ -101,12 +109,14 @@ final class SshPoolService {
         )
         ssh_pool_disconnect(pool, key)
         sessions.removeValue(forKey: target)
+        aliasToTarget = aliasToTarget.filter { $0.value != target }
     }
 
     func closeAll() {
         sftpHandles.removeAll()
         ssh_pool_close_all(pool)
         sessions.removeAll()
+        aliasToTarget.removeAll()
     }
 
     private func refreshSessionStates() {

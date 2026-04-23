@@ -83,8 +83,10 @@ extension SidebarModel {
         svc.configuredHosts.compactMap { name in
             let meta = svc.metadataFor(name)
             if meta.hiddenFromSidebar { return nil }
+            // Match by alias-tracked target, not by substring of the resolved
+            // summary — `app-cf` → HostName `10.0.0.1` wouldn't match otherwise.
             let state: RemoteHostItem.State
-            if pool.sessions.values.contains(where: { $0.resolvedSummary.contains(name) }) {
+            if let target = pool.aliasToTarget[name], pool.sessions[target] != nil {
                 state = .connected
             } else {
                 state = .disconnected
