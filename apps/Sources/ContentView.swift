@@ -45,6 +45,16 @@ struct ContentView: View {
             .onChange(of: tab?.search.query) { _, _ in triggerSearchRefresh() }
             .onChange(of: tab?.search.scope) { _, _ in triggerSearchRefresh() }
             .onChange(of: tab?.folder.sortDescriptor) { _, _ in triggerSearchRefresh() }
+            // Auto-collapse the split when the user closes the last tab in
+            // the right pane — otherwise PaneColumn falls back to a lone
+            // ProgressView / empty tab-strip which looks broken. Mirrors
+            // Safari/Chrome's "closing the last tab closes the window"
+            // convention, scoped to the right pane only.
+            .onChange(of: dualPane.right?.tabs.isEmpty) { _, isEmpty in
+                if isEmpty == true {
+                    dualPane.toggleSplit(engine: app.engine, bookmarks: app.bookmarks, app: app)
+                }
+            }
 
             if palette.isOpen, let tab {
                 CommandPaletteView(

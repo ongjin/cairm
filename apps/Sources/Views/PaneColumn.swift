@@ -29,7 +29,15 @@ struct PaneColumn: View {
         .opacity(isActive ? 1.0 : 0.72)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture { onFocus() }
+        // Pane focus: plain `.onTapGesture` doesn't fire when the click
+        // lands inside the NSTableView-backed file list (AppKit swallows
+        // the event). `simultaneousGesture` runs alongside the child's
+        // handling. We also auto-focus on selection change or tab switch
+        // inside the pane — any interaction inside this side = "this side
+        // is active."
+        .simultaneousGesture(TapGesture().onEnded { onFocus() })
+        .onChange(of: scene.activeTabID) { _, _ in onFocus() }
+        .onChange(of: tab?.folder.selection) { _, _ in onFocus() }
         .task {
             if let tab, let path = tab.currentPath {
                 await tab.folder.load(path, via: tab.provider)
