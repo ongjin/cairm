@@ -46,9 +46,16 @@ final class SshPoolService {
         )
         let hostKeyCallback = HostKeyCallback(resolver: self.hostKeyResolver)
         let passphraseCallback = PassphraseCallback(resolver: self.passphraseResolver)
-        let key = try await Task.detached(priority: .userInitiated) {
-            try ssh_pool_connect(pool, spec, hostKeyCallback, passphraseCallback)
-        }.value
+        let key: ConnKeyBridge = try await withCheckedThrowingContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let result = try ssh_pool_connect(pool, spec, hostKeyCallback, passphraseCallback)
+                    cont.resume(returning: result)
+                } catch {
+                    cont.resume(throwing: error)
+                }
+            }
+        }
         let target = SshTarget(
             user: key.user.toString(),
             hostname: key.hostname.toString(),
