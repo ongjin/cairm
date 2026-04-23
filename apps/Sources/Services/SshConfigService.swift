@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 @Observable
 final class SshConfigService {
     private(set) var configuredHosts: [String] = []
@@ -19,7 +20,7 @@ final class SshConfigService {
     }
 
     func appendHost(_ entry: SshConfigWriter.Entry) throws {
-        let home = ProcessInfo.processInfo.environment["HOME"]!
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
         let url = URL(fileURLWithPath: "\(home)/.ssh/config")
         try SshConfigWriter.append(entry, to: url)
         reload()
@@ -27,10 +28,10 @@ final class SshConfigService {
 
     func metadataFor(_ host: String) -> HostMetadata { metadata.metadata(for: host) }
 
-    func touch(_ host: String, state: String?) {
+    func touch(_ host: String, state: ConnectionState?) {
         metadata.update(host) {
             $0.lastConnectedAt = Date()
-            if let state { $0.lastKnownState = state }
+            $0.lastKnownState = state
         }
     }
 }

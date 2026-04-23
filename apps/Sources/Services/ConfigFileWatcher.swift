@@ -1,7 +1,8 @@
 import Foundation
 
-/// Watches ~/.ssh/config (+ first-level ~/.ssh/config.d/* glob) for changes
-/// and fires a callback so the sidebar can reload its host list.
+/// Watches the ~/.ssh directory for changes (catching edits to ~/.ssh/config,
+/// ~/.ssh/config.d/*, and any other files inside it) and fires a callback so
+/// the sidebar can reload its host list.
 final class ConfigFileWatcher {
     private let callback: () -> Void
     private var stream: FSEventStreamRef?
@@ -22,11 +23,19 @@ final class ConfigFileWatcher {
         // FSEvents wants directories; if config file is watched, use its parent.
         let watchDirs = Array(Set(paths.map { ($0 as NSString).deletingLastPathComponent }))
         let pathsCF = watchDirs as CFArray
-        var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(), retain: nil, release: nil, copyDescription: nil)
+        var context = FSEventStreamContext(
+            version: 0,
+            info: Unmanaged.passRetained(self).toOpaque(),
+            retain: nil,
+            release: { ptr in
+                guard let ptr else { return }
+                Unmanaged<ConfigFileWatcher>.fromOpaque(ptr).release()
+            },
+            copyDescription: nil
+        )
         let cb: FSEventStreamCallback = { _, info, _, _, _, _ in
             guard let info else { return }
-            let w = Unmanaged<ConfigFileWatcher>.fromOpaque(info).takeUnretainedValue()
-            w.callback()
+            Unmanaged<ConfigFileWatcher>.fromOpaque(info).takeUnretainedValue().callback()
         }
         stream = FSEventStreamCreate(
             nil, cb, &context, pathsCF,

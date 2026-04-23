@@ -1,10 +1,16 @@
 import Foundation
 
+enum ConnectionState: String, Codable, Hashable {
+    case ok, error
+}
+
 struct HostMetadata: Codable, Hashable {
     var lastConnectedAt: Date?
     var pinned: Bool
     var hiddenFromSidebar: Bool
-    var lastKnownState: String?          // "ok" | "error" | nil
+    var lastKnownState: ConnectionState?
+
+    static let `default` = HostMetadata(lastConnectedAt: nil, pinned: false, hiddenFromSidebar: false, lastKnownState: nil)
 }
 
 final class HostMetadataStore {
@@ -21,16 +27,23 @@ final class HostMetadataStore {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.fileURL = dir.appendingPathComponent("host-metadata.json")
         }
-        load()
+        if let data = try? Data(contentsOf: fileURL),
+           let decoded = try? {
+               let dec = JSONDecoder()
+               dec.dateDecodingStrategy = .iso8601
+               return try dec.decode([String: HostMetadata].self, from: data)
+           }() {
+            cache = decoded
+        }
     }
 
     func metadata(for host: String) -> HostMetadata {
-        queue.sync { cache[host] ?? HostMetadata(lastConnectedAt: nil, pinned: false, hiddenFromSidebar: false, lastKnownState: nil) }
+        queue.sync { cache[host] ?? .default }
     }
 
     func update(_ host: String, _ mutate: (inout HostMetadata) -> Void) {
         queue.sync {
-            var m = cache[host] ?? HostMetadata(lastConnectedAt: nil, pinned: false, hiddenFromSidebar: false, lastKnownState: nil)
+            var m = cache[host] ?? .default
             mutate(&m)
             cache[host] = m
             persistLocked()
@@ -38,15 +51,6 @@ final class HostMetadataStore {
     }
 
     func all() -> [String: HostMetadata] { queue.sync { cache } }
-
-    private func load() {
-        queue.sync {
-            guard let data = try? Data(contentsOf: fileURL) else { return }
-            let dec = JSONDecoder()
-            dec.dateDecodingStrategy = .iso8601
-            cache = (try? dec.decode([String: HostMetadata].self, from: data)) ?? [:]
-        }
-    }
 
     private func persistLocked() {
         let enc = JSONEncoder()

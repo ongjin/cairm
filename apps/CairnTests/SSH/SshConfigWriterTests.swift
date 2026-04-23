@@ -31,6 +31,11 @@ final class SshConfigWriterTests: XCTestCase {
 
     func testRejectsInvalidNickname() {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).config")
-        XCTAssertThrowsError(try SshConfigWriter.append(.init(nickname: "has space", hostname: "x", port: nil, user: nil, identityFile: nil, proxyCommand: nil), to: tmp))
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        XCTAssertThrowsError(
+            try SshConfigWriter.append(.init(nickname: "has space", hostname: "x", port: nil, user: nil, identityFile: nil, proxyCommand: nil), to: tmp)
+        ) { error in
+            XCTAssertTrue(error is SshConfigWriter.WriterError)
+        }
     }
 }

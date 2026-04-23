@@ -20,14 +20,17 @@ enum SshConfigWriter {
         guard !trimmed.isEmpty, !trimmed.contains(where: { " \t\n".contains($0) }) else {
             throw WriterError.invalidNickname
         }
+        let fieldValues = [entry.hostname, entry.user, entry.identityFile, entry.proxyCommand].compactMap { $0 }
+        guard !fieldValues.contains(where: { $0.contains("\n") || $0.contains("\r") }) else {
+            throw WriterError.invalidNickname
+        }
 
         let existing: String
         if FileManager.default.fileExists(atPath: configURL.path) {
             existing = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
         } else {
-            if let dir = configURL.deletingLastPathComponent().path as String? {
-                try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            }
+            let dir = configURL.deletingLastPathComponent().path
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             existing = ""
         }
 
