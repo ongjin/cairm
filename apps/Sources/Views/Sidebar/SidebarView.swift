@@ -201,23 +201,19 @@ struct SidebarView: View {
 
     // MARK: - Remote host helpers
 
-    /// Tap on a sidebar remote host. If a Keychain password exists for this
-    /// alias, attempt a silent reconnect; fall through to the sheet on failure
-    /// or when no saved password is found. This keeps password hosts behaving
-    /// like agent/key hosts (single click → tab opens), without burying the
-    /// sheet-based recovery path for stale credentials.
+    /// Tap on a sidebar remote host. Always attempts a silent connect first:
+    /// agent/key-authed hosts need no extra input, and password-authed hosts
+    /// pull their credential from Keychain (saved on the first successful
+    /// connect). Only falls through to the Connect sheet when the silent
+    /// attempt fails — typically a stale Keychain password or an ssh_config
+    /// entry that needs an interactive override.
     private func connectHost(_ name: String) {
-        if let saved = KeychainPasswordStore.load(for: name) {
-            Task { await attemptSilentConnect(alias: name, password: saved) }
-            return
-        }
-        let model = ConnectSheetModel()
-        model.server = name  // pre-fill from sidebar connect tap
-        scene.connectSheetModel = model
+        let savedPassword = KeychainPasswordStore.load(for: name)
+        Task { await attemptSilentConnect(alias: name, password: savedPassword) }
     }
 
     @MainActor
-    private func attemptSilentConnect(alias: String, password: String) async {
+    private func attemptSilentConnect(alias: String, password: String?) async {
         do {
             let overrides = ConnectSpecOverrides(password: password)
             let target = try await app.ssh.connect(hostAlias: alias, overrides: overrides)
@@ -227,12 +223,15 @@ struct SidebarView: View {
             scene.newRemoteTab(initialPath: initial, provider: provider)
             scene.activeTab?.connectionPhase = .connected
         } catch {
-            // Silent attempt failed — surface the sheet with nickname pre-filled
-            // so the user can correct the password. Keychain entry is left as
-            // is; the PasswordResolver alert will overwrite it on re-auth.
+            // Silent attempt failed — surface the sheet with the alias
+            // pre-filled so the user can adjust auth/password. Keychain entry
+            // (if any) is left as is; PasswordResolver will overwrite on
+            // successful re-auth via the sheet.
             let model = ConnectSheetModel()
             model.server = alias
-            model.authMode = .password
+            if password != nil {
+                model.authMode = .password
+            }
             model.error = ErrorMessage.userFacing(error)
             scene.connectSheetModel = model
         }
