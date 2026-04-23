@@ -23,6 +23,9 @@ async-trait = "0.1"
 sha1        = "0.10"
 rand        = "0.8"
 
+[features]
+integration = []
+
 [dev-dependencies]
 tokio    = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
