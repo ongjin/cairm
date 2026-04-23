@@ -18,6 +18,12 @@ struct CairnApp: App {
             WindowScene(app: app)
         }
         .windowStyle(.hiddenTitleBar)
+        // Unified toolbar spans the full window width instead of docking into
+        // the NavigationSplitView's detail column, so back/forward/up and the
+        // breadcrumb stay at fixed x-coordinates when the sidebar opens or
+        // closes (SwiftUI's default anchors `.navigation`-placed items to the
+        // detail column's leading edge, which slides with the sidebar).
+        .windowToolbarStyle(.unified)
         .windowResizability(.contentSize)
         .commands {
             // File > New Tab / Close Tab (slots after the default File > New).
