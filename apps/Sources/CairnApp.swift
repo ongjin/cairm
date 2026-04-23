@@ -23,6 +23,7 @@ struct CairnApp: App {
             // File > New Tab / Close Tab (slots after the default File > New).
             CommandGroup(after: .newItem) {
                 TabFileMenuItems()
+                ConnectFileMenuItems()
             }
             EditCommands()
             NavigateCommands()
@@ -126,6 +127,17 @@ struct TabFileMenuItems: View {
         }
         .keyboardShortcut("w", modifiers: [.command])
         .disabled(scene == nil)
+    }
+}
+
+// MARK: - File > Connect to Server (⇧⌘K)
+
+struct ConnectFileMenuItems: View {
+    var body: some View {
+        Button("Connect to Server\u{2026}") {
+            NotificationCenter.default.post(name: .openConnectSheet, object: nil)
+        }
+        .keyboardShortcut("k", modifiers: [.command, .shift])
     }
 }
 

@@ -66,6 +66,19 @@ final class Tab: Identifiable {
         rebuildProviderServices(for: FSPath(provider: .local, path: initialURL.path))
     }
 
+    /// Initializer for remote (SSH) tabs. The caller supplies a concrete
+    /// `FileSystemProvider` instance and the starting `FSPath`.
+    init(engine: CairnEngine, bookmarks: BookmarkStore, initialPath: FSPath, provider: FileSystemProvider) {
+        self.engine = engine
+        self.bookmarks = bookmarks
+        self.folder = FolderModel(engine: engine)
+        self.search = SearchModel(engine: engine)
+        self.preview = PreviewModel(engine: engine)
+        self.provider = provider
+        self.history.push(initialPath)
+        rebuildProviderServices(for: initialPath)
+    }
+
     deinit {
         servicesTask?.cancel()
         if let entry = currentEntry { bookmarks.stopAccessing(entry) }

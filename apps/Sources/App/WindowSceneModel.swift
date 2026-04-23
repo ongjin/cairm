@@ -40,6 +40,13 @@ final class WindowSceneModel {
         activeTabID = t.id
     }
 
+    /// Open a new tab pointing at an SSH remote path using the given provider.
+    func newRemoteTab(initialPath: FSPath, provider: FileSystemProvider) {
+        let t = Tab(engine: engine, bookmarks: bookmarks, initialPath: initialPath, provider: provider)
+        tabs.append(t)
+        activeTabID = t.id
+    }
+
     /// Remove the tab with `id`. If it was active, the last remaining tab
     /// becomes active; if no tabs remain, `activeTabID` is nil (the calling
     /// window should close in that case — T11).

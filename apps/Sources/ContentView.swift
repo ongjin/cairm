@@ -14,6 +14,7 @@ struct ContentView: View {
 
     @State private var palette = CommandPaletteModel()
     @State private var showInspector: Bool = true
+    @State private var connectSheetModel: ConnectSheetModel? = nil
     /// Opaque token returned by `NSEvent.addLocalMonitorForEvents`. Held so we
     /// can remove the monitor on view teardown; losing it would leak the
     /// closure and keep dispatching events to a dead view.
@@ -86,6 +87,20 @@ struct ContentView: View {
             if palette.mode == .content {
                 palette.pollContent()
             }
+        }
+        .sheet(item: $connectSheetModel) { model in
+            ConnectSheetView(
+                model: model,
+                onConnect: { Task { await performConnect(model: model) } },
+                onCancel: { connectSheetModel = nil }
+            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openConnectSheet)) { notif in
+            let model = ConnectSheetModel()
+            if let name = notif.object as? String {
+                model.server = name  // pre-fill from sidebar connect tap
+            }
+            connectSheetModel = model
         }
         .onAppear { installMouseNavMonitor() }
         .onDisappear { removeMouseNavMonitor() }
@@ -342,5 +357,40 @@ struct ContentView: View {
             sort: tab.folder.sortDescriptor,
             folderEntries: tab.folder.sortedEntries
         )
+    }
+
+    @MainActor
+    private func performConnect(model: ConnectSheetModel) async {
+        model.connecting = true
+        model.error = nil
+        defer { model.connecting = false }
+        do {
+            let (user, host) = model.resolveUserHost()
+
+            if model.saveToConfig, !model.nickname.isEmpty {
+                try app.sshConfig.appendHost(.init(
+                    nickname: model.nickname,
+                    hostname: host,
+                    port: UInt16(model.port).flatMap { $0 == 22 ? nil : $0 },
+                    user: user,
+                    identityFile: model.authMode == .keyFile ? model.keyFile : nil,
+                    proxyCommand: model.showAdvanced && !model.proxyCommand.isEmpty ? model.proxyCommand : nil
+                ))
+            }
+
+            let alias = model.saveToConfig && !model.nickname.isEmpty ? model.nickname : host
+            let overrides = ConnectSpecOverrides(
+                user: user, port: UInt16(model.port),
+                identityFile: model.authMode == .keyFile ? model.keyFile : nil,
+                proxyCommand: model.showAdvanced && !model.proxyCommand.isEmpty ? model.proxyCommand : nil
+            )
+            let target = try await app.ssh.connect(hostAlias: alias, overrides: overrides)
+            let provider = SshFileSystemProvider(pool: app.ssh, target: target, supportsServerSideCopy: false)
+            let initial = FSPath(provider: .ssh(target), path: model.path.isEmpty ? "/" : model.path)
+            scene.newRemoteTab(initialPath: initial, provider: provider)
+            connectSheetModel = nil
+        } catch {
+            model.error = (error as NSError).localizedDescription
+        }
     }
 }
