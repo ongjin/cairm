@@ -8,6 +8,7 @@ members = [
     "crates/cairn-index",
     "crates/cairn-ffi",
     "crates/cairn-git",
+    "crates/cairn-ssh",
 ]
 
 [workspace.package]
@@ -23,6 +24,13 @@ repository = "https://github.com/ongjin/cairn"
 # 여기 등록된 의존성은 하위 크레이트에서 `workspace = true`로 참조.
 anyhow = "1"
 thiserror = "1"
+russh       = "0.44"
+russh-sftp  = "2.0"
+russh-keys  = "0.44"
+sha2        = "0.10"
+parking_lot = "0.12"
+tracing     = "0.1"
+tokio       = { version = "1", features = ["full"] }
 
 [profile.release]
 lto = true
