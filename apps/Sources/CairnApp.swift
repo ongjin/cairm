@@ -52,11 +52,14 @@ struct WindowScene: View {
 
     init(app: AppModel) {
         self.app = app
-        _scene = State(initialValue: WindowSceneModel(
+        let sceneModel = WindowSceneModel(
             engine: app.engine,
             bookmarks: app.bookmarks,
             initialURL: app.bootstrapInitialURL()
-        ))
+        )
+        sceneModel.app = app
+        app.register(scene: sceneModel)
+        _scene = State(initialValue: sceneModel)
     }
 
     var body: some View {

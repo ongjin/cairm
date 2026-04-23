@@ -27,6 +27,11 @@ final class AppModel {
     let sshConfig: SshConfigService
     let transfers: TransferController
 
+    /// Weakly-held references to every live `WindowSceneModel` so that SSH
+    /// session reconciliation (disconnect on last-tab-close) can see tabs
+    /// across all windows — not just the one that triggered closeTab.
+    @ObservationIgnored private var sceneRefs: [WeakSceneRef] = []
+
     init(engine: CairnEngine = CairnEngine(),
          bookmarks: BookmarkStore = BookmarkStore(),
          lastFolder: LastFolderStore = LastFolderStore(),
@@ -114,4 +119,38 @@ final class AppModel {
         let isFirst = bookmarks.pinned.isEmpty && autoPinIfFirst
         return try bookmarks.register(url, kind: isFirst ? .pinned : .recent)
     }
+
+    // MARK: - Scene registry + SSH session lifecycle
+
+    func register(scene: WindowSceneModel) {
+        sceneRefs.append(WeakSceneRef(scene))
+        sceneRefs.removeAll { $0.ref == nil }
+    }
+
+    /// Compute which SSH targets are still referenced by some live tab across
+    /// all windows, then disconnect any pool session that's no longer in use.
+    /// Called from WindowSceneModel.closeTab so the sidebar dot flips off as
+    /// soon as the last tab on a host is gone — the 5-minute Rust idle reaper
+    /// still backs this up for edge cases (window closed via red-dot, etc.).
+    @MainActor
+    func reconcileSshSessions() {
+        sceneRefs.removeAll { $0.ref == nil }
+        var inUse: Set<SshTarget> = []
+        for box in sceneRefs {
+            guard let s = box.ref else { continue }
+            for tab in s.tabs {
+                if let p = tab.currentPath, case .ssh(let t) = p.provider {
+                    inUse.insert(t)
+                }
+            }
+        }
+        for target in Array(ssh.sessions.keys) where !inUse.contains(target) {
+            ssh.disconnect(target)
+        }
+    }
+}
+
+private final class WeakSceneRef {
+    weak var ref: WindowSceneModel?
+    init(_ s: WindowSceneModel) { self.ref = s }
 }

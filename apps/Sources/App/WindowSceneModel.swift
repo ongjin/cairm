@@ -20,6 +20,10 @@ final class WindowSceneModel {
 
     let engine: CairnEngine
     let bookmarks: BookmarkStore
+    /// Weak to break the retain cycle: AppModel weakly tracks scenes, and a
+    /// scene needs to call back into AppModel on closeTab to release SSH
+    /// sessions that no remaining tab references.
+    @ObservationIgnored weak var app: AppModel?
 
     init(engine: CairnEngine, bookmarks: BookmarkStore, initialURL: URL) {
         self.engine = engine
@@ -62,6 +66,10 @@ final class WindowSceneModel {
         if activeTabID == id {
             activeTabID = tabs.last?.id
         }
+        // Release any SSH session that's no longer referenced by any live tab
+        // across all windows. The sidebar dot reflects pool.sessions directly,
+        // so this also drives the green → gray transition.
+        Task { @MainActor in app?.reconcileSshSessions() }
     }
 
     func activateTab(at index: Int) {
