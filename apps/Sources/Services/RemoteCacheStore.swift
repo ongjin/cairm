@@ -1,12 +1,12 @@
 import Foundation
 import CryptoKit
 
-final class RemoteCacheStore {
+actor RemoteCacheStore {
     static let shared = RemoteCacheStore()
 
     private let root: URL
     private let limitBytes: Int64 = 500 * 1024 * 1024
-    private let lock = NSLock()
+    private var inflight: [URL: Task<URL, any Error>] = [:]
 
     init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -15,7 +15,7 @@ final class RemoteCacheStore {
         self.root = dir
     }
 
-    func cacheURL(for path: FSPath) -> URL {
+    nonisolated func cacheURL(for path: FSPath) -> URL {
         guard case .ssh(let t) = path.provider else {
             return URL(fileURLWithPath: path.path)
         }
@@ -30,39 +30,56 @@ final class RemoteCacheStore {
 
     func fetch(remotePath: FSPath, via provider: FileSystemProvider) async throws -> URL {
         let url = cacheURL(for: remotePath)
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        let remoteStat = try await provider.stat(remotePath)
-        if FileManager.default.fileExists(atPath: url.path) {
-            let localAttr = try? FileManager.default.attributesOfItem(atPath: url.path)
-            let localMtime = (localAttr?[.modificationDate] as? Date) ?? .distantPast
-            if let rm = remoteStat.mtime, rm <= localMtime {
-                return url
+        // Deduplicate concurrent downloads for the same cache URL
+        if let existing = inflight[url] {
+            return try await existing.value
+        }
+        let t = Task<URL, any Error> { [url] in
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let remoteStat = try await provider.stat(remotePath)
+            if FileManager.default.fileExists(atPath: url.path) {
+                let localAttr = try? FileManager.default.attributesOfItem(atPath: url.path)
+                let localMtime = (localAttr?[.modificationDate] as? Date) ?? .distantPast
+                if let rm = remoteStat.mtime, rm <= localMtime {
+                    return url
+                }
             }
+            let cancel = CancelToken()
+            try await provider.downloadToLocal(remotePath, toLocalURL: url,
+                                               progress: { _ in }, cancel: cancel)
+            if let rm = remoteStat.mtime {
+                try? FileManager.default.setAttributes([.modificationDate: rm],
+                                                       ofItemAtPath: url.path)
+            }
+            return url
         }
-        let cancel = CancelToken()
-        try await provider.downloadToLocal(remotePath, toLocalURL: url, progress: { _ in }, cancel: cancel)
-        if let rm = remoteStat.mtime {
-            try? FileManager.default.setAttributes([.modificationDate: rm], ofItemAtPath: url.path)
-        }
+        inflight[url] = t
+        defer { inflight.removeValue(forKey: url) }
+        let result = try await t.value
         enforceLimit()
-        return url
+        return result
     }
 
     func clear() {
-        lock.lock(); defer { lock.unlock() }
+        // Cancel all in-flight downloads first
+        for (_, task) in inflight { task.cancel() }
+        inflight.removeAll()
         try? FileManager.default.removeItem(at: root)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
     private func enforceLimit() {
-        lock.lock(); defer { lock.unlock() }
-        var all: [(URL, Int64, Date)] = []
         guard let walker = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]) else { return }
+            at: root,
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey]
+        ) else { return }
+        var all: [(URL, Int64, Date)] = []
         var total: Int64 = 0
         for case let u as URL in walker {
-            let v = try? u.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            let v = try? u.resourceValues(
+                forKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey])
+            guard v?.isRegularFile == true else { continue }
             let size = Int64(v?.fileSize ?? 0)
             let mtime = v?.contentModificationDate ?? .distantPast
             all.append((u, size, mtime))

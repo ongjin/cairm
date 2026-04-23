@@ -99,11 +99,13 @@ final class PreviewModel {
         inflight?.cancel()
         let captured = path
         inflight = Task { [weak self] in
-            await self?.loadHead(captured, via: provider)
+            try? await Task.sleep(nanoseconds: Self.debounceNanos)
+            if Task.isCancelled { return }
+            await self?.loadHead(captured, displayURL: displayURL, via: provider)
         }
     }
 
-    private func loadHead(_ path: FSPath, via provider: FileSystemProvider) async {
+    private func loadHead(_ path: FSPath, displayURL: URL, via provider: FileSystemProvider) async {
         if Task.isCancelled { return }
         state = .loading
         do {
@@ -114,8 +116,10 @@ final class PreviewModel {
                     ?? String(bytes: data, encoding: .isoLatin1)
                     ?? ""
                 state = .text(text)
+                cache(state: .text(text), for: displayURL)
             } else {
                 state = .pressSpaceForFullPreview
+                cache(state: .pressSpaceForFullPreview, for: displayURL)
             }
         } catch {
             if !Task.isCancelled {

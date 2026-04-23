@@ -910,8 +910,10 @@ final class FileListCoordinator: NSObject,
             guard let self else { return }
             let fileURL: URL
             if case .ssh = p.provider {
-                guard let cached = try? await self.provider.downloadToCache(p) else { return }
-                try? FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: cached.path)
+                guard let cached = try? await self.provider.downloadToCache(p) else {
+                    await MainActor.run { NSSound.beep() }
+                    return
+                }
                 fileURL = cached
             } else {
                 fileURL = URL(fileURLWithPath: payload.entry.path.toString())
