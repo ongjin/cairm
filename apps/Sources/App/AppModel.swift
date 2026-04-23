@@ -25,6 +25,7 @@ final class AppModel {
     let sidebar: SidebarModel
     let ssh: SshPoolService
     let sshConfig: SshConfigService
+    let transfers: TransferController
 
     init(engine: CairnEngine = CairnEngine(),
          bookmarks: BookmarkStore = BookmarkStore(),
@@ -40,6 +41,7 @@ final class AppModel {
         self.ssh = SshPoolService()
         let metadataStore = HostMetadataStore()
         self.sshConfig = MainActor.assumeIsolated { SshConfigService(metadata: metadataStore) }
+        self.transfers = MainActor.assumeIsolated { TransferController() }
         // Seed hidden-files default from settings; keeps Rust engine in sync.
         self.showHidden = settings.showHiddenByDefault
         engine.setShowHidden(settings.showHiddenByDefault)

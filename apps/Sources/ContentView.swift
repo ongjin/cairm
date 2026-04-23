@@ -272,6 +272,9 @@ struct ContentView: View {
             BreadcrumbBar(tab: tab)
         }
         ToolbarItem(placement: .primaryAction) {
+            TransferHudChip(controller: app.transfers)
+        }
+        ToolbarItem(placement: .primaryAction) {
             Button(action: { showInspector.toggle() }) {
                 Image(systemName: "sidebar.right")
             }
