@@ -1225,15 +1225,28 @@ final class FileListCoordinator: NSObject,
                 try? FileManager.default.removeItem(at: tmpURL)
                 return
             }
-            let dstPath = await RemoteNameResolver.uniqueRemotePath(
-                base: "Untitled",
-                ext: ext,
-                in: target,
-                probe: { [weak self] candidate in
-                    guard let self else { return false }
-                    return (try? await self.provider.stat(candidate)) != nil
-                }
-            )
+            let dstPath: FSPath
+            do {
+                dstPath = try await RemoteNameResolver.uniqueRemotePath(
+                    base: "Untitled",
+                    ext: ext,
+                    in: target,
+                    probe: { [weak self] candidate in
+                        // Must throw on transport/permission errors —
+                        // swallowing them would let uploadFromLocal
+                        // truncate an existing remote file when the
+                        // session is flaky. Only a true "not found"
+                        // result counts as "name is available".
+                        guard let self else { return true }
+                        return try await self.provider.exists(candidate)
+                    }
+                )
+            } catch {
+                NSLog("pasteImageToSSH: remote probe failed — aborting to avoid overwrite: \(error)")
+                try? FileManager.default.removeItem(at: tmpURL)
+                NSSound.beep()
+                return
+            }
             self.transfers.enqueue(
                 source: FSPath(provider: .local, path: tmpURL.path),
                 destination: dstPath,

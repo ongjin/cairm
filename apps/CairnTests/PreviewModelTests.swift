@@ -33,4 +33,68 @@ final class PreviewModelTests: XCTestCase {
         XCTAssertNotNil(model.cached(for: URL(fileURLWithPath: "/tmp/preview-16")),
                         "newest entry should be present")
     }
+
+    // Regression: a prior iteration short-circuited PreviewPaneView on
+    // any remote focus, hiding the fetched head-preview states. This
+    // verifies the model still transitions to `.text` when readHead
+    // returns plausibly-textual bytes, so the view can render it.
+    func test_setRemoteFocus_transitions_to_text_state() async {
+        let engine = CairnEngine()
+        let model = PreviewModel(engine: engine)
+        let provider = HeadStubProvider(head: Data("hello, world".utf8))
+        let path = FSPath(provider: .local, path: "/remote/foo.txt")
+        model.setRemoteFocus(path, via: provider)
+        // Debounce is 120ms inside PreviewModel — wait past it plus a
+        // margin so the loadHead task has applied the result.
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        if case .text(let s) = model.state {
+            XCTAssertEqual(s, "hello, world")
+        } else {
+            XCTFail("expected .text state after remote head fetch, got \(model.state)")
+        }
+    }
+
+    func test_setRemoteFocus_binary_head_transitions_to_pressSpaceForFullPreview() async {
+        let engine = CairnEngine()
+        let model = PreviewModel(engine: engine)
+        // Embed a NUL byte — isLikelyText treats that as non-text.
+        let provider = HeadStubProvider(head: Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0x01]))
+        let path = FSPath(provider: .local, path: "/remote/bin.dat")
+        model.setRemoteFocus(path, via: provider)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        if case .pressSpaceForFullPreview = model.state {
+            // expected
+        } else {
+            XCTFail("expected .pressSpaceForFullPreview, got \(model.state)")
+        }
+    }
+}
+
+/// Minimal FileSystemProvider stub — only `readHead` is wired up because
+/// that's the only call path PreviewModel.setRemoteFocus exercises. Any
+/// other method traps so tests fail loudly if the code under test
+/// starts depending on something new.
+private final class HeadStubProvider: FileSystemProvider {
+    let identifier: ProviderID = .local
+    let displayScheme: String? = nil
+    let supportsServerSideCopy: Bool = false
+
+    private let head: Data
+    init(head: Data) { self.head = head }
+
+    func readHead(_ path: FSPath, max: Int) async throws -> Data {
+        head.prefix(max)
+    }
+
+    func list(_ path: FSPath) async throws -> [FileEntry] { fatalError("not used") }
+    func stat(_ path: FSPath) async throws -> FileStat { fatalError("not used") }
+    func exists(_ path: FSPath) async throws -> Bool { fatalError("not used") }
+    func mkdir(_ path: FSPath) async throws { fatalError("not used") }
+    func rename(from: FSPath, to: FSPath) async throws { fatalError("not used") }
+    func delete(_ paths: [FSPath]) async throws { fatalError("not used") }
+    func copyInPlace(from: FSPath, to: FSPath) async throws { fatalError("not used") }
+    func downloadToCache(_ path: FSPath) async throws -> URL { fatalError("not used") }
+    func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: (Int64) -> Void, cancel: CancelToken) async throws { fatalError("not used") }
+    func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: (Int64) -> Void, cancel: CancelToken) async throws { fatalError("not used") }
+    func realpath(_ path: String) async throws -> String { fatalError("not used") }
 }

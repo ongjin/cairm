@@ -7,23 +7,26 @@ import Foundation
 /// data-loss hazard (screenshots overwrite silently) so the probe loop
 /// gets its own tests.
 ///
-/// `probe` returns `true` iff the candidate already exists on the remote.
-/// Callers pass `{ path in (try? await provider.stat(path)) != nil }` in
-/// production, and a synchronous fake in tests.
+/// `probe` returns `true` iff the candidate already exists and MUST throw
+/// on any non-"not-found" error (transport, permission, protocol). The
+/// resolver propagates that throw so the caller can abort the paste — if
+/// we converted unknown errors to "doesn't exist", the very next
+/// `uploadFromLocal` would truncate an existing remote file under a
+/// flaky connection.
 enum RemoteNameResolver {
     static func uniqueRemotePath(
         base: String,
         ext: String,
         in dir: FSPath,
-        probe: (FSPath) async -> Bool
-    ) async -> FSPath {
+        probe: (FSPath) async throws -> Bool
+    ) async throws -> FSPath {
         let first = dir.appending(ext.isEmpty ? base : "\(base).\(ext)")
-        if await probe(first) == false { return first }
+        if try await probe(first) == false { return first }
         var n = 2
         while true {
             let name = ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
             let candidate = dir.appending(name)
-            if await probe(candidate) == false { return candidate }
+            if try await probe(candidate) == false { return candidate }
             n += 1
         }
     }

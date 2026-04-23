@@ -14,6 +14,11 @@ protocol FileSystemProvider: AnyObject {
 
     func list(_ path: FSPath) async throws -> [FileEntry]
     func stat(_ path: FSPath) async throws -> FileStat
+    /// Existence probe that only returns `false` on an explicit "not found"
+    /// result. Transport, permission, or protocol errors MUST rethrow so
+    /// callers (e.g. the paste-image rename loop) don't treat a flaky
+    /// session as "destination is free" and truncate a real file.
+    func exists(_ path: FSPath) async throws -> Bool
     func mkdir(_ path: FSPath) async throws
     func rename(from: FSPath, to: FSPath) async throws
     func delete(_ paths: [FSPath]) async throws

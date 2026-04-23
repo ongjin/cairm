@@ -37,7 +37,6 @@ final class PreviewModel {
         }
     }
     var state: PreviewState = .idle
-    var isRemoteFocus: Bool { remoteFocus != nil }
 
     private let engine: CairnEngine
     private var remoteFocus: FSPath?

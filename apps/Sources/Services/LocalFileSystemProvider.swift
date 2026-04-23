@@ -25,6 +25,10 @@ final class LocalFileSystemProvider: FileSystemProvider {
         )
     }
 
+    func exists(_ path: FSPath) async throws -> Bool {
+        FileManager.default.fileExists(atPath: path.path)
+    }
+
     func mkdir(_ path: FSPath) async throws {
         try FileManager.default.createDirectory(atPath: path.path, withIntermediateDirectories: false)
     }

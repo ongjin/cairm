@@ -43,6 +43,26 @@ final class SshFileSystemProvider: FileSystemProvider {
         )
     }
 
+    func exists(_ path: FSPath) async throws -> Bool {
+        do {
+            _ = try await stat(path)
+            return true
+        } catch {
+            // Rust FFI surfaces `Result<_, String>` errors as RustString,
+            // formatted by thiserror as "Not found: <msg>" for the SFTP
+            // SSH_FX_NO_SUCH_FILE status (crates/cairn-ssh/src/error.rs:50).
+            // Every other error — permission, timeout, connection-lost,
+            // protocol — MUST rethrow so the paste-image rename loop can't
+            // interpret a flaky session as "destination is free" and clobber
+            // an existing remote file via uploadFromLocal's truncate.
+            let msg = (error as? RustString)?.toString() ?? "\(error)"
+            if msg.hasPrefix("Not found:") {
+                return false
+            }
+            throw error
+        }
+    }
+
     func mkdir(_ path: FSPath) async throws {
         let h = try await handle()
         try sftp_mkdir(h, path.path)
