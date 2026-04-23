@@ -5,6 +5,15 @@ struct TransferJobRow: View {
     var onCancel: () -> Void
     var onRetry: () -> Void
 
+    private static let byteFormatter = ByteCountFormatter()
+
+    private var needsRetry: Bool {
+        switch job.state {
+        case .failed, .cancelled: return true
+        default: return false
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
@@ -30,7 +39,7 @@ struct TransferJobRow: View {
             HStack(spacing: 8) {
                 Text(destinationSummary).font(.system(size: 10)).foregroundStyle(.secondary)
                 if let sp = job.speed {
-                    Text(ByteCountFormatter().string(fromByteCount: Int64(sp)) + "/s")
+                    Text(TransferJobRow.byteFormatter.string(fromByteCount: Int64(sp)) + "/s")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 if let eta = job.eta {
@@ -38,9 +47,7 @@ struct TransferJobRow: View {
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                if case .failed = job.state {
-                    Button("Retry", action: onRetry).buttonStyle(.link).font(.system(size: 10))
-                } else if job.state == .cancelled {
+                if needsRetry {
                     Button("Retry", action: onRetry).buttonStyle(.link).font(.system(size: 10))
                 }
                 if job.state == .running || job.state == .queued {

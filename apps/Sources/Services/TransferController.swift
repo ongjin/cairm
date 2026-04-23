@@ -33,8 +33,11 @@ final class TransferController {
     }
 
     func retry(_ id: UUID) {
-        guard let idx = jobs.firstIndex(where: { $0.id == id }),
-              case .failed = jobs[idx].state else { return }
+        guard let idx = jobs.firstIndex(where: { $0.id == id }) else { return }
+        switch jobs[idx].state {
+        case .failed, .cancelled: break
+        default: return
+        }
         let old = jobs[idx]
         enqueue(source: old.source, destination: old.destination, sizeHint: old.sizeHint,
                 execute: pendingExecutors[id] ?? { _, _ in })
