@@ -28,6 +28,11 @@ struct PaneColumn: View {
     /// coordinate space before the contains() check.
     @State private var frameInWindow: CGRect = .zero
     @State private var mouseDownMonitor: Any?
+    /// Host NSWindow captured via WindowAccessor. The click-to-focus monitor
+    /// is application-wide (NSEvent.addLocalMonitorForEvents), so we gate
+    /// every event on `event.window === hostWindow` — otherwise clicks in
+    /// window A can flip activeSide in window B if their pane frames overlap.
+    @State private var hostWindow: NSWindow?
 
     private var tab: Tab? { scene.activeTab }
 
@@ -44,6 +49,7 @@ struct PaneColumn: View {
                         }
                 }
             )
+            .background(WindowAccessor(window: $hostWindow))
             .onAppear { installMouseDownMonitor() }
             .onDisappear { removeMouseDownMonitor() }
             .task {
@@ -94,8 +100,14 @@ struct PaneColumn: View {
     private func installMouseDownMonitor() {
         guard mouseDownMonitor == nil else { return }
         mouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
-            guard let window = event.window,
-                  let contentView = window.contentView else { return event }
+            // Local event monitors are app-wide. Hard-gate on host window
+            // identity — otherwise clicks in another window whose pane
+            // frame coordinates collide with ours would silently flip
+            // activeSide on the wrong window.
+            guard let eventWindow = event.window,
+                  let host = hostWindow,
+                  eventWindow === host,
+                  let contentView = eventWindow.contentView else { return event }
             // Bridge AppKit window coords (bottom-left origin, Y up) to
             // SwiftUI global coords (top-left origin, Y down) so the
             // contains() check lines up with the frame GeometryReader
