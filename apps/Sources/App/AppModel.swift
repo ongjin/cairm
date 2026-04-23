@@ -23,6 +23,7 @@ final class AppModel {
     let settings: SettingsStore
     let mountObserver: MountObserver
     let sidebar: SidebarModel
+    let ssh: SshPoolService
 
     init(engine: CairnEngine = CairnEngine(),
          bookmarks: BookmarkStore = BookmarkStore(),
@@ -35,9 +36,19 @@ final class AppModel {
         let observer = MountObserver()
         self.mountObserver = observer
         self.sidebar = SidebarModel(mountObserver: observer)
+        self.ssh = SshPoolService()
         // Seed hidden-files default from settings; keeps Rust engine in sync.
         self.showHidden = settings.showHiddenByDefault
         engine.setShowHidden(settings.showHiddenByDefault)
+
+        // Graceful quit: close all SSH sessions.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.ssh.closeAll()
+        }
     }
 
     // MARK: - Bootstrap
