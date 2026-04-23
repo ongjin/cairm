@@ -55,6 +55,10 @@ struct FileListView: NSViewRepresentable {
     let provider: FileSystemProvider
     /// Transfer controller for cross-provider drag-drop (upload / download).
     let transfers: TransferController
+    /// Resolves an SshTarget to an SSH provider so SSH→local drops can
+    /// download via the source side's session. ContentView injects this from
+    /// the shared pool.
+    let remoteProviderResolver: (SshTarget) -> FileSystemProvider?
 
     private static func makeGitColumn() -> NSTableColumn {
         let col = NSTableColumn(identifier: .git)
@@ -164,6 +168,7 @@ struct FileListView: NSViewRepresentable {
             folder: folder,
             provider: provider,
             transfers: transfers,
+            remoteProviderResolver: remoteProviderResolver,
             onActivate: onActivate,
             onAddToPinned: onAddToPinned,
             isPinnedCheck: isPinnedCheck,
@@ -192,6 +197,7 @@ struct FileListView: NSViewRepresentable {
         FileListCoordinator(folder: folder,
                             provider: provider,
                             transfers: transfers,
+                            remoteProviderResolver: remoteProviderResolver,
                             onActivate: onActivate,
                             onAddToPinned: onAddToPinned,
                             isPinnedCheck: isPinnedCheck,

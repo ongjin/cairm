@@ -84,6 +84,17 @@ impl SshPool {
             resolved.proxy_command = Some(pc.clone());
         }
 
+        // Translate ProxyJump into an equivalent ProxyCommand. OpenSSH does
+        // this internally; we do it here so the rest of the pipeline only has
+        // to understand one mechanism. The outer `ssh -W` invocation reads
+        // ~/.ssh/config itself so chained ProxyJump/ProxyCommand on the jump
+        // host (e.g. cloudflared) resolves naturally.
+        if resolved.proxy_command.is_none() {
+            if let Some(jump) = &resolved.proxy_jump {
+                resolved.proxy_command = Some(format!("ssh -W %h:%p {jump}"));
+            }
+        }
+
         let key = ConnKey::from_resolved(&resolved);
 
         // Fast path: entry already present and healthy.

@@ -317,7 +317,10 @@ struct ContentView: View {
             },
             undoManager: tab.undoManager,
             provider: tab.provider,
-            transfers: app.transfers
+            transfers: app.transfers,
+            remoteProviderResolver: { [app] target in
+                SshFileSystemProvider(pool: app.ssh, target: target, supportsServerSideCopy: false)
+            }
         )
         .background {
             ZStack {

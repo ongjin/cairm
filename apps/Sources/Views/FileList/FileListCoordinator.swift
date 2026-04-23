@@ -92,10 +92,16 @@ final class FileListCoordinator: NSObject,
     /// away mid-operation we just skip registration.
     private weak var undoManager: UndoManager?
     private var transfers: TransferController
+    /// Resolves an `SshTarget` back to a provider for cross-tab drops. Needed
+    /// when the destination tab is local but the source FSPath is SSH — the
+    /// coordinator's own `provider` is the destination; to download we must
+    /// use the source's SSH provider (shared session pool).
+    private var remoteProviderResolver: (SshTarget) -> FileSystemProvider?
 
     init(folder: FolderModel,
          provider: FileSystemProvider,
          transfers: TransferController,
+         remoteProviderResolver: @escaping (SshTarget) -> FileSystemProvider? = { _ in nil },
          onActivate: @escaping (FileEntry) -> Void,
          onAddToPinned: @escaping (FileEntry) -> Void,
          isPinnedCheck: @escaping (FileEntry) -> Bool,
@@ -105,6 +111,7 @@ final class FileListCoordinator: NSObject,
         self.folder = folder
         self.provider = provider
         self.transfers = transfers
+        self.remoteProviderResolver = remoteProviderResolver
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
@@ -140,6 +147,7 @@ final class FileListCoordinator: NSObject,
     func updateBindings(folder: FolderModel,
                         provider: FileSystemProvider,
                         transfers: TransferController,
+                        remoteProviderResolver: @escaping (SshTarget) -> FileSystemProvider? = { _ in nil },
                         onActivate: @escaping (FileEntry) -> Void,
                         onAddToPinned: @escaping (FileEntry) -> Void,
                         isPinnedCheck: @escaping (FileEntry) -> Bool,
@@ -150,6 +158,7 @@ final class FileListCoordinator: NSObject,
         self.folder = folder
         self.provider = provider
         self.transfers = transfers
+        self.remoteProviderResolver = remoteProviderResolver
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
         self.isPinnedCheck = isPinnedCheck
@@ -1357,16 +1366,22 @@ extension FileListCoordinator {
                     }
                 }
                 return true
-            case (.ssh, .local):
-                // Remote→local: download
+            case (.ssh(let srcTarget), .local):
+                // Remote→local: download through the SOURCE ssh provider.
+                // `self.provider` here is LocalFileSystemProvider (destination)
+                // which can't fetch over sftp; resolve the source's ssh
+                // provider via the shared pool.
+                guard let srcProvider = remoteProviderResolver(srcTarget) else {
+                    NSSound.beep()
+                    return false
+                }
                 let localDst = URL(fileURLWithPath: target.path.toString())
                     .appendingPathComponent(sourcePath.lastComponent)
                 let dstPath = FSPath(provider: .local, path: localDst.path)
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.transfers.enqueue(source: sourcePath, destination: dstPath, sizeHint: nil) { [weak self] job, progress in
-                        guard let self else { return }
-                        try await self.provider.downloadToLocal(sourcePath, toLocalURL: localDst, progress: progress, cancel: job.cancel)
+                    self.transfers.enqueue(source: sourcePath, destination: dstPath, sizeHint: nil) { job, progress in
+                        try await srcProvider.downloadToLocal(sourcePath, toLocalURL: localDst, progress: progress, cancel: job.cancel)
                     }
                 }
                 return true
