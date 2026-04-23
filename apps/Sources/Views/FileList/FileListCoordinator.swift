@@ -1132,6 +1132,15 @@ final class FileListCoordinator: NSObject,
             return
         }
 
+        // Clipboard image (screenshot etc.) targeting an SSH tab: materialise
+        // the bytes to a temp file and upload. Without this branch the paste
+        // silently fell through to the local-only `pasteImage` path, which
+        // demands `folder.currentFolder` (nil for remote tabs).
+        if case .image(let data, let ext) = content, case .ssh = provider.identifier {
+            pasteImageToSSH(data: data, ext: ext, into: currentPath)
+            return
+        }
+
         // Local-source, local-target: existing FileManager paths.
         guard let dir = folder.currentFolder else { NSSound.beep(); return }
         guard FileManager.default.isWritableFile(atPath: dir.path) else {
@@ -1192,6 +1201,37 @@ final class FileListCoordinator: NSObject,
                 }
             default:
                 NSSound.beep()  // unsupported (e.g. ssh→ssh cross-host)
+            }
+        }
+    }
+
+    private func pasteImageToSSH(data: Data, ext: String, into target: FSPath) {
+        // Stage the clipboard bytes in a temp file so the existing upload
+        // pipeline (which expects a local URL source) can ship them. Remote
+        // name uses an epoch-seconds suffix to avoid collisions without a
+        // roundtrip SFTP stat — good enough for screenshots where the user
+        // just wants "this, now, over there".
+        let filename = "Untitled-\(Int(Date().timeIntervalSince1970)).\(ext)"
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cairn-paste-\(UUID().uuidString).\(ext)")
+        do {
+            try data.write(to: tmpURL, options: .atomic)
+        } catch {
+            NSSound.beep()
+            return
+        }
+        let dstPath = target.appending(filename)
+        let size = Int64(data.count)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.transfers.enqueue(source: FSPath(provider: .local, path: tmpURL.path),
+                                   destination: dstPath,
+                                   sizeHint: size) { [weak self] job, progress in
+                guard let self else { return }
+                defer { try? FileManager.default.removeItem(at: tmpURL) }
+                try await self.provider.uploadFromLocal(tmpURL, to: dstPath,
+                                                        progress: progress,
+                                                        cancel: job.cancel)
             }
         }
     }
@@ -1400,6 +1440,27 @@ extension FileListCoordinator {
             return []
         }
 
+        // Pick the drag operation that matches what we'll actually do:
+        //   local → ssh / ssh → local / ssh(same) → ssh(same): .copy
+        //     (uploads / downloads / server-side copies don't delete the source)
+        //   local → local: .move (existing FileManager.moveItem flow)
+        // Returning `.move` to a Finder drag whose source is read-only makes
+        // AppKit reject the drop on some macOS versions; `.copy` is always
+        // honoured for external drags onto Cairn's SSH pane.
+        let preferredOp: NSDragOperation = {
+            switch provider.identifier {
+            case .local:
+                if hasCairnPath, let data = pb.data(forType: .cairnFSPath),
+                   let srcPath = try? JSONDecoder().decode(FSPath.self, from: data),
+                   case .ssh = srcPath.provider {
+                    return .copy  // ssh → local download
+                }
+                return .move
+            case .ssh:
+                return .copy
+            }
+        }()
+
         // Drop modes:
         //   .on + directory row  → drop into that folder (existing)
         //   empty-space / below-all-rows → drop into currently-displayed folder
@@ -1415,14 +1476,14 @@ extension FileListCoordinator {
                     if targetURL.standardizedFileURL.path.hasPrefix(src.standardizedFileURL.path + "/") { return [] }
                 }
             }
-            return .move
+            return preferredOp
         }
 
         // Empty-space drop: retarget to the current folder (row = count, op = .above).
         // Highlights the whole table as the drop zone instead of a stray last row.
         if folder.currentPath != nil {
             tableView.setDropRow(lastSnapshot.count, dropOperation: .above)
-            return .move
+            return preferredOp
         }
         return []
     }
