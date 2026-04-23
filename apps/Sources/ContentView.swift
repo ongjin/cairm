@@ -439,11 +439,23 @@ struct ContentView: View {
     }
 
     private func handleOpen(_ entry: FileEntry, tab: Tab) {
-        let url = URL(fileURLWithPath: entry.path.toString())
+        let pathStr = entry.path.toString()
         if entry.kind == .Directory {
-            tab.navigate(to: url)
+            // Stay on whichever provider the current tab is using. Going
+            // through `navigate(to: URL)` would always produce a .local FSPath
+            // and silently drop an SSH tab back to local — the breadcrumb
+            // would start showing the user's Mac hostname and the sidebar
+            // dot would flip off even though the session is still alive.
+            let fsPath = FSPath(provider: tab.provider.identifier, path: pathStr)
+            tab.navigate(to: fsPath)
         } else {
-            NSWorkspace.shared.open(url)
+            if case .ssh = tab.provider.identifier {
+                // Remote file — NSWorkspace.open can't launch a path that
+                // only exists on the other end of SFTP. Preview pane + future
+                // "Open With…" handle this; here we just no-op on double-click.
+                return
+            }
+            NSWorkspace.shared.open(URL(fileURLWithPath: pathStr))
         }
     }
 
