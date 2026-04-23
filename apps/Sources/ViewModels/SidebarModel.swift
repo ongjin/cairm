@@ -79,14 +79,17 @@ extension SidebarModel {
     }
 
     @MainActor
-    func remoteHostItems(from svc: SshConfigService, pool: SshPoolService) -> [RemoteHostItem] {
+    func remoteHostItems(from svc: SshConfigService,
+                         pool: SshPoolService,
+                         usedTargets: Set<SshTarget>) -> [RemoteHostItem] {
         svc.configuredHosts.compactMap { name in
             let meta = svc.metadataFor(name)
             if meta.hiddenFromSidebar { return nil }
-            // Match by alias-tracked target, not by substring of the resolved
-            // summary — `app-cf` → HostName `10.0.0.1` wouldn't match otherwise.
+            // Green dot follows tab usage, not pool lifetime: once the last
+            // tab on a host closes the indicator flips off immediately, even
+            // though the pool keeps the session warm for a fast reconnect.
             let state: RemoteHostItem.State
-            if let target = pool.aliasToTarget[name], pool.sessions[target] != nil {
+            if let target = pool.aliasToTarget[name], usedTargets.contains(target) {
                 state = .connected
             } else {
                 state = .disconnected

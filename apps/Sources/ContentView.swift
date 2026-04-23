@@ -172,6 +172,8 @@ struct ContentView: View {
 
         // SSH connection state takes priority over folder state
         switch tab.connectionPhase {
+        case .establishing(let alias):
+            establishingView(alias: alias)
         case .connecting(let detail):
             connectingView(tab: tab, detail: detail)
         case .error(let title, let detail):
@@ -206,6 +208,21 @@ struct ContentView: View {
                 fileList(tab: tab)
             }
         }
+    }
+
+    @ViewBuilder
+    private func establishingView(alias: String) -> some View {
+        VStack(spacing: 12) {
+            ProgressView().controlSize(.large)
+            Text("Connecting to \(alias)")
+                .font(.headline)
+            Text("Negotiating SSH session — this can take a moment over ProxyCommand/Cloudflare.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder

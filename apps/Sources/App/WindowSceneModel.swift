@@ -57,6 +57,21 @@ final class WindowSceneModel {
         activeTabID = t.id
     }
 
+    /// Create a placeholder tab showing the "Connecting to <alias>…" spinner
+    /// while the pool negotiates the session. Caller later invokes
+    /// `upgradeToRemote` on the returned tab (on success) or mutates its
+    /// `connectionPhase` to `.error` (on failure) so the existing
+    /// RemoteErrorCard surfaces Retry / Edit ssh_config / Open Terminal.
+    @discardableResult
+    func newEstablishingTab(alias: String) -> Tab {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let t = Tab(engine: engine, bookmarks: bookmarks, initialURL: home)
+        t.connectionPhase = .establishing(alias: alias)
+        tabs.append(t)
+        activeTabID = t.id
+        return t
+    }
+
     /// Remove the tab with `id`. If it was active, the last remaining tab
     /// becomes active; if no tabs remain, `activeTabID` is nil (the calling
     /// window should close in that case — T11).
@@ -66,10 +81,11 @@ final class WindowSceneModel {
         if activeTabID == id {
             activeTabID = tabs.last?.id
         }
-        // Release any SSH session that's no longer referenced by any live tab
-        // across all windows. The sidebar dot reflects pool.sessions directly,
-        // so this also drives the green → gray transition.
-        Task { @MainActor in app?.reconcileSshSessions() }
+        // Notify AppModel so the sidebar dot flips off when the last tab on a
+        // host closes. We do NOT disconnect the pool session here — that would
+        // force a fresh handshake (and slow ProxyCommand boot) on the next
+        // reconnect. Rust's 5-min idle reaper handles true cleanup.
+        app?.noteTabsChanged()
     }
 
     func activateTab(at index: Int) {

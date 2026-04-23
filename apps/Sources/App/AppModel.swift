@@ -120,33 +120,41 @@ final class AppModel {
         return try bookmarks.register(url, kind: isFirst ? .pinned : .recent)
     }
 
-    // MARK: - Scene registry + SSH session lifecycle
+    // MARK: - Scene registry + SSH tab-usage view
 
     func register(scene: WindowSceneModel) {
         sceneRefs.append(WeakSceneRef(scene))
         sceneRefs.removeAll { $0.ref == nil }
     }
 
-    /// Compute which SSH targets are still referenced by some live tab across
-    /// all windows, then disconnect any pool session that's no longer in use.
-    /// Called from WindowSceneModel.closeTab so the sidebar dot flips off as
-    /// soon as the last tab on a host is gone — the 5-minute Rust idle reaper
-    /// still backs this up for edge cases (window closed via red-dot, etc.).
+    /// Bumps a dummy observable so SwiftUI views that read `usedSshTargets`
+    /// redraw. Called from WindowSceneModel after tab list changes — cheaper
+    /// and safer than racing a pool disconnect, which we deliberately DO NOT
+    /// do here: keeping the session warm lets slow-to-boot hosts (cloudflared
+    /// ProxyCommand) re-attach instantly when the user clicks the sidebar
+    /// entry again. The pool's 5-min idle reaper reclaims truly-dead sessions.
+    var tabUsageRevision: Int = 0
+
+    func noteTabsChanged() { tabUsageRevision &+= 1 }
+
+    /// Set of SshTargets referenced by at least one live tab across all
+    /// windows. The sidebar uses this — NOT `ssh.sessions` — to decide which
+    /// Remote Hosts rows show a green dot, so closing the last tab on a host
+    /// flips the dot immediately even though the pool session lingers.
     @MainActor
-    func reconcileSshSessions() {
+    var usedSshTargets: Set<SshTarget> {
+        _ = tabUsageRevision  // tracked by @Observable so mutations re-render
         sceneRefs.removeAll { $0.ref == nil }
-        var inUse: Set<SshTarget> = []
+        var out: Set<SshTarget> = []
         for box in sceneRefs {
             guard let s = box.ref else { continue }
             for tab in s.tabs {
                 if let p = tab.currentPath, case .ssh(let t) = p.provider {
-                    inUse.insert(t)
+                    out.insert(t)
                 }
             }
         }
-        for target in Array(ssh.sessions.keys) where !inUse.contains(target) {
-            ssh.disconnect(target)
-        }
+        return out
     }
 }
 

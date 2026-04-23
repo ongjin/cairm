@@ -21,6 +21,10 @@ final class Tab: Identifiable {
 
     enum ConnectionPhase: Equatable {
         case idle
+        /// Brand-new placeholder tab whose session has not yet been
+        /// established. Carries the ssh_config alias so the empty-state view
+        /// can show "Connecting to <alias>…" before any target is resolved.
+        case establishing(alias: String)
         case connecting(detail: String)
         case connected
         case error(title: String, detail: String)
@@ -125,6 +129,19 @@ final class Tab: Identifiable {
         if entry.kind == .pinned {
             try? bookmarks.register(url, kind: .recent)
         }
+    }
+
+    /// Swap this tab from an `.establishing` placeholder into a live remote
+    /// tab pointing at `path`. Called from the sidebar silent-connect flow
+    /// once `SshPool.connect` returns: before the call the tab showed the
+    /// "Connecting…" spinner over a local no-op provider; after it the tab
+    /// behaves like one opened directly via the Connect sheet.
+    func upgradeToRemote(path: FSPath, provider: FileSystemProvider) {
+        self.provider = provider
+        self.history = NavigationHistory()
+        self.history.push(path)
+        rebuildProviderServices(for: path)
+        self.connectionPhase = .connected
     }
 
     /// Navigate to an arbitrary FSPath. The canonical entry point for

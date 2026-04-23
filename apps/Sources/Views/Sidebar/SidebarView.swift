@@ -47,7 +47,11 @@ struct SidebarView: View {
                     }
                 }
 
-                let remoteHosts = app.sidebar.remoteHostItems(from: app.sshConfig, pool: app.ssh)
+                let remoteHosts = app.sidebar.remoteHostItems(
+                    from: app.sshConfig,
+                    pool: app.ssh,
+                    usedTargets: app.usedSshTargets
+                )
                 if !remoteHosts.isEmpty || true {  // always show section (empty state shows + button)
                     Section(header: Text("Remote Hosts").font(.system(size: 11)).foregroundStyle(.secondary)) {
                         ForEach(remoteHosts, id: \.id) { item in
@@ -201,32 +205,33 @@ struct SidebarView: View {
 
     // MARK: - Remote host helpers
 
-    /// Tap on a sidebar remote host. Always attempts a silent connect first:
-    /// agent/key-authed hosts need no extra input, and password-authed hosts
-    /// pull their credential from Keychain (saved on the first successful
-    /// connect). Only falls through to the Connect sheet when the silent
-    /// attempt fails — typically a stale Keychain password or an ssh_config
-    /// entry that needs an interactive override.
+    /// Tap on a sidebar remote host. Opens a placeholder tab in the
+    /// `.establishing` phase immediately (so the user sees "Connecting to
+    /// <alias>…" rather than a frozen sidebar), then negotiates the SSH
+    /// session in the background. On success the placeholder upgrades into a
+    /// real remote tab; on failure it flips to `.error` which renders the
+    /// existing RemoteErrorCard (Retry / Edit ssh_config / Open Terminal).
     private func connectHost(_ name: String) {
         let savedPassword = KeychainPasswordStore.load(for: name)
-        Task { await attemptSilentConnect(alias: name, password: savedPassword) }
+        let placeholder = scene.newEstablishingTab(alias: name)
+        Task { await attemptSilentConnect(alias: name, password: savedPassword, placeholder: placeholder) }
     }
 
     @MainActor
-    private func attemptSilentConnect(alias: String, password: String?) async {
+    private func attemptSilentConnect(alias: String, password: String?, placeholder: Tab) async {
         do {
             let overrides = ConnectSpecOverrides(password: password)
             let target = try await app.ssh.connect(hostAlias: alias, overrides: overrides)
             let provider = SshFileSystemProvider(pool: app.ssh, target: target, supportsServerSideCopy: false)
             let resolvedPath = (try? await provider.realpath(".")) ?? "/"
             let initial = FSPath(provider: .ssh(target), path: resolvedPath)
-            scene.newRemoteTab(initialPath: initial, provider: provider)
-            scene.activeTab?.connectionPhase = .connected
+            placeholder.upgradeToRemote(path: initial, provider: provider)
         } catch {
-            // Silent attempt failed — surface the sheet with the alias
-            // pre-filled so the user can adjust auth/password. Keychain entry
-            // (if any) is left as is; PasswordResolver will overwrite on
-            // successful re-auth via the sheet.
+            // Placeholder tab can't retry on its own (no target/provider yet
+            // and no ssh_config round-trip past here). Close it and surface
+            // the Connect sheet with the alias + error so the user can fix
+            // credentials or tweak ssh_config and try again.
+            scene.closeTab(placeholder.id)
             let model = ConnectSheetModel()
             model.server = alias
             if password != nil {
