@@ -21,51 +21,58 @@ struct PaneColumn: View {
     private var tab: Tab? { scene.activeTab }
 
     var body: some View {
+        paneStack
+            .opacity(isActive ? 1.0 : 0.72)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            // Pane focus: plain `.onTapGesture` doesn't fire when the click
+            // lands inside the NSTableView-backed file list (AppKit swallows
+            // the event). `simultaneousGesture` runs alongside the child's
+            // handling. We also auto-focus on selection change or tab switch
+            // inside the pane — any interaction inside this side = "this
+            // side is active".
+            .simultaneousGesture(TapGesture().onEnded { onFocus() })
+            .onChange(of: tab?.folder.selection) { _, _ in onFocus() }
+            .task {
+                if let tab, let path = tab.currentPath {
+                    await tab.folder.load(path, via: tab.provider)
+                }
+            }
+            .onChange(of: tab?.currentPath) { _, new in
+                guard let tab else { return }
+                guard let path = new else { tab.folder.clear(); return }
+                if case .local = path.provider {
+                    app.lastFolder.save(URL(fileURLWithPath: path.path))
+                }
+                Task { await tab.folder.load(path, via: tab.provider) }
+            }
+            .onChange(of: scene.activeTabID) { _, _ in
+                onFocus()
+                guard let tab, let path = tab.currentPath else { return }
+                Task { await tab.folder.load(path, via: tab.provider) }
+            }
+            .onChange(of: app.showHidden) { _, _ in
+                if let tab, let path = tab.currentPath {
+                    Task { await tab.folder.load(path, via: tab.provider) }
+                }
+            }
+            .sheet(item: Bindable(scene).connectSheetModel) { model in
+                ConnectSheetView(
+                    model: model,
+                    onConnect: { Task { await performConnect(model: model) } },
+                    onCancel: { scene.connectSheetModel = nil }
+                )
+            }
+    }
+
+    // Extracted so the main `body` chain stays short enough for the type
+    // checker — previously this tripped the "unable to type-check in
+    // reasonable time" limit with ~9 chained modifiers on a VStack literal.
+    private var paneStack: some View {
         VStack(spacing: 0) {
             TabBarView(scene: scene)
             inlineNavStrip
             contentColumn
-        }
-        .opacity(isActive ? 1.0 : 0.72)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        // Pane focus: plain `.onTapGesture` doesn't fire when the click
-        // lands inside the NSTableView-backed file list (AppKit swallows
-        // the event). `simultaneousGesture` runs alongside the child's
-        // handling. We also auto-focus on selection change or tab switch
-        // inside the pane — any interaction inside this side = "this side
-        // is active."
-        .simultaneousGesture(TapGesture().onEnded { onFocus() })
-        .onChange(of: scene.activeTabID) { _, _ in onFocus() }
-        .onChange(of: tab?.folder.selection) { _, _ in onFocus() }
-        .task {
-            if let tab, let path = tab.currentPath {
-                await tab.folder.load(path, via: tab.provider)
-            }
-        }
-        .onChange(of: tab?.currentPath) { _, new in
-            guard let tab else { return }
-            guard let path = new else { tab.folder.clear(); return }
-            if case .local = path.provider {
-                app.lastFolder.save(URL(fileURLWithPath: path.path))
-            }
-            Task { await tab.folder.load(path, via: tab.provider) }
-        }
-        .onChange(of: scene.activeTabID) { _, _ in
-            guard let tab, let path = tab.currentPath else { return }
-            Task { await tab.folder.load(path, via: tab.provider) }
-        }
-        .onChange(of: app.showHidden) { _, _ in
-            if let tab, let path = tab.currentPath {
-                Task { await tab.folder.load(path, via: tab.provider) }
-            }
-        }
-        .sheet(item: Bindable(scene).connectSheetModel) { model in
-            ConnectSheetView(
-                model: model,
-                onConnect: { Task { await performConnect(model: model) } },
-                onCancel: { scene.connectSheetModel = nil }
-            )
         }
     }
 
