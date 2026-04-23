@@ -19,9 +19,14 @@ use crate::types::{ConnKey, ConnectSpec, ResolvedConfig, StrictMode};
 // Pool entry
 // ---------------------------------------------------------------------------
 
+/// Each SSH connection is stored as a `SharedHandle` so it can be cloned out
+/// of the pool map and used independently in async code without holding the
+/// pool-level parking_lot lock across await points.
+pub(crate) type SharedHandle = Arc<tokio::sync::Mutex<client::Handle<CairnHandler>>>;
+
 #[allow(dead_code)]
 struct Entry {
-    handle: client::Handle<CairnHandler>,
+    handle: SharedHandle,
     resolved: ResolvedConfig,
     last_used: Instant,
 }
@@ -85,7 +90,8 @@ impl SshPool {
         {
             let mut map = self.inner.lock();
             if let Some(e) = map.get_mut(&key) {
-                if !e.handle.is_closed() {
+                let closed = e.handle.try_lock().is_ok_and(|h| h.is_closed());
+                if !closed {
                     e.last_used = Instant::now();
                     return Ok(key);
                 }
@@ -102,7 +108,7 @@ impl SshPool {
             map.insert(
                 key.clone(),
                 Entry {
-                    handle,
+                    handle: Arc::new(tokio::sync::Mutex::new(handle)),
                     resolved,
                     last_used: Instant::now(),
                 },
@@ -119,11 +125,19 @@ impl SshPool {
     where
         F: FnOnce(&mut client::Handle<CairnHandler>) -> R,
     {
-        let mut map = self.inner.lock();
-        map.get_mut(key).map(|e| {
-            e.last_used = Instant::now();
-            f(&mut e.handle)
+        let map = self.inner.lock();
+        map.get(key).map(|e| {
+            let mut guard = e.handle.blocking_lock();
+            f(&mut guard)
         })
+    }
+
+    /// Clone the shared handle for `key` so callers can use it across async
+    /// boundaries without holding the pool-level lock.
+    ///
+    /// Returns `None` if the key is no longer in the pool.
+    pub(crate) fn clone_handle(&self, key: &ConnKey) -> Option<SharedHandle> {
+        self.inner.lock().get(key).map(|e| Arc::clone(&e.handle))
     }
 
     /// Update the last-used timestamp for `key` (call on every SFTP op).
@@ -141,6 +155,7 @@ impl SshPool {
             map.remove(key).map(|e| e.handle)
         };
         if let Some(h) = handle {
+            let h = h.lock().await;
             let _ = h
                 .disconnect(russh::Disconnect::ByApplication, "", "en")
                 .await;
@@ -149,13 +164,13 @@ impl SshPool {
 
     /// Gracefully disconnect all sessions.
     pub async fn close_all(&self) {
-        let entries: Vec<Entry> = {
+        let entries: Vec<SharedHandle> = {
             let mut map = self.inner.lock();
-            map.drain().map(|(_, v)| v).collect()
+            map.drain().map(|(_, v)| v.handle).collect()
         };
-        for e in entries {
-            let _ = e
-                .handle
+        for h in entries {
+            let h = h.lock().await;
+            let _ = h
                 .disconnect(russh::Disconnect::ByApplication, "", "en")
                 .await;
         }
@@ -164,6 +179,38 @@ impl SshPool {
     /// Snapshot the set of active keys (for diagnostics / UI).
     pub fn snapshot_keys(&self) -> Vec<ConnKey> {
         self.inner.lock().keys().cloned().collect()
+    }
+
+    /// Open a fresh SSH session channel and request the SFTP subsystem.
+    ///
+    /// Returns the channel stream, ready to be passed to
+    /// `RawSftpSession::new()` / `SftpSession::new()`. The pool-level lock is
+    /// not held while awaiting the server confirmation.
+    pub async fn open_sftp_channel(
+        &self,
+        key: &ConnKey,
+    ) -> Result<russh::Channel<russh::client::Msg>> {
+        let shared = self
+            .clone_handle(key)
+            .ok_or_else(|| SshError::ConnectionLost {
+                host: key.hostname.clone(),
+            })?;
+
+        let channel = {
+            let handle = shared.lock().await;
+            handle
+                .channel_open_session()
+                .await
+                .map_err(|e| SshError::Russh(e.to_string()))?
+        };
+
+        channel
+            .request_subsystem(true, "sftp")
+            .await
+            .map_err(|e| SshError::Russh(e.to_string()))?;
+
+        self.touch(key);
+        Ok(channel)
     }
 }
 
@@ -182,7 +229,8 @@ async fn idle_reaper(inner: Arc<Mutex<HashMap<ConnKey, Entry>>>) {
             let map = inner.lock();
             map.iter()
                 .filter(|(_, e)| {
-                    e.handle.is_closed() || now.duration_since(e.last_used) >= IDLE_TIMEOUT
+                    let closed = e.handle.try_lock().is_ok_and(|h| h.is_closed());
+                    closed || now.duration_since(e.last_used) >= IDLE_TIMEOUT
                 })
                 .map(|(k, _)| k.clone())
                 .collect()
@@ -194,8 +242,8 @@ async fn idle_reaper(inner: Arc<Mutex<HashMap<ConnKey, Entry>>>) {
                     "idle-reap: disconnecting {}@{}:{}",
                     key.user, key.hostname, key.port
                 );
-                let _ = e
-                    .handle
+                let h = e.handle.lock().await;
+                let _ = h
                     .disconnect(russh::Disconnect::ByApplication, "", "en")
                     .await;
             }
