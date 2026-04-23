@@ -26,12 +26,16 @@ struct ConnectSheetView: View {
                     Picker("", selection: $model.authMode) {
                         Text("Agent").tag(ConnectSheetModel.AuthMode.agent)
                         Text("Key file").tag(ConnectSheetModel.AuthMode.keyFile)
+                        Text("Password").tag(ConnectSheetModel.AuthMode.password)
                     }.pickerStyle(.radioGroup)
                     if model.authMode == .keyFile {
                         HStack {
                             TextField("~/.ssh/id_ed25519", text: $model.keyFile)
                             Button("Browse\u{2026}") { pickKeyFile() }
                         }
+                    }
+                    if model.authMode == .password {
+                        SecureField("Password", text: $model.password)
                     }
                 }
             }

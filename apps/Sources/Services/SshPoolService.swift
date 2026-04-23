@@ -6,6 +6,7 @@ final class SshPoolService {
     private let pool: SshPoolBridge
     private let hostKeyResolver: HostKeyAlertResolver
     private let passphraseResolver: PassphraseResolver
+    private let passwordResolver: PasswordResolver
 
     private(set) var sessions: [SshTarget: SessionState] = [:]
 
@@ -23,6 +24,7 @@ final class SshPoolService {
         self.pool = ssh_pool_new()
         self.hostKeyResolver = HostKeyAlertResolver()
         self.passphraseResolver = PassphraseResolver()
+        self.passwordResolver = PasswordResolver()
         startReaperTimer()
     }
 
@@ -42,14 +44,16 @@ final class SshPoolService {
             user_override: overrides.user.map { RustString($0) },
             port_override: overrides.port,
             identity_file_override: overrides.identityFile.map { RustString($0) },
-            proxy_command_override: overrides.proxyCommand.map { RustString($0) }
+            proxy_command_override: overrides.proxyCommand.map { RustString($0) },
+            password_override: RustString(overrides.password ?? "")
         )
         let hostKeyCallback = HostKeyCallback(resolver: self.hostKeyResolver)
         let passphraseCallback = PassphraseCallback(resolver: self.passphraseResolver)
+        let passwordCallback = PasswordCallback(resolver: self.passwordResolver, alias: hostAlias)
         let key: ConnKeyBridge = try await withCheckedThrowingContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let result = try ssh_pool_connect(pool, spec, hostKeyCallback, passphraseCallback)
+                    let result = try ssh_pool_connect(pool, spec, hostKeyCallback, passphraseCallback, passwordCallback)
                     cont.resume(returning: result)
                 } catch {
                     cont.resume(throwing: error)
@@ -122,6 +126,9 @@ struct ConnectSpecOverrides {
     var port: UInt16?
     var identityFile: String?
     var proxyCommand: String?
+    /// Plain-text password. When set, the Rust pool tries password (with
+    /// keyboard-interactive fallback) before any other method.
+    var password: String?
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +177,33 @@ public final class PassphraseCallback {
         var result: String?
         Task {
             result = await resolver.resolve(keyPath: path)
+            sem.signal()
+        }
+        sem.wait()
+        return result
+    }
+}
+
+public final class PasswordCallback {
+    private let resolver: PasswordResolver
+    /// ssh_config nickname (or synthetic `user@host:port`) used as the Keychain
+    /// key when the resolver saves a corrected password. Captured at
+    /// connect-time since the resolver itself is shared across hosts.
+    private let alias: String?
+
+    init(resolver: PasswordResolver, alias: String?) {
+        self.resolver = resolver
+        self.alias = alias
+    }
+
+    public func askPassword(host: RustString, user: RustString) -> String? {
+        let hostStr = host.toString()
+        let userStr = user.toString()
+        let aliasStr = self.alias
+        let sem = DispatchSemaphore(value: 0)
+        var result: String?
+        Task {
+            result = await resolver.resolve(host: hostStr, user: userStr, alias: aliasStr)
             sem.signal()
         }
         sem.wait()

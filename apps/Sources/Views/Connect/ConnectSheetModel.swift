@@ -7,9 +7,10 @@ final class ConnectSheetModel: Identifiable {
     var server: String = ""
     var port: String = "22"
     var path: String = "~"
-    enum AuthMode: String { case agent, keyFile }
+    enum AuthMode: String { case agent, keyFile, password }
     var authMode: AuthMode = .agent
     var keyFile: String = "~/.ssh/id_ed25519"
+    var password: String = ""
     var proxyCommand: String = ""
     var showAdvanced: Bool = false
     var saveToConfig: Bool = false

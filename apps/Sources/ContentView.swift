@@ -482,7 +482,8 @@ struct ContentView: View {
             let overrides = ConnectSpecOverrides(
                 user: user, port: UInt16(model.port),
                 identityFile: model.authMode == .keyFile ? model.keyFile : nil,
-                proxyCommand: model.showAdvanced && !model.proxyCommand.isEmpty ? model.proxyCommand : nil
+                proxyCommand: model.showAdvanced && !model.proxyCommand.isEmpty ? model.proxyCommand : nil,
+                password: model.authMode == .password && !model.password.isEmpty ? model.password : nil
             )
             let target = try await app.ssh.connect(hostAlias: alias, overrides: overrides)
             let provider = SshFileSystemProvider(pool: app.ssh, target: target, supportsServerSideCopy: false)
@@ -495,6 +496,14 @@ struct ContentView: View {
             scene.newRemoteTab(initialPath: initial, provider: provider)
             if let newTab = scene.activeTab {
                 newTab.connectionPhase = .connected
+            }
+            // Persist the password under the ssh_config nickname so a later
+            // sidebar click can silently re-connect via Keychain lookup.
+            if model.authMode == .password,
+               model.saveToConfig,
+               !model.nickname.isEmpty,
+               !model.password.isEmpty {
+                KeychainPasswordStore.save(model.password, for: model.nickname)
             }
             scene.connectSheetModel = nil
         } catch {

@@ -201,10 +201,41 @@ struct SidebarView: View {
 
     // MARK: - Remote host helpers
 
+    /// Tap on a sidebar remote host. If a Keychain password exists for this
+    /// alias, attempt a silent reconnect; fall through to the sheet on failure
+    /// or when no saved password is found. This keeps password hosts behaving
+    /// like agent/key hosts (single click → tab opens), without burying the
+    /// sheet-based recovery path for stale credentials.
     private func connectHost(_ name: String) {
+        if let saved = KeychainPasswordStore.load(for: name) {
+            Task { await attemptSilentConnect(alias: name, password: saved) }
+            return
+        }
         let model = ConnectSheetModel()
         model.server = name  // pre-fill from sidebar connect tap
         scene.connectSheetModel = model
+    }
+
+    @MainActor
+    private func attemptSilentConnect(alias: String, password: String) async {
+        do {
+            let overrides = ConnectSpecOverrides(password: password)
+            let target = try await app.ssh.connect(hostAlias: alias, overrides: overrides)
+            let provider = SshFileSystemProvider(pool: app.ssh, target: target, supportsServerSideCopy: false)
+            let resolvedPath = (try? await provider.realpath(".")) ?? "/"
+            let initial = FSPath(provider: .ssh(target), path: resolvedPath)
+            scene.newRemoteTab(initialPath: initial, provider: provider)
+            scene.activeTab?.connectionPhase = .connected
+        } catch {
+            // Silent attempt failed — surface the sheet with nickname pre-filled
+            // so the user can correct the password. Keychain entry is left as
+            // is; the PasswordResolver alert will overwrite it on re-auth.
+            let model = ConnectSheetModel()
+            model.server = alias
+            model.authMode = .password
+            model.error = ErrorMessage.userFacing(error)
+            scene.connectSheetModel = model
+        }
     }
 
     private func disconnectHost(_ name: String) {
