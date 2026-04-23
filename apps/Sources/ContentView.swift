@@ -36,7 +36,14 @@ struct ContentView: View {
                         Color.clear
                     }
                 }
-                .navigationTitle(tab?.currentFolder?.lastPathComponent ?? "Cairn")
+                .navigationTitle({
+                    guard let tab, let path = tab.currentPath else { return "Cairn" }
+                    if case .ssh(let target) = path.provider {
+                        let name = path.lastComponent.isEmpty ? "/" : path.lastComponent
+                        return "\(target.hostname) · \(name)"
+                    }
+                    return tab.currentFolder?.lastPathComponent ?? "Cairn"
+                }())
                 .toolbar { mainToolbar }
                 .task {
                     if let tab, let path = tab.currentPath {

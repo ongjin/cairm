@@ -14,8 +14,9 @@ struct TabBarView: View {
         HStack(spacing: 4) {
             ForEach(scene.tabs) { tab in
                 TabChip(
-                    label: tab.currentFolder?.lastPathComponent ?? "Untitled",
+                    label: tab.titleText,
                     isActive: tab.id == scene.activeTabID,
+                    badge: tab.protocolBadge,
                     onActivate: { scene.activeTabID = tab.id },
                     onClose: { scene.closeTab(tab.id) }
                 )

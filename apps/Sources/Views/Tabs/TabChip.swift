@@ -12,6 +12,7 @@ struct TabChip: View {
 
     let label: String
     let isActive: Bool
+    var badge: String? = nil
     let onActivate: () -> Void
     let onClose: () -> Void
 
@@ -20,6 +21,14 @@ struct TabChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            if let badge {
+                Text(badge)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.66, green: 0.94, blue: 0.84))
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Color(red: 0.39, green: 0.78, blue: 0.70).opacity(0.25))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            }
             Image(systemName: "folder")
                 .foregroundStyle(.secondary)
             Text(label)

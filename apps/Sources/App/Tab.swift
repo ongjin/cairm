@@ -280,3 +280,24 @@ final class Tab: Identifiable {
         }
     }
 }
+
+// MARK: - UI Helpers
+
+extension Tab {
+    /// Returns "SSH" when this tab is backed by a remote provider, nil for local.
+    var protocolBadge: String? {
+        if case .ssh = provider.identifier { return "SSH" }
+        return nil
+    }
+
+    /// Human-readable title for the tab chip and window title bar.
+    /// Remote tabs: "hostname:foldername". Local tabs: last path component.
+    var titleText: String {
+        guard let path = currentPath else { return "Tab" }
+        if case .ssh(let t) = path.provider {
+            let name = path.lastComponent.isEmpty ? "/" : path.lastComponent
+            return "\(t.hostname):\(name)"
+        }
+        return path.lastComponent.isEmpty ? "/" : path.lastComponent
+    }
+}

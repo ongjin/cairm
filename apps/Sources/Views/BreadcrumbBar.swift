@@ -12,24 +12,49 @@ struct BreadcrumbBar: View {
     private static let home = FileManager.default.homeDirectoryForCurrentUser
 
     var body: some View {
-        if let tab, let current = tab.currentFolder {
-            let segs = Self.segments(for: current, home: Self.home)
-            HStack(spacing: 2) {
-                ForEach(Array(segs.enumerated()), id: \.offset) { pair in
-                    let (i, seg) = pair
-                    Button(seg.label) { tab.navigate(to: seg.url) }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12))
-                        .foregroundStyle(i == segs.count - 1 ? Color.primary : Color.secondary)
-                    if i < segs.count - 1 {
+        if let tab {
+            if case .ssh(let target) = tab.currentPath?.provider {
+                let parts = sshSegments(path: tab.currentPath?.path ?? "/")
+                HStack(spacing: 2) {
+                    Text("ssh://")
+                        .foregroundStyle(Color(red: 0.55, green: 0.85, blue: 0.73))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    Text("\(target.user)@\(target.hostname)")
+                        .foregroundStyle(.primary)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    ForEach(Array(parts.enumerated()), id: \.offset) { idx, seg in
                         Image(systemName: "chevron.right")
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
+                        Text(seg)
+                            .font(.system(size: 12))
+                            .foregroundStyle(idx == parts.count - 1 ? Color.primary : Color.secondary)
                     }
                 }
+                .padding(.horizontal, 6)
+            } else if let current = tab.currentFolder {
+                let segs = Self.segments(for: current, home: Self.home)
+                HStack(spacing: 2) {
+                    ForEach(Array(segs.enumerated()), id: \.offset) { pair in
+                        let (i, seg) = pair
+                        Button(seg.label) { tab.navigate(to: seg.url) }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12))
+                            .foregroundStyle(i == segs.count - 1 ? Color.primary : Color.secondary)
+                        if i < segs.count - 1 {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 6)
             }
-            .padding(.horizontal, 6)
         }
+    }
+
+    private func sshSegments(path: String) -> [String] {
+        path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
     }
 
     /// Visible for tests. Produces the rendered (label, url) tuples.
