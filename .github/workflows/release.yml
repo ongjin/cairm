@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install build tools
+        run: brew install xcodegen create-dmg
+
+      - name: Install signing cert
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          echo "$APPLE_CERT_P12_BASE64" | base64 -d > /tmp/cert.p12
+          security create-keychain -p action build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p action build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k action build.keychain
+
+      - name: Install Sparkle signing key
+        env:
+          SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_PRIVATE_KEY_BASE64 }}
+        run: echo "$SPARKLE_PRIVATE_KEY_BASE64" | base64 -d > sparkle_signing_key.pem
+
+      - name: Release
+        env:
+          DEV_IDENTITY: ${{ secrets.DEV_IDENTITY_SHA1 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          NOTARY_KEY_PATH: /tmp/notary.p8
+          NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+        run: |
+          echo "$NOTARY_KEY_P8_BASE64" | base64 -d > /tmp/notary.p8
+          VERSION="${GITHUB_REF_NAME#v}"
+          make release VERSION="$VERSION"
+
+          xcodebuild \
+            -project build/DerivedData/SourcePackages/checkouts/Sparkle/Sparkle.xcodeproj \
+            -scheme sign_update \
+            -configuration Release \
+            -derivedDataPath build/SparkleTools \
+            build
+          SPARKLE_SIGN_UPDATE="$(find build/SparkleTools -type f -name sign_update | head -1)"
+          test -x "$SPARKLE_SIGN_UPDATE"
+
+          SPARKLE_SIGN_UPDATE="$SPARKLE_SIGN_UPDATE" \
+            ./scripts/sparkle-appcast.sh "$VERSION" "build/Cairn-$VERSION.dmg" \
+              "https://github.com/ongjin/cairn/releases/tag/v$VERSION"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/Cairn-*.dmg
+            appcast.xml

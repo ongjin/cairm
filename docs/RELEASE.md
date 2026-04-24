@@ -30,3 +30,10 @@ SUPublicEDKey: <base64 public key>
 ```
 
 Place Sparkle's `sign_update` tool at `./bin/sign_update`, or set `SPARKLE_SIGN_UPDATE=/path/to/sign_update` when generating the appcast.
+
+## Required GitHub Secrets
+
+- `APPLE_CERT_P12_BASE64` and `APPLE_CERT_PASSWORD` - Developer ID Application certificate.
+- `DEV_IDENTITY_SHA1` - SHA1 of the certificate above.
+- `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`, and `NOTARY_KEY_P8_BASE64` - notarytool API key.
+- `SPARKLE_PRIVATE_KEY_BASE64` - base64 of `sparkle_signing_key.pem`.
