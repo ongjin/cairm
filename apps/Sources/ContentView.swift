@@ -152,6 +152,9 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var mainToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
+            RemoteEditChip(controller: app.remoteEdit)
+        }
+        ToolbarItem(placement: .primaryAction) {
             TransferHudChip(controller: app.transfers)
         }
         ToolbarItem(placement: .primaryAction) {
