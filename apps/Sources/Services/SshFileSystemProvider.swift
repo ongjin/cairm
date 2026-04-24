@@ -147,6 +147,60 @@ final class SshFileSystemProvider: FileSystemProvider {
         )
     }
 
+    func walk(
+        root: FSPath,
+        pattern: String,
+        maxDepth: Int,
+        cap: Int,
+        includeHidden: Bool,
+        cancel: CancelToken
+    ) -> AsyncThrowingStream<FileEntry, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let h = try await handle()
+                    let session = ssh_sftp_walk_start(
+                        h,
+                        root.path,
+                        pattern,
+                        UInt32(clamping: max(0, maxDepth)),
+                        UInt32(clamping: max(0, cap)),
+                        includeHidden
+                    )
+                    defer { ssh_sftp_walk_cancel(session) }
+
+                    while !Task.isCancelled {
+                        if cancel.isCancelled {
+                            ssh_sftp_walk_cancel(session)
+                            break
+                        }
+
+                        let batch = ssh_sftp_walk_drain(session, 200)
+                        let count = sftp_walk_batch_len(batch)
+                        for i in 0..<count {
+                            let match = sftp_walk_batch_entry(batch, i)
+                            continuation.yield(match.toFileEntry())
+                        }
+
+                        if ssh_sftp_walk_is_done(session), count == 0 {
+                            break
+                        }
+
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                    }
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
     func realpath(_ path: String) async throws -> String {
         let h = try await handle()
         return try sftp_realpath(h, path).toString()
@@ -168,6 +222,21 @@ private extension FileEntryBridge {
             kind: kind,
             is_hidden: nameStr.hasPrefix("."),
             icon_kind: iconKind
+        )
+    }
+}
+
+private extension WalkMatchBridge {
+    func toFileEntry() -> FileEntry {
+        let nameStr = name.toString()
+        return FileEntry(
+            path: RustString(path.toString()),
+            name: RustString(nameStr),
+            size: UInt64(max(size, 0)),
+            modified_unix: mtime,
+            kind: is_directory ? .Directory : .Regular,
+            is_hidden: nameStr.hasPrefix("."),
+            icon_kind: is_directory ? .Folder : .GenericFile
         )
     }
 }

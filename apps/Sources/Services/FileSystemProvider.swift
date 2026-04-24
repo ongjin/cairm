@@ -39,6 +39,43 @@ protocol FileSystemProvider: AnyObject {
     /// Resolve a path to its absolute canonical form on the provider. For SSH,
     /// this is a server-side call used to expand "~" / "." to the real home dir.
     func realpath(_ path: String) async throws -> String
+
+    /// Recursive name-substring walk. Providers that cannot stream should use
+    /// the default unsupported implementation so callers can fall back.
+    func walk(
+        root: FSPath,
+        pattern: String,
+        maxDepth: Int,
+        cap: Int,
+        includeHidden: Bool,
+        cancel: CancelToken
+    ) -> AsyncThrowingStream<FileEntry, Error>
+}
+
+enum FileSystemError: LocalizedError {
+    case unsupported
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupported:
+            "Operation unsupported by this provider"
+        }
+    }
+}
+
+extension FileSystemProvider {
+    func walk(
+        root: FSPath,
+        pattern: String,
+        maxDepth: Int,
+        cap: Int,
+        includeHidden: Bool,
+        cancel: CancelToken
+    ) -> AsyncThrowingStream<FileEntry, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish(throwing: FileSystemError.unsupported)
+        }
+    }
 }
 
 /// Swift-side cancel token mirroring Rust's CancelFlag.
