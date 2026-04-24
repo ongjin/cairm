@@ -43,7 +43,18 @@ XCBUILD := xcodebuild \
               -derivedDataPath $(CURDIR)/$(DERIVED) \
               $(SIGNING)
 
-.PHONY: help rust swift build run dev test install-cli uninstall-cli clean
+CONFIG_RELEASE := Release
+APP_RELEASE    := build/DerivedData/Build/Products/$(CONFIG_RELEASE)/Cairn.app
+
+XCBUILD_RELEASE := xcodebuild \
+              -project $(PROJECT) \
+              -scheme $(SCHEME) \
+              -configuration $(CONFIG_RELEASE) \
+              -destination "platform=macOS" \
+              -derivedDataPath $(CURDIR)/$(DERIVED) \
+              $(SIGNING)
+
+.PHONY: help rust swift swift-release build run dev test install-cli uninstall-cli clean
 
 help: ## 사용 가능한 타겟 목록
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -57,6 +68,12 @@ swift: rust ## xcodegen regenerate + Swift 앱 빌드
 	@cd apps && xcodegen generate
 	@echo $(SIGNING_BANNER)
 	@$(XCBUILD) build
+
+swift-release: rust ## Release build (requires DEV_IDENTITY set for a signed artifact)
+	@cd apps && xcodegen generate
+	@echo $(SIGNING_BANNER)
+	@$(XCBUILD_RELEASE) build
+	@echo "built: $(APP_RELEASE)"
 
 build: swift ## 풀 빌드 (Rust + Swift)
 	@echo "built: $(APP)"
