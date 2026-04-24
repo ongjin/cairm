@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Open a path in Cairn. Usage:
+#   cairn [open] <path>
+#   cairn remote <host-alias> <remote-path>
+
+set -euo pipefail
+
+die() { echo "$*" >&2; exit 1; }
+
+urlencode() {
+  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  "" )
+    die "usage: cairn [open] <path> | cairn remote <host> <path>"
+    ;;
+  remote )
+    host="${2:-}" path="${3:-}"
+    [ -n "$host" ] && [ -n "$path" ] || die "usage: cairn remote <host> <path>"
+    open "cairn://remote?host=$(urlencode "$host")&path=$(urlencode "$path")"
+    ;;
+  open )
+    path="${2:-}"
+    [ -n "$path" ] || die "usage: cairn open <path>"
+    open "cairn://open?path=$(urlencode "$(cd "$path" >/dev/null 2>&1 && pwd || echo "$path")")"
+    ;;
+  * )
+    # Allow the common form: cairn <path>
+    path="$cmd"
+    open "cairn://open?path=$(urlencode "$(cd "$path" >/dev/null 2>&1 && pwd || echo "$path")")"
+    ;;
+esac
