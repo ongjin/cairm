@@ -57,17 +57,32 @@ struct PaneColumn: View {
                     await tab.folder.load(path, via: tab.provider)
                 }
             }
-            .onChange(of: tab?.currentPath) { _, new in
+            .onChange(of: tab?.currentPath) { old, new in
                 guard let tab else { return }
                 guard let path = new else { tab.folder.clear(); return }
                 if case .local = path.provider {
                     app.lastFolder.save(URL(fileURLWithPath: path.path))
                 }
+                if old == path, tab.folder.currentPath == path, tab.folder.state == .loaded {
+                    return
+                }
                 Task { await tab.folder.load(path, via: tab.provider) }
             }
             .onChange(of: scene.activeTabID) { _, _ in
                 onFocus()
+                // `tab?.currentPath` above reloads when the newly-active tab's
+                // path *differs* from the old one. But SwiftUI's onChange is
+                // value-equality — if two tabs happen to share the same path
+                // (e.g. ⌘T clone → both on ~/Downloads) currentPath is
+                // unchanged across the swap and that onChange never fires,
+                // leaving the fresh tab's FolderModel blank until the user
+                // manually refreshes. Reload here only when the newly-active
+                // tab hasn't loaded the target yet; don't re-list when it
+                // already has entries for this path.
                 guard let tab, let path = tab.currentPath else { return }
+                if tab.folder.currentPath == path, tab.folder.state == .loaded {
+                    return
+                }
                 Task { await tab.folder.load(path, via: tab.provider) }
             }
             .onChange(of: app.showHidden) { _, _ in

@@ -26,6 +26,7 @@ final class FolderWatcher {
     private let fd: Int32
     private let onChange: () -> Void
     private var debounceWork: DispatchWorkItem?
+    private var isSuspended: Bool = false
 
     init?(root: URL, onChange: @escaping () -> Void) {
         self.onChange = onChange
@@ -57,5 +58,21 @@ final class FolderWatcher {
         let work = DispatchWorkItem { [weak self] in self?.onChange() }
         debounceWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+    }
+
+    /// Stop delivering events while keeping the kqueue/fd alive.
+    func pause() {
+        guard !isSuspended else { return }
+        source?.suspend()
+        isSuspended = true
+        debounceWork?.cancel()
+    }
+
+    /// Resume event delivery and trigger one refresh for changes missed while paused.
+    func resume() {
+        guard isSuspended else { return }
+        source?.resume()
+        isSuspended = false
+        onChange()
     }
 }

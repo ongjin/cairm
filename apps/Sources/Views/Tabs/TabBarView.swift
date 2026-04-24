@@ -11,15 +11,20 @@ struct TabBarView: View {
     @Environment(\.cairnTheme) private var theme
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(scene.tabs) { tab in
-                TabChip(
-                    label: tab.titleText,
-                    isActive: tab.id == scene.activeTabID,
-                    badge: tab.protocolBadge,
-                    onActivate: { scene.activeTabID = tab.id },
-                    onClose: { scene.closeTab(tab.id) }
-                )
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(scene.tabs) { tab in
+                        TabChip(
+                            label: tab.titleText,
+                            isActive: tab.id == scene.activeTabID,
+                            badge: tab.protocolBadge,
+                            onActivate: { scene.activeTabID = tab.id },
+                            onClose: { scene.closeTab(tab.id) }
+                        )
+                    }
+                }
+                .padding(.horizontal, 10)
             }
             Button(action: { scene.newTab() }) {
                 Image(systemName: "plus")
@@ -32,9 +37,8 @@ struct TabBarView: View {
                     )
             }
             .buttonStyle(.plain)
-            Spacer(minLength: 0)
+            .padding(.trailing, 10)
         }
-        .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .frame(height: 38)
         .background(.thinMaterial)

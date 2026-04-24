@@ -10,7 +10,9 @@ import Observation
 @Observable
 final class WindowSceneModel {
     private(set) var tabs: [Tab] = []
-    var activeTabID: Tab.ID?
+    var activeTabID: Tab.ID? {
+        didSet { reconcileActiveFlags() }
+    }
 
     /// Connect-to-Server sheet state for this window. Non-nil while the sheet
     /// is presented; set by the sidebar or the ⇧⌘K menu on the focused window,
@@ -48,6 +50,7 @@ final class WindowSceneModel {
         let t = Tab(engine: engine, bookmarks: bookmarks, initialURL: url)
         tabs.append(t)
         activeTabID = t.id
+        reconcileActiveFlags()
     }
 
     /// Open a new tab pointing at an SSH remote path using the given provider.
@@ -55,6 +58,7 @@ final class WindowSceneModel {
         let t = Tab(engine: engine, bookmarks: bookmarks, initialPath: initialPath, provider: provider)
         tabs.append(t)
         activeTabID = t.id
+        reconcileActiveFlags()
     }
 
     /// Create a placeholder tab showing the "Connecting to <alias>…" spinner
@@ -69,6 +73,7 @@ final class WindowSceneModel {
         t.connectionPhase = .establishing(alias: alias)
         tabs.append(t)
         activeTabID = t.id
+        reconcileActiveFlags()
         return t
     }
 
@@ -81,6 +86,7 @@ final class WindowSceneModel {
         if activeTabID == id {
             activeTabID = tabs.last?.id
         }
+        reconcileActiveFlags()
         // Notify AppModel so the sidebar dot flips off when the last tab on a
         // host closes. We do NOT disconnect the pool session here — that would
         // force a fresh handshake (and slow ProxyCommand boot) on the next
@@ -105,5 +111,11 @@ final class WindowSceneModel {
               let idx = tabs.firstIndex(where: { $0.id == cur }) else { return }
         let next = (idx + 1) % tabs.count
         activeTabID = tabs[next].id
+    }
+
+    private func reconcileActiveFlags() {
+        for tab in tabs {
+            tab.setActive(tab.id == activeTabID)
+        }
     }
 }

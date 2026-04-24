@@ -15,6 +15,8 @@ import Observation
 /// semantics of the pre-T10 AppModel so sandbox access behavior is unchanged.
 @Observable
 final class Tab: Identifiable {
+    static var disableBackgroundServicesForTests = false
+
     let id = UUID()
 
     var connectionPhase: ConnectionPhase = .idle
@@ -45,6 +47,9 @@ final class Tab: Identifiable {
     /// (drag/drop move, ⌘⌫, context-menu trash) and external ones (Finder,
     /// terminal). Replaces the old "rely on user to ⌘R" pattern.
     private var folderWatcher: FolderWatcher?
+    /// Background tabs pause the watcher so they do not keep scheduling
+    /// reloads the user cannot see.
+    private(set) var isActive: Bool = true
     private(set) var git: GitService?
 
     var history = NavigationHistory()
@@ -161,8 +166,11 @@ final class Tab: Identifiable {
     }
 
     /// Navigate to an arbitrary URL that we don't (yet) have a bookmark for.
-    /// Drops any current scope. Used by sidebar Locations items and breadcrumb
-    /// parent segments. Thin adapter over `navigate(to: FSPath)`.
+    /// Drops any current scope. Used by breadcrumb parent segments and
+    /// Locations items (volume roots, Trash, Network) — callers that KNOW
+    /// the URL may lie outside the user-selected scope should prefer
+    /// `AppModel.openAutoFavorite(url:in:)` which prompts on first use and
+    /// reuses the registered bookmark afterwards.
     func navigate(to url: URL) {
         navigate(to: FSPath(provider: .local, path: url.path))
     }
@@ -235,6 +243,14 @@ final class Tab: Identifiable {
     /// Routes to the appropriate service rebuild based on provider type.
     /// Index, Git and FolderWatcher are local-only — remote paths skip them.
     private func rebuildProviderServices(for path: FSPath) {
+        if Self.disableBackgroundServicesForTests {
+            servicesTask?.cancel()
+            servicesTask = nil
+            index = nil
+            git = nil
+            folderWatcher = nil
+            return
+        }
         if case .local = path.provider {
             rebuildServices(for: URL(fileURLWithPath: path.path))
         } else {
@@ -308,6 +324,18 @@ final class Tab: Identifiable {
                 self.index = idx
                 self.git = gitSvc
             }
+        }
+    }
+
+    // MARK: - Tab activation
+
+    func setActive(_ active: Bool) {
+        guard active != isActive else { return }
+        isActive = active
+        if active {
+            folderWatcher?.resume()
+        } else {
+            folderWatcher?.pause()
         }
     }
 }
