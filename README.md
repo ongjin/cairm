@@ -36,6 +36,10 @@ See [docs/RELEASE.md](docs/RELEASE.md).
 - [RELEASE.md](docs/RELEASE.md) - release runbook.
 - [CHANGELOG.md](CHANGELOG.md) - user-facing changes.
 
+## Contributing
+
+When you open a PR, add a line under `## [Unreleased]` in `CHANGELOG.md`. Keep entries user-facing, not "refactor internal X".
+
 ## License
 
 MIT.
