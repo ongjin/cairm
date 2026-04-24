@@ -20,4 +20,20 @@ final class FolderCompareModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .done)
         XCTAssertEqual(model.result.onlyLeft.map(\.name), ["b"])
     }
+
+    func test_applySync_enqueuesTransfersForSelectedEntries() async {
+        let transfers = TransferController()
+        let model = FolderCompareModel()
+        model.result.onlyLeft = [CompareEntry(name: "a", size: 1, mtime: Date(), isDirectory: false)]
+
+        model.applySync(
+            direction: .leftToRight,
+            selected: Set(["a"]),
+            leftRoot: FSPath(provider: .local, path: "/L"),
+            rightRoot: FSPath(provider: .local, path: "/R"),
+            transfers: transfers
+        )
+
+        XCTAssertEqual(transfers.pendingOrActiveCount, 1)
+    }
 }

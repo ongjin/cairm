@@ -10,6 +10,8 @@ final class TransferController {
         jobs.filter { $0.state == .queued || $0.state == .running }.count
     }
 
+    var pendingOrActiveCount: Int { activeCount }
+
     var hasActive: Bool { activeCount > 0 }
 
     private var runningPerHost: [String?: UUID] = [:]
