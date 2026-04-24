@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use cairn_ssh::{self as ssh, config};
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::task::JoinHandle;
 
 use ffi::{ConnKeyBridge, ConnectSpecBridge, FileStatBridge};
 
@@ -39,6 +41,16 @@ mod ffi {
         mtime: i64,
         mode: u32,
         is_dir: bool,
+    }
+
+    #[swift_bridge(swift_repr = "struct")]
+    struct WalkMatchBridge {
+        path: String,
+        name: String,
+        size: i64,
+        is_directory: bool,
+        /// Zero means "mtime unavailable" on the Swift side.
+        mtime: i64,
     }
 
     #[swift_bridge(swift_repr = "struct")]
@@ -89,6 +101,8 @@ mod ffi {
         type CancelFlagBridge;
         /// Opaque listing returned by sftp_list — iterate with len()/entry(i).
         type SftpListingBridge;
+        type SftpWalkSessionBridge;
+        type SftpWalkBatchBridge;
 
         fn ssh_pool_new() -> SshPoolBridge;
         fn ssh_pool_list_configured_hosts() -> Vec<String>;
@@ -134,9 +148,24 @@ mod ffi {
         ) -> Result<(), String>;
         fn sftp_progress_poll(h: &SftpHandleBridge) -> u64;
 
+        fn ssh_sftp_walk_start(
+            h: &SftpHandleBridge,
+            root: String,
+            pattern: String,
+            max_depth: u32,
+            cap: u32,
+            include_hidden: bool,
+        ) -> SftpWalkSessionBridge;
+        fn ssh_sftp_walk_drain(session: &SftpWalkSessionBridge, max: u32) -> SftpWalkBatchBridge;
+        fn ssh_sftp_walk_cancel(session: &SftpWalkSessionBridge);
+        fn ssh_sftp_walk_is_done(session: &SftpWalkSessionBridge) -> bool;
+
         // SftpListingBridge accessors — iterate the result of sftp_list.
         fn sftp_listing_len(listing: &SftpListingBridge) -> usize;
         fn sftp_listing_entry(listing: &SftpListingBridge, index: usize) -> FileEntryBridge;
+
+        fn sftp_walk_batch_len(batch: &SftpWalkBatchBridge) -> usize;
+        fn sftp_walk_batch_entry(batch: &SftpWalkBatchBridge, index: usize) -> WalkMatchBridge;
     }
 }
 
@@ -159,6 +188,27 @@ pub struct CancelFlagBridge {
 
 pub struct SftpListingBridge {
     entries: Vec<ssh::RemoteEntry>,
+}
+
+pub struct SftpWalkSessionBridge {
+    rx: Mutex<UnboundedReceiver<ssh::WalkMatch>>,
+    cancel: Arc<AtomicBool>,
+    join: Mutex<Option<JoinHandle<Result<(), String>>>>,
+}
+
+pub struct SftpWalkBatchBridge {
+    matches: Vec<ssh::WalkMatch>,
+}
+
+impl Drop for SftpWalkSessionBridge {
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Relaxed);
+        if let Ok(mut join) = self.join.lock() {
+            if let Some(handle) = join.take() {
+                handle.abort();
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -418,8 +468,73 @@ fn sftp_upload_sync(
 }
 
 fn sftp_progress_poll(h: &SftpHandleBridge) -> u64 {
-    use std::sync::atomic::Ordering;
     h.progress.load(Ordering::Relaxed)
+}
+
+fn ssh_sftp_walk_start(
+    h: &SftpHandleBridge,
+    root: String,
+    pattern: String,
+    max_depth: u32,
+    cap: u32,
+    include_hidden: bool,
+) -> SftpWalkSessionBridge {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_task = Arc::clone(&cancel);
+    let sftp = h.inner.clone();
+    let join = runtime().spawn(async move {
+        sftp.walk(
+            &root,
+            ssh::WalkOptions {
+                max_depth,
+                cap: cap as usize,
+                include_hidden,
+                pattern,
+            },
+            cancel_task,
+            move |m| {
+                let _ = tx.send(m);
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())
+    });
+
+    SftpWalkSessionBridge {
+        rx: Mutex::new(rx),
+        cancel,
+        join: Mutex::new(Some(join)),
+    }
+}
+
+fn ssh_sftp_walk_drain(session: &SftpWalkSessionBridge, max: u32) -> SftpWalkBatchBridge {
+    let mut matches = Vec::new();
+    if max == 0 {
+        return SftpWalkBatchBridge { matches };
+    }
+
+    let mut rx = session.rx.lock().unwrap();
+    while matches.len() < max as usize {
+        match rx.try_recv() {
+            Ok(m) => matches.push(m),
+            Err(_) => break,
+        }
+    }
+
+    SftpWalkBatchBridge { matches }
+}
+
+fn ssh_sftp_walk_cancel(session: &SftpWalkSessionBridge) {
+    session.cancel.store(true, Ordering::Relaxed);
+}
+
+fn ssh_sftp_walk_is_done(session: &SftpWalkSessionBridge) -> bool {
+    session
+        .join
+        .lock()
+        .map(|join| join.as_ref().map(|h| h.is_finished()).unwrap_or(true))
+        .unwrap_or(true)
 }
 
 // ---------------------------------------------------------------------------
@@ -449,6 +564,34 @@ fn sftp_listing_entry(listing: &SftpListingBridge, index: usize) -> ffi::FileEnt
         size: e.size,
         mtime: e.mtime,
         mode: e.mode,
+    }
+}
+
+fn sftp_walk_batch_len(batch: &SftpWalkBatchBridge) -> usize {
+    batch.matches.len()
+}
+
+fn sftp_walk_batch_entry(batch: &SftpWalkBatchBridge, index: usize) -> ffi::WalkMatchBridge {
+    if index >= batch.matches.len() {
+        return ffi::WalkMatchBridge {
+            path: String::new(),
+            name: String::new(),
+            size: 0,
+            is_directory: false,
+            mtime: 0,
+        };
+    }
+
+    walk_match_to_bridge(&batch.matches[index])
+}
+
+fn walk_match_to_bridge(m: &ssh::WalkMatch) -> ffi::WalkMatchBridge {
+    ffi::WalkMatchBridge {
+        path: m.path.clone(),
+        name: m.name.clone(),
+        size: m.size,
+        is_directory: m.is_directory,
+        mtime: m.mtime.unwrap_or(0),
     }
 }
 
@@ -493,5 +636,14 @@ mod tests {
         assert_eq!(progress.load(Ordering::Relaxed), 0);
         sink(456);
         assert_eq!(progress.load(Ordering::Relaxed), 456);
+    }
+
+    #[test]
+    fn walk_session_api_symbols_exist() {
+        let _start: fn(&SftpHandleBridge, String, String, u32, u32, bool) -> SftpWalkSessionBridge =
+            ssh_sftp_walk_start;
+        let _drain: fn(&SftpWalkSessionBridge, u32) -> SftpWalkBatchBridge = ssh_sftp_walk_drain;
+        let _cancel: fn(&SftpWalkSessionBridge) = ssh_sftp_walk_cancel;
+        let _is_done: fn(&SftpWalkSessionBridge) -> bool = ssh_sftp_walk_is_done;
     }
 }

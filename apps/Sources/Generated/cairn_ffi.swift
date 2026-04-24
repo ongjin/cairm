@@ -1315,11 +1315,29 @@ public func sftp_upload_sync<GenericIntoRustString: IntoRustString>(_ h: SftpHan
 public func sftp_progress_poll(_ h: SftpHandleBridgeRef) -> UInt64 {
     __swift_bridge__$sftp_progress_poll(h.ptr)
 }
+public func ssh_sftp_walk_start<GenericIntoRustString: IntoRustString>(_ h: SftpHandleBridgeRef, _ root: GenericIntoRustString, _ pattern: GenericIntoRustString, _ max_depth: UInt32, _ cap: UInt32, _ include_hidden: Bool) -> SftpWalkSessionBridge {
+    SftpWalkSessionBridge(ptr: __swift_bridge__$ssh_sftp_walk_start(h.ptr, { let rustString = root.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), { let rustString = pattern.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), max_depth, cap, include_hidden))
+}
+public func ssh_sftp_walk_drain(_ session: SftpWalkSessionBridgeRef, _ max: UInt32) -> SftpWalkBatchBridge {
+    SftpWalkBatchBridge(ptr: __swift_bridge__$ssh_sftp_walk_drain(session.ptr, max))
+}
+public func ssh_sftp_walk_cancel(_ session: SftpWalkSessionBridgeRef) {
+    __swift_bridge__$ssh_sftp_walk_cancel(session.ptr)
+}
+public func ssh_sftp_walk_is_done(_ session: SftpWalkSessionBridgeRef) -> Bool {
+    __swift_bridge__$ssh_sftp_walk_is_done(session.ptr)
+}
 public func sftp_listing_len(_ listing: SftpListingBridgeRef) -> UInt {
     __swift_bridge__$sftp_listing_len(listing.ptr)
 }
 public func sftp_listing_entry(_ listing: SftpListingBridgeRef, _ index: UInt) -> FileEntryBridge {
     __swift_bridge__$sftp_listing_entry(listing.ptr, index).intoSwiftRepr()
+}
+public func sftp_walk_batch_len(_ batch: SftpWalkBatchBridgeRef) -> UInt {
+    __swift_bridge__$sftp_walk_batch_len(batch.ptr)
+}
+public func sftp_walk_batch_entry(_ batch: SftpWalkBatchBridgeRef, _ index: UInt) -> WalkMatchBridge {
+    __swift_bridge__$sftp_walk_batch_entry(batch.ptr, index).intoSwiftRepr()
 }
 public struct ConnKeyBridge {
     public var user: RustString
@@ -1452,6 +1470,51 @@ extension __swift_bridge__$Option$FileStatBridge {
         }
     }
 }
+public struct WalkMatchBridge {
+    public var path: RustString
+    public var name: RustString
+    public var size: Int64
+    public var is_directory: Bool
+    public var mtime: Int64
+
+    public init(path: RustString,name: RustString,size: Int64,is_directory: Bool,mtime: Int64) {
+        self.path = path
+        self.name = name
+        self.size = size
+        self.is_directory = is_directory
+        self.mtime = mtime
+    }
+
+    @inline(__always)
+    func intoFfiRepr() -> __swift_bridge__$WalkMatchBridge {
+        { let val = self; return __swift_bridge__$WalkMatchBridge(path: { let rustString = val.path.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), name: { let rustString = val.name.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), size: val.size, is_directory: val.is_directory, mtime: val.mtime); }()
+    }
+}
+extension __swift_bridge__$WalkMatchBridge {
+    @inline(__always)
+    func intoSwiftRepr() -> WalkMatchBridge {
+        { let val = self; return WalkMatchBridge(path: RustString(ptr: val.path), name: RustString(ptr: val.name), size: val.size, is_directory: val.is_directory, mtime: val.mtime); }()
+    }
+}
+extension __swift_bridge__$Option$WalkMatchBridge {
+    @inline(__always)
+    func intoSwiftRepr() -> Optional<WalkMatchBridge> {
+        if self.is_some {
+            return self.val.intoSwiftRepr()
+        } else {
+            return nil
+        }
+    }
+
+    @inline(__always)
+    static func fromSwiftRepr(_ val: Optional<WalkMatchBridge>) -> __swift_bridge__$Option$WalkMatchBridge {
+        if let v = val {
+            return __swift_bridge__$Option$WalkMatchBridge(is_some: true, val: v.intoFfiRepr())
+        } else {
+            return __swift_bridge__$Option$WalkMatchBridge(is_some: false, val: __swift_bridge__$WalkMatchBridge())
+        }
+    }
+}
 public struct ConnectSpecBridge {
     public var host_alias: RustString
     public var user_override: Optional<RustString>
@@ -1556,6 +1619,156 @@ func __swift_bridge__PassphraseCallback__free (ptr: UnsafeMutableRawPointer) {
 @_cdecl("__swift_bridge__$PasswordCallback$_free")
 func __swift_bridge__PasswordCallback__free (ptr: UnsafeMutableRawPointer) {
     let _ = Unmanaged<PasswordCallback>.fromOpaque(ptr).takeRetainedValue()
+}
+
+
+public class SftpWalkBatchBridge: SftpWalkBatchBridgeRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$SftpWalkBatchBridge$_free(ptr)
+        }
+    }
+}
+public class SftpWalkBatchBridgeRefMut: SftpWalkBatchBridgeRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class SftpWalkBatchBridgeRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension SftpWalkBatchBridge: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_SftpWalkBatchBridge$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_SftpWalkBatchBridge$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: SftpWalkBatchBridge) {
+        __swift_bridge__$Vec_SftpWalkBatchBridge$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_SftpWalkBatchBridge$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (SftpWalkBatchBridge(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SftpWalkBatchBridgeRef> {
+        let pointer = __swift_bridge__$Vec_SftpWalkBatchBridge$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SftpWalkBatchBridgeRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SftpWalkBatchBridgeRefMut> {
+        let pointer = __swift_bridge__$Vec_SftpWalkBatchBridge$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SftpWalkBatchBridgeRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<SftpWalkBatchBridgeRef> {
+        UnsafePointer<SftpWalkBatchBridgeRef>(OpaquePointer(__swift_bridge__$Vec_SftpWalkBatchBridge$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_SftpWalkBatchBridge$len(vecPtr)
+    }
+}
+
+
+public class SftpWalkSessionBridge: SftpWalkSessionBridgeRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$SftpWalkSessionBridge$_free(ptr)
+        }
+    }
+}
+public class SftpWalkSessionBridgeRefMut: SftpWalkSessionBridgeRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class SftpWalkSessionBridgeRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension SftpWalkSessionBridge: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_SftpWalkSessionBridge$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_SftpWalkSessionBridge$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: SftpWalkSessionBridge) {
+        __swift_bridge__$Vec_SftpWalkSessionBridge$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_SftpWalkSessionBridge$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (SftpWalkSessionBridge(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SftpWalkSessionBridgeRef> {
+        let pointer = __swift_bridge__$Vec_SftpWalkSessionBridge$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SftpWalkSessionBridgeRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<SftpWalkSessionBridgeRefMut> {
+        let pointer = __swift_bridge__$Vec_SftpWalkSessionBridge$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return SftpWalkSessionBridgeRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<SftpWalkSessionBridgeRef> {
+        UnsafePointer<SftpWalkSessionBridgeRef>(OpaquePointer(__swift_bridge__$Vec_SftpWalkSessionBridge$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_SftpWalkSessionBridge$len(vecPtr)
+    }
 }
 
 

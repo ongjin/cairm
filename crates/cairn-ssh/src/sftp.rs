@@ -71,6 +71,7 @@ pub struct WalkMatch {
 ///
 /// Every operation calls [`SshPool::touch`] on the associated key so that
 /// the pool's idle-reaper timer is reset on activity.
+#[derive(Clone)]
 pub struct SftpHandle {
     pool: Arc<SshPool>,
     key: ConnKey,

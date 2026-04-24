@@ -217,10 +217,36 @@ typedef struct __swift_bridge__$FileEntryBridge { void* name; bool is_dir; uint6
 typedef struct __swift_bridge__$Option$FileEntryBridge { bool is_some; __swift_bridge__$FileEntryBridge val; } __swift_bridge__$Option$FileEntryBridge;
 typedef struct __swift_bridge__$FileStatBridge { uint64_t size; int64_t mtime; uint32_t mode; bool is_dir; } __swift_bridge__$FileStatBridge;
 typedef struct __swift_bridge__$Option$FileStatBridge { bool is_some; __swift_bridge__$FileStatBridge val; } __swift_bridge__$Option$FileStatBridge;
+typedef struct __swift_bridge__$WalkMatchBridge { void* path; void* name; int64_t size; bool is_directory; int64_t mtime; } __swift_bridge__$WalkMatchBridge;
+typedef struct __swift_bridge__$Option$WalkMatchBridge { bool is_some; __swift_bridge__$WalkMatchBridge val; } __swift_bridge__$Option$WalkMatchBridge;
 typedef struct __swift_bridge__$ConnectSpecBridge { void* host_alias; void* user_override; struct __private__OptionU16 port_override; void* identity_file_override; void* proxy_command_override; void* password_override; } __swift_bridge__$ConnectSpecBridge;
 typedef struct __swift_bridge__$Option$ConnectSpecBridge { bool is_some; __swift_bridge__$ConnectSpecBridge val; } __swift_bridge__$Option$ConnectSpecBridge;
 typedef struct __swift_bridge__$HostKeyOffer { void* algorithm; void* blob_base64; void* fingerprint; } __swift_bridge__$HostKeyOffer;
 typedef struct __swift_bridge__$Option$HostKeyOffer { bool is_some; __swift_bridge__$HostKeyOffer val; } __swift_bridge__$Option$HostKeyOffer;
+typedef struct SftpWalkBatchBridge SftpWalkBatchBridge;
+void __swift_bridge__$SftpWalkBatchBridge$_free(void* self);
+
+void* __swift_bridge__$Vec_SftpWalkBatchBridge$new(void);
+void __swift_bridge__$Vec_SftpWalkBatchBridge$drop(void* vec_ptr);
+void __swift_bridge__$Vec_SftpWalkBatchBridge$push(void* vec_ptr, void* item_ptr);
+void* __swift_bridge__$Vec_SftpWalkBatchBridge$pop(void* vec_ptr);
+void* __swift_bridge__$Vec_SftpWalkBatchBridge$get(void* vec_ptr, uintptr_t index);
+void* __swift_bridge__$Vec_SftpWalkBatchBridge$get_mut(void* vec_ptr, uintptr_t index);
+uintptr_t __swift_bridge__$Vec_SftpWalkBatchBridge$len(void* vec_ptr);
+void* __swift_bridge__$Vec_SftpWalkBatchBridge$as_ptr(void* vec_ptr);
+
+typedef struct SftpWalkSessionBridge SftpWalkSessionBridge;
+void __swift_bridge__$SftpWalkSessionBridge$_free(void* self);
+
+void* __swift_bridge__$Vec_SftpWalkSessionBridge$new(void);
+void __swift_bridge__$Vec_SftpWalkSessionBridge$drop(void* vec_ptr);
+void __swift_bridge__$Vec_SftpWalkSessionBridge$push(void* vec_ptr, void* item_ptr);
+void* __swift_bridge__$Vec_SftpWalkSessionBridge$pop(void* vec_ptr);
+void* __swift_bridge__$Vec_SftpWalkSessionBridge$get(void* vec_ptr, uintptr_t index);
+void* __swift_bridge__$Vec_SftpWalkSessionBridge$get_mut(void* vec_ptr, uintptr_t index);
+uintptr_t __swift_bridge__$Vec_SftpWalkSessionBridge$len(void* vec_ptr);
+void* __swift_bridge__$Vec_SftpWalkSessionBridge$as_ptr(void* vec_ptr);
+
 typedef struct SftpListingBridge SftpListingBridge;
 void __swift_bridge__$SftpListingBridge$_free(void* self);
 
@@ -287,8 +313,14 @@ void __swift_bridge__$cancel_flag_cancel(void* f);
 void* __swift_bridge__$sftp_download_sync(void* h, void* remote, void* local, void* cancel);
 void* __swift_bridge__$sftp_upload_sync(void* h, void* local, void* remote, void* cancel);
 uint64_t __swift_bridge__$sftp_progress_poll(void* h);
+void* __swift_bridge__$ssh_sftp_walk_start(void* h, void* root, void* pattern, uint32_t max_depth, uint32_t cap, bool include_hidden);
+void* __swift_bridge__$ssh_sftp_walk_drain(void* session, uint32_t max);
+void __swift_bridge__$ssh_sftp_walk_cancel(void* session);
+bool __swift_bridge__$ssh_sftp_walk_is_done(void* session);
 uintptr_t __swift_bridge__$sftp_listing_len(void* listing);
 struct __swift_bridge__$FileEntryBridge __swift_bridge__$sftp_listing_entry(void* listing, uintptr_t index);
+uintptr_t __swift_bridge__$sftp_walk_batch_len(void* batch);
+struct __swift_bridge__$WalkMatchBridge __swift_bridge__$sftp_walk_batch_entry(void* batch, uintptr_t index);
 typedef enum __swift_bridge__$ResultConnKeyBridgeAndString$Tag {__swift_bridge__$ResultConnKeyBridgeAndString$ResultOk, __swift_bridge__$ResultConnKeyBridgeAndString$ResultErr} __swift_bridge__$ResultConnKeyBridgeAndString$Tag;
 union __swift_bridge__$ResultConnKeyBridgeAndString$Fields {struct __swift_bridge__$ConnKeyBridge ok; void* err;};
 typedef struct __swift_bridge__$ResultConnKeyBridgeAndString{__swift_bridge__$ResultConnKeyBridgeAndString$Tag tag; union __swift_bridge__$ResultConnKeyBridgeAndString$Fields payload;} __swift_bridge__$ResultConnKeyBridgeAndString;
