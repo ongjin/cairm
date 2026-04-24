@@ -67,6 +67,26 @@ struct FileListView: NSViewRepresentable {
         return col
     }
 
+    /// Size column factory. Shared with the responsive-column logic in
+    /// FileListCoordinator so dynamic add/remove uses identical prototypes.
+    static func makeSizeColumn() -> NSTableColumn {
+        let col = NSTableColumn(identifier: .size)
+        col.title = "Size"
+        col.minWidth = 70
+        col.width = 90
+        col.sortDescriptorPrototype = NSSortDescriptor(key: "size", ascending: false)
+        return col
+    }
+
+    static func makeModifiedColumn() -> NSTableColumn {
+        let col = NSTableColumn(identifier: .modified)
+        col.title = "Modified"
+        col.minWidth = 140
+        col.width = 180
+        col.sortDescriptorPrototype = NSSortDescriptor(key: "modified", ascending: false)
+        return col
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
@@ -85,7 +105,12 @@ struct FileListView: NSViewRepresentable {
         table.allowsEmptySelection = true
         table.allowsColumnReordering = false
         table.allowsColumnResizing = true
-        table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
+        // Uniform so all visible columns scale together when the pane narrows
+        // rather than the last column eating every pixel while earlier ones
+        // stay at their default widths (which pushed Size off-screen in dual
+        // pane). Responsive remove still kicks in below each column's min
+        // footprint so we don't end up clipping min-widths.
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
 
         // 3 columns: name (with icon), size, modified.
         let nameCol = NSTableColumn(identifier: .name)
@@ -95,19 +120,8 @@ struct FileListView: NSViewRepresentable {
         nameCol.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
         table.addTableColumn(nameCol)
 
-        let sizeCol = NSTableColumn(identifier: .size)
-        sizeCol.title = "Size"
-        sizeCol.minWidth = 70
-        sizeCol.width = 90
-        sizeCol.sortDescriptorPrototype = NSSortDescriptor(key: "size", ascending: false)
-        table.addTableColumn(sizeCol)
-
-        let modCol = NSTableColumn(identifier: .modified)
-        modCol.title = "Modified"
-        modCol.minWidth = 140
-        modCol.width = 180
-        modCol.sortDescriptorPrototype = NSSortDescriptor(key: "modified", ascending: false)
-        table.addTableColumn(modCol)
+        table.addTableColumn(Self.makeSizeColumn())
+        table.addTableColumn(Self.makeModifiedColumn())
 
         // Git column — only when the folder is actually a repo AND the
         // setting is on. An always-empty column is just visual noise outside
@@ -165,6 +179,18 @@ struct FileListView: NSViewRepresentable {
 
         context.coordinator.attach(table: table)
         scroll.documentView = table
+
+        // Responsive column hiding. NSScrollView's frame is what gets squeezed
+        // when the user splits the window into dual panes, so we key off its
+        // width and toggle Size / Modified visibility via the Coordinator.
+        scroll.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(FileListCoordinator.scrollFrameChanged(_:)),
+            name: NSView.frameDidChangeNotification,
+            object: scroll
+        )
+
         return scroll
     }
 
@@ -181,6 +207,10 @@ struct FileListView: NSViewRepresentable {
             onMoved: onMoved,
             undoManager: undoManager
         )
+        // Apply pane-width breakpoints before Git so the Git column always
+        // lands at the end of the column list.
+        context.coordinator.applyResponsiveColumns(scrollWidth: scroll.frame.width, table: table)
+
         // Sync Git column presence with the current setting AND whether
         // the active folder is a git repo. Re-evaluated on every update so
         // navigating into / out of a repo adds / removes the column live.

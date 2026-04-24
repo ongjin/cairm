@@ -22,7 +22,21 @@
 	<string>1</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Cairn lists files inside your Music folder as part of browsing your home directory. It does not play, modify, or upload any media.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Cairn needs access to your Desktop to display and manage its files as a Finder replacement.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Cairn needs access to your Documents to display and manage its files as a Finder replacement.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Cairn needs access to your Downloads to display and manage its files as a Finder replacement.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 ongjin. MIT License.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Cairn lists and opens files on network volumes as a Finder replacement.</string>
+	<key>NSPhotosUsageDescription</key>
+	<string>Cairn lists files inside your Pictures folder as part of browsing your home directory. It does not read photo contents or metadata.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Cairn lists and opens files on removable volumes as a Finder replacement.</string>
 </dict>
 </plist>

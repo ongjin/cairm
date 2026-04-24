@@ -199,6 +199,77 @@ final class FileListCoordinator: NSObject,
         self.gitSnapshot = snap
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Responsive columns
+
+    /// Pane-width breakpoints below which Size / Modified auto-hide. Set just
+    /// above each column's cumulative minWidth footprint so we only drop a
+    /// column when it literally cannot fit alongside Name (and Size):
+    ///   - Name (180) + Size (70) + Modified (140) = 390 → 410 for Modified
+    ///   - Name (180) + Size (70) = 250 → 260 for Size
+    /// Above these, `.uniformColumnAutoresizingStyle` shrinks everything
+    /// proportionally so all visible columns stay on screen.
+    private static let modifiedBreakpoint: CGFloat = 410
+    private static let sizeBreakpoint: CGFloat = 260
+
+    /// Posted by NSScrollView whenever SwiftUI or AppKit resizes the pane.
+    /// Re-runs the breakpoint logic against the new width so dual-pane split
+    /// / un-split flips visible columns live.
+    @objc func scrollFrameChanged(_ note: Notification) {
+        guard let scroll = note.object as? NSScrollView,
+              let table = scroll.documentView as? NSTableView else { return }
+        applyResponsiveColumns(scrollWidth: scroll.frame.width, table: table)
+    }
+
+    /// Adds or removes Size / Modified columns based on the pane width.
+    /// Canonical left-to-right order: Name, [Folder], [Size], [Modified], [Git].
+    /// Callers are expected to apply Git ordering themselves after this runs
+    /// so Git reliably lands at the tail.
+    func applyResponsiveColumns(scrollWidth: CGFloat, table: NSTableView) {
+        // Pre-layout / zero-width calls would wipe the column set on first
+        // build; skip them and wait for the real frame notification.
+        guard scrollWidth > 0 else { return }
+
+        let wantModified = scrollWidth >= Self.modifiedBreakpoint
+        let wantSize = scrollWidth >= Self.sizeBreakpoint
+
+        if wantSize, table.tableColumn(withIdentifier: .size) == nil {
+            table.addTableColumn(FileListView.makeSizeColumn())
+            Self.moveAfterFirstAnchor(in: table, identifier: .size, anchors: [.folder, .name])
+        } else if !wantSize, let col = table.tableColumn(withIdentifier: .size) {
+            table.removeTableColumn(col)
+        }
+
+        if wantModified, table.tableColumn(withIdentifier: .modified) == nil {
+            table.addTableColumn(FileListView.makeModifiedColumn())
+            Self.moveAfterFirstAnchor(in: table, identifier: .modified, anchors: [.size, .folder, .name])
+        } else if !wantModified, let col = table.tableColumn(withIdentifier: .modified) {
+            table.removeTableColumn(col)
+        }
+    }
+
+    /// Moves the column with `identifier` to immediately after the first
+    /// anchor in `anchors` that currently exists in the table. Used by both
+    /// responsive Size/Modified and the Folder-column insertion path to
+    /// preserve the canonical ordering after `addTableColumn` appends.
+    private static func moveAfterFirstAnchor(in table: NSTableView,
+                                             identifier: NSUserInterfaceItemIdentifier,
+                                             anchors: [NSUserInterfaceItemIdentifier]) {
+        guard let currentIdx = table.tableColumns.firstIndex(where: { $0.identifier == identifier }) else { return }
+        for anchor in anchors {
+            if let anchorIdx = table.tableColumns.firstIndex(where: { $0.identifier == anchor }) {
+                let target = anchorIdx + 1
+                if currentIdx != target {
+                    table.moveColumn(currentIdx, toColumn: target)
+                }
+                return
+            }
+        }
+    }
+
     /// Toggles the "Folder" column used by subtree search results. Called by
     /// `FileListView.updateNSView`; idempotent on repeated calls.
     func setFolderColumnVisible(_ visible: Bool) {

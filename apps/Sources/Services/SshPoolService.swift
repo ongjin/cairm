@@ -1,8 +1,13 @@
 import Foundation
 import Observation
 
+protocol SftpHandleProviding: AnyObject {
+    func sftpHandle(for target: SshTarget) async throws -> SftpHandleBridge
+    func invalidate(_ target: SshTarget)
+}
+
 @Observable
-final class SshPoolService {
+final class SshPoolService: SftpHandleProviding {
     private let pool: SshPoolBridge
     private let hostKeyResolver: HostKeyAlertResolver
     private let passphraseResolver: PassphraseResolver
@@ -85,12 +90,7 @@ final class SshPoolService {
     func sftpHandle(for target: SshTarget) async throws -> SftpHandleBridge {
         if let h = sftpHandles[target] { return h }
         let pool = self.pool
-        let key = ConnKeyBridge(
-            user: RustString(target.user),
-            hostname: RustString(target.hostname),
-            port: target.port,
-            config_hash_hex: RustString(target.configHashHex)
-        )
+        let key = connKey(for: target)
         let h = try await Task.detached(priority: .userInitiated) {
             try ssh_open_sftp(pool, key)
         }.value
@@ -99,15 +99,15 @@ final class SshPoolService {
         return h
     }
 
+    func invalidate(_ target: SshTarget) {
+        sftpHandles.removeValue(forKey: target)
+        ssh_pool_disconnect(pool, connKey(for: target))
+        sessions[target]?.status = .error("session dropped")
+    }
+
     func disconnect(_ target: SshTarget) {
         sftpHandles.removeValue(forKey: target)
-        let key = ConnKeyBridge(
-            user: RustString(target.user),
-            hostname: RustString(target.hostname),
-            port: target.port,
-            config_hash_hex: RustString(target.configHashHex)
-        )
-        ssh_pool_disconnect(pool, key)
+        ssh_pool_disconnect(pool, connKey(for: target))
         sessions.removeValue(forKey: target)
         aliasToTarget = aliasToTarget.filter { $0.value != target }
     }
@@ -117,6 +117,15 @@ final class SshPoolService {
         ssh_pool_close_all(pool)
         sessions.removeAll()
         aliasToTarget.removeAll()
+    }
+
+    private func connKey(for target: SshTarget) -> ConnKeyBridge {
+        ConnKeyBridge(
+            user: RustString(target.user),
+            hostname: RustString(target.hostname),
+            port: target.port,
+            config_hash_hex: RustString(target.configHashHex)
+        )
     }
 
     private func refreshSessionStates() {
@@ -129,6 +138,21 @@ final class SshPoolService {
             }
         }
     }
+
+    #if DEBUG
+    func seedCachedSftpHandleForTesting(_ handle: SftpHandleBridge, for target: SshTarget) {
+        sftpHandles[target] = handle
+        sessions[target] = SessionState(
+            status: .active,
+            lastActivity: Date(),
+            resolvedSummary: "\(target.user)@\(target.hostname):\(target.port)"
+        )
+    }
+
+    func hasCachedSftpHandleForTesting(for target: SshTarget) -> Bool {
+        sftpHandles[target] != nil
+    }
+    #endif
 }
 
 struct ConnectSpecOverrides {

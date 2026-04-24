@@ -103,19 +103,24 @@ struct ContentView: View {
     }
 
     /// History navigation from non-menu inputs. Some mice emit real side-button
-    /// events; others have drivers that rewrite those buttons to ⌘← / ⌘→.
+    /// events; others have drivers that rewrite those buttons to key or gesture
+    /// events.
     private func installHistoryInputMonitor() {
         guard historyInputMonitor == nil else { return }
 
         let router = historyInputRouter
         let panes = dualPane
-        historyInputMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .otherMouseUp, .keyDown]) { event in
+        historyInputMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .otherMouseUp, .systemDefined, .swipe, .keyDown]) { event in
             let routing: HistoryNavigationRouting
             switch event.type {
             case .otherMouseDown:
                 routing = router.routeOtherMouseDown(buttonNumber: event.buttonNumber)
             case .otherMouseUp:
                 routing = router.routeOtherMouseUp(buttonNumber: event.buttonNumber)
+            case .systemDefined where event.subtype.rawValue == HistoryNavigationInputRouter.auxMouseButtonsSubtype:
+                routing = router.routeAuxMouseButtons(changedButtons: event.data1, pressedButtons: event.data2)
+            case .swipe:
+                routing = HistoryNavigationInputRouter.routeSwipe(deltaX: event.deltaX, deltaY: event.deltaY)
             case .keyDown:
                 routing = HistoryNavigationInputRouter.routeKeyDown(keyCode: event.keyCode, modifiers: event.modifierFlags)
             default:

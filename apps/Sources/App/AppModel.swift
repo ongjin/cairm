@@ -129,22 +129,62 @@ final class AppModel {
             ?? store.recent.first { $0.lastKnownPath == path }
     }
 
-    /// Sidebar auto-favorite tap handler. Downloads is covered by the
-    /// `files.downloads.read-write` entitlement — no prompt. Desktop and
-    /// Documents trigger a one-time macOS TCC prompt on first sandbox read
-    /// (answered via the `NSDesktop/DocumentsFolderUsageDescription` strings
-    /// in Info.plist); once approved the grant persists, so we just navigate
-    /// directly instead of piping through an NSOpenPanel that produces a
-    /// confusing double-dialog (TCC, then "Grant Access"). If a scoped
-    /// bookmark already exists (e.g. carried over from an older build that
-    /// did force the picker), reuse it so its ref-counting stays consistent.
+    /// Classifies whether a sidebar auto-favorite URL must be acquired via
+    /// NSOpenPanel on first use (so the Sandbox grants access via PowerBox
+    /// and we can persist a security-scoped bookmark) vs. can be opened
+    /// directly. Direct-open paths are:
+    ///   - `/Applications` (not a TCC-gated folder)
+    ///   - `~/Downloads` and its descendants (covered by the
+    ///     `files.downloads.read-write` entitlement)
+    /// Every other path — Desktop, Documents, Home, Pictures, Music, Movies,
+    /// arbitrary roots — returns `true` so the panel path runs.
+    static func autoFavoriteRequiresPicker(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        if path == "/Applications" || path.hasPrefix("/Applications/") { return false }
+        let downloads = FileManager.default
+            .homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads")
+            .standardizedFileURL.path
+        if path == downloads || path.hasPrefix(downloads + "/") { return false }
+        return true
+    }
+
+    /// Sidebar auto-favorite tap handler. The goal is "one prompt ever, then
+    /// silent": direct-open paths (Applications, Downloads) navigate without
+    /// any dialog; protected paths (Desktop, Documents, Home, …) route through
+    /// NSOpenPanel on first click — which is sandbox-native user consent, so
+    /// macOS skips the `NSFooFolderUsageDescription` TCC prompt entirely — and
+    /// persist the chosen URL as a security-scoped bookmark. Subsequent clicks
+    /// resolve the bookmark and navigate silently.
+    ///
+    /// We register as `.recent` rather than `.pinned` because the auto-favorite
+    /// row already occupies the sidebar's Favorites section; bouncing it into
+    /// the pinned list would duplicate the visible entry.
     @MainActor
     func openAutoFavorite(url: URL, in tab: Tab) {
         if let existing = Self.lookupExistingBookmark(for: url, in: bookmarks) {
             tab.navigate(to: existing)
             return
         }
-        tab.navigate(to: url)
+        if !Self.autoFavoriteRequiresPicker(url) {
+            tab.navigate(to: url)
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = url
+        panel.message = "Grant Cairn access to \(url.lastPathComponent)."
+        panel.prompt = "Grant Access"
+        panel.begin { [weak self, weak tab] response in
+            guard let self, let tab, response == .OK, let picked = panel.url else { return }
+            if let entry = try? self.bookmarks.register(picked, kind: .recent) {
+                tab.navigate(to: entry)
+            } else {
+                tab.navigate(to: picked)
+            }
+        }
     }
 
     // MARK: - Scene registry + SSH tab-usage view

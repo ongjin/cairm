@@ -46,4 +46,38 @@ final class AutoFavoriteBookmarkTests: XCTestCase {
         XCTAssertEqual(found?.id, entry.id)
     }
 
+    // MARK: - autoFavoriteRequiresPicker classification
+
+    func test_requiresPicker_applicationsIsDirect() {
+        XCTAssertFalse(AppModel.autoFavoriteRequiresPicker(URL(fileURLWithPath: "/Applications")))
+        XCTAssertFalse(AppModel.autoFavoriteRequiresPicker(URL(fileURLWithPath: "/Applications/Safari.app")))
+    }
+
+    func test_requiresPicker_downloadsIsDirect() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        XCTAssertFalse(AppModel.autoFavoriteRequiresPicker(home.appendingPathComponent("Downloads")))
+        XCTAssertFalse(AppModel.autoFavoriteRequiresPicker(home.appendingPathComponent("Downloads/nested/thing.txt")))
+    }
+
+    func test_requiresPicker_desktopAndDocumentsRequirePanel() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        XCTAssertTrue(AppModel.autoFavoriteRequiresPicker(home.appendingPathComponent("Desktop")))
+        XCTAssertTrue(AppModel.autoFavoriteRequiresPicker(home.appendingPathComponent("Documents")))
+    }
+
+    func test_requiresPicker_homeAndMediaFoldersRequirePanel() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        XCTAssertTrue(AppModel.autoFavoriteRequiresPicker(home))
+        XCTAssertTrue(AppModel.autoFavoriteRequiresPicker(home.appendingPathComponent("Music")))
+        XCTAssertTrue(AppModel.autoFavoriteRequiresPicker(home.appendingPathComponent("Pictures")))
+        XCTAssertTrue(AppModel.autoFavoriteRequiresPicker(home.appendingPathComponent("Movies")))
+    }
+
+    func test_requiresPicker_handlesPathStandardization() {
+        // `/Applications/./Safari.app` should still classify as direct.
+        let dotted = URL(fileURLWithPath: "/Applications")
+            .appendingPathComponent(".")
+            .appendingPathComponent("Safari.app")
+        XCTAssertFalse(AppModel.autoFavoriteRequiresPicker(dotted))
+    }
 }

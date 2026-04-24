@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# Render apps/Resources/AppIcon.svg → the 10 PNGs required by AppIcon.appiconset.
-# Requires: rsvg-convert (brew install librsvg).
+# Render apps/Resources/AppIcon.png → the 10 PNGs required by AppIcon.appiconset.
+# Requires: ImageMagick (brew install imagemagick).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/apps/Resources/AppIcon.svg"
+SRC="$ROOT/apps/Resources/AppIcon.png"
 OUT="$ROOT/apps/Resources/Assets.xcassets/AppIcon.appiconset"
 
-if ! command -v rsvg-convert >/dev/null 2>&1; then
-  echo "error: rsvg-convert not found. install with: brew install librsvg" >&2
+if ! command -v magick >/dev/null 2>&1; then
+  echo "error: magick not found. install with: brew install imagemagick" >&2
   exit 1
 fi
 
-[[ -f "$SRC" ]] || { echo "error: missing SVG source at $SRC" >&2; exit 1; }
+[[ -f "$SRC" ]] || { echo "error: missing PNG source at $SRC" >&2; exit 1; }
 mkdir -p "$OUT"
 
 render() {
   local px=$1 name=$2
-  rsvg-convert -w "$px" -h "$px" -f png "$SRC" -o "$OUT/$name"
+  magick "$SRC" -resize "${px}x${px}" "$OUT/$name"
   # sanity-check output dimensions
   local got
   got="$(sips -g pixelWidth "$OUT/$name" | awk '/pixelWidth/ {print $2}')"

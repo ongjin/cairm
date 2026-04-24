@@ -4,19 +4,59 @@ use cairn_index::{
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 
-struct HandleEntry {
+struct SharedIndex {
     store: Arc<IndexStore>,
-    _watcher: Option<Watcher>,
+    _watcher: Mutex<Option<Watcher>>,
     root: PathBuf,
+    ready: (Mutex<bool>, Condvar),
 }
 
-static REGISTRY: OnceLock<Mutex<HashMap<u64, HandleEntry>>> = OnceLock::new();
+impl SharedIndex {
+    fn new(store: Arc<IndexStore>, root: PathBuf) -> Self {
+        Self {
+            store,
+            _watcher: Mutex::new(None),
+            root,
+            ready: (Mutex::new(false), Condvar::new()),
+        }
+    }
+
+    fn wait_until_ready(&self) {
+        let (lock, cv) = &self.ready;
+        let mut ready = lock.lock().unwrap();
+        while !*ready {
+            ready = cv.wait(ready).unwrap();
+        }
+    }
+
+    fn mark_ready(&self) {
+        let (lock, cv) = &self.ready;
+        *lock.lock().unwrap() = true;
+        cv.notify_all();
+    }
+
+    fn set_watcher(&self, watcher: Option<Watcher>) {
+        *self._watcher.lock().unwrap() = watcher;
+    }
+}
+
+struct Registry {
+    handles: HashMap<u64, Arc<SharedIndex>>,
+    roots: HashMap<PathBuf, Weak<SharedIndex>>,
+}
+
+static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
 static NEXT_ID: OnceLock<Mutex<u64>> = OnceLock::new();
 
-fn registry() -> &'static Mutex<HashMap<u64, HandleEntry>> {
-    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+fn registry() -> &'static Mutex<Registry> {
+    REGISTRY.get_or_init(|| {
+        Mutex::new(Registry {
+            handles: HashMap::new(),
+            roots: HashMap::new(),
+        })
+    })
 }
 fn next_id() -> u64 {
     let m = NEXT_ID.get_or_init(|| Mutex::new(1));
@@ -128,68 +168,82 @@ impl SymbolHitList {
 pub fn ffi_index_open(root: String) -> u64 {
     let root_p = PathBuf::from(&root);
     let db_path = cache_path_for(&root_p);
-    let store = match IndexStore::open(&db_path) {
-        Ok(s) => Arc::new(s),
-        Err(e) => {
-            eprintln!("cairn: ffi_index_open failed for {root:?} (db {db_path:?}): {e}");
-            return 0;
+    let (shared, is_new) = {
+        let mut reg = registry().lock().unwrap();
+        if let Some(existing) = reg.roots.get(&root_p).and_then(Weak::upgrade) {
+            (existing, false)
+        } else {
+            reg.roots.remove(&root_p);
+            let store = match IndexStore::open(&db_path) {
+                Ok(s) => Arc::new(s),
+                Err(e) => {
+                    eprintln!("cairn: ffi_index_open failed for {root:?} (db {db_path:?}): {e}");
+                    return 0;
+                }
+            };
+            let shared = Arc::new(SharedIndex::new(store, root_p.clone()));
+            reg.roots.insert(root_p.clone(), Arc::downgrade(&shared));
+            (shared, true)
         }
     };
-    // Phase 1: walk + commit files. Fast — one fsync for the whole walk.
-    let source_files = match walk_into(&root_p, &store) {
-        Ok((_, srcs)) => srcs,
-        Err(_) => Vec::new(),
-    };
 
-    // Phase 2: tree-sitter symbol extraction off the critical path. The
-    // file index is already queryable; symbol search (`@`) starts working
-    // once this finishes (a few seconds for a typical project, longer on
-    // huge roots — never blocks the UI).
-    let store_for_symbols = store.clone();
-    std::thread::spawn(move || {
-        // Flush in chunks so the redb write lock isn't held for the whole
-        // project. Without this, a large repo (~admin-app w/ thousands of
-        // .ts files) can starve the watcher's writes long enough that the
-        // app appears to freeze. 256 was chosen empirically: large enough
-        // that fsync-per-batch cost is amortised, small enough that lock
-        // hold time stays under ~50ms even on slow disks.
-        const CHUNK: usize = 256;
-        let mut buf: Vec<(String, Vec<cairn_index::SymbolRow>)> = Vec::with_capacity(CHUNK);
-        for (rel, abs) in source_files {
-            let syms = cairn_index::symbols::extract_from_file(&abs);
-            if !syms.is_empty() {
-                buf.push((rel, syms));
-            }
-            if buf.len() >= CHUNK {
-                let _ = store_for_symbols.bulk_put_symbols(&buf);
-                buf.clear();
-            }
-        }
-        if !buf.is_empty() {
-            let _ = store_for_symbols.bulk_put_symbols(&buf);
-        }
-    });
+    if is_new {
+        // Phase 1: walk + commit files. Fast — one fsync for the whole walk.
+        let source_files = match walk_into(&root_p, &shared.store) {
+            Ok((_, srcs)) => srcs,
+            Err(_) => Vec::new(),
+        };
 
-    let watcher = watch(&root_p, store.clone()).ok();
+        // Phase 2: tree-sitter symbol extraction off the critical path. The
+        // file index is already queryable; symbol search (`@`) starts working
+        // once this finishes (a few seconds for a typical project, longer on
+        // huge roots — never blocks the UI).
+        let shared_for_symbols = shared.clone();
+        std::thread::spawn(move || {
+            // Flush in chunks so the redb write lock isn't held for the whole
+            // project. Without this, a large repo (~admin-app w/ thousands of
+            // .ts files) can starve the watcher's writes long enough that the
+            // app appears to freeze. 256 was chosen empirically: large enough
+            // that fsync-per-batch cost is amortised, small enough that lock
+            // hold time stays under ~50ms even on slow disks.
+            const CHUNK: usize = 256;
+            let mut buf: Vec<(String, Vec<cairn_index::SymbolRow>)> = Vec::with_capacity(CHUNK);
+            for (rel, abs) in source_files {
+                let syms = cairn_index::symbols::extract_from_file(&abs);
+                if !syms.is_empty() {
+                    buf.push((rel, syms));
+                }
+                if buf.len() >= CHUNK {
+                    let _ = shared_for_symbols.store.bulk_put_symbols(&buf);
+                    buf.clear();
+                }
+            }
+            if !buf.is_empty() {
+                let _ = shared_for_symbols.store.bulk_put_symbols(&buf);
+            }
+        });
+
+        shared.set_watcher(watch(&root_p, shared.store.clone()).ok());
+        shared.mark_ready();
+    } else {
+        // Another Tab is already opening this root. Wait until its initial
+        // walk has populated the file table so this handle behaves like a
+        // normal ready IndexService instead of returning empty results.
+        shared.wait_until_ready();
+    }
+
     let id = next_id();
-    registry().lock().unwrap().insert(
-        id,
-        HandleEntry {
-            store,
-            _watcher: watcher,
-            root: root_p,
-        },
-    );
+    registry().lock().unwrap().handles.insert(id, shared);
     id
 }
 
 pub fn ffi_index_close(handle: u64) {
-    registry().lock().unwrap().remove(&handle);
+    registry().lock().unwrap().handles.remove(&handle);
 }
 
 pub fn ffi_index_query_fuzzy(handle: u64, query: String, limit: u32) -> FileHitList {
     let reg = registry().lock().unwrap();
-    let entry = match reg.get(&handle) {
+    let entry = match reg.handles.get(&handle) {
         Some(e) => e,
         None => return FileHitList { hits: Vec::new() },
     };
@@ -207,7 +261,7 @@ pub fn ffi_index_query_fuzzy(handle: u64, query: String, limit: u32) -> FileHitL
 
 pub fn ffi_index_query_symbols(handle: u64, query: String, limit: u32) -> SymbolHitList {
     let reg = registry().lock().unwrap();
-    let entry = match reg.get(&handle) {
+    let entry = match reg.handles.get(&handle) {
         Some(e) => e,
         None => return SymbolHitList { hits: Vec::new() },
     };
@@ -229,7 +283,7 @@ pub fn ffi_index_query_symbols(handle: u64, query: String, limit: u32) -> Symbol
 
 pub fn ffi_index_query_git_dirty(handle: u64) -> FileHitList {
     let reg = registry().lock().unwrap();
-    let entry = match reg.get(&handle) {
+    let entry = match reg.handles.get(&handle) {
         Some(e) => e,
         None => return FileHitList { hits: Vec::new() },
     };
@@ -252,6 +306,48 @@ pub fn ffi_index_query_git_dirty(handle: u64) -> FileHitList {
         });
     }
     FileHitList { hits: out }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_root(name: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("cairn-ffi-{name}-{suffix}"));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn index_open_allows_multiple_handles_for_same_root() {
+        let root = temp_root("shared-index");
+        fs::write(root.join("needle.txt"), "x").unwrap();
+        let db_path = cache_path_for(&root);
+
+        let first = ffi_index_open(root.to_string_lossy().into_owned());
+        let second = ffi_index_open(root.to_string_lossy().into_owned());
+
+        if first != 0 {
+            ffi_index_close(first);
+        }
+        if second != 0 {
+            ffi_index_close(second);
+        }
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_file(db_path);
+
+        assert_ne!(first, 0, "first index open should succeed");
+        assert_ne!(
+            second, 0,
+            "second index open for the same root should share the live index"
+        );
+    }
 }
 
 // ---- content session ----
@@ -328,7 +424,7 @@ pub fn ffi_content_start(handle: u64, pattern: String, is_regex: bool) -> u64 {
     };
     let root = {
         let reg = registry().lock().unwrap();
-        match reg.get(&handle) {
+        match reg.handles.get(&handle) {
             Some(e) => e.root.clone(),
             None => return 0,
         }

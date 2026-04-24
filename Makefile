@@ -7,14 +7,41 @@ DERIVED := build/DerivedData
 APP     := $(DERIVED)/Build/Products/$(CONFIG)/Cairn.app
 WATCH_SOURCES := apps/Sources crates
 
+# Code signing.
+#
+# Default: ad-hoc linker-signed. Fast and dependency-free, but macOS TCC
+# re-prompts for Desktop/Documents/Apple Music/etc. on every rebuild because
+# the CDHash changes and TCC treats each build as a new app.
+#
+# To persist TCC grants across rebuilds, set DEV_IDENTITY in your shell to
+# the SHA1 of a codesigning certificate (free Apple ID "Apple Development"
+# cert is enough). Discover with:
+#
+#   security find-identity -v -p codesigning
+#
+# Then export it, e.g.:
+#
+#   export DEV_IDENTITY=5AF97180F6DFA9E09C25339E6999161857A9A6BB
+#
+# The SHA1-based form is preferred over the human name ("Apple Development")
+# because Xcode's automatic signing insists on a provisioning profile for
+# named identities, which requires a paid Developer Program membership.
+DEV_IDENTITY ?=
+ifeq ($(strip $(DEV_IDENTITY)),)
+  SIGNING := CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+  SIGNING_BANNER := "signing: ad-hoc (set DEV_IDENTITY=<cert-SHA1> to persist TCC grants)"
+else
+  SIGNING := CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$(DEV_IDENTITY)" PROVISIONING_PROFILE_SPECIFIER=""
+  SIGNING_BANNER := "signing: manual / identity $(DEV_IDENTITY)"
+endif
+
 XCBUILD := xcodebuild \
               -project $(PROJECT) \
               -scheme $(SCHEME) \
               -configuration $(CONFIG) \
               -destination "platform=macOS" \
               -derivedDataPath $(CURDIR)/$(DERIVED) \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY=""
+              $(SIGNING)
 
 .PHONY: help rust swift build run dev test clean
 
@@ -28,6 +55,7 @@ rust: ## Rust FFI universal static lib 빌드 + Swift 바인딩 동기화
 
 swift: rust ## xcodegen regenerate + Swift 앱 빌드
 	@cd apps && xcodegen generate
+	@echo $(SIGNING_BANNER)
 	@$(XCBUILD) build
 
 build: swift ## 풀 빌드 (Rust + Swift)

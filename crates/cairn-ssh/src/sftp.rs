@@ -6,11 +6,15 @@ use futures::stream::{FuturesOrdered, StreamExt};
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::rawsession::RawSftpSession;
 use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
+use tracing::debug;
 
 use crate::error::{Result, SshError};
 use crate::pool::SshPool;
 use crate::transfer::{CancelFlag, ProgressSink};
 use crate::types::ConnKey;
+
+const DEFAULT_MAX_READ_LEN: u64 = 32 * 1024;
+const DEFAULT_MAX_WRITE_LEN: u64 = 32 * 1024;
 
 // ---------------------------------------------------------------------------
 // Public data types
@@ -77,6 +81,8 @@ pub struct SftpHandle {
     key: ConnKey,
     session: Arc<RawSftpSession>,
     supports_copy_data: bool,
+    max_read_len: u64,
+    max_write_len: u64,
 }
 
 impl SftpHandle {
@@ -101,6 +107,17 @@ impl SftpHandle {
         let supports_copy_data = version.extensions.contains_key("copy-data")
             || version.extensions.contains_key("copy-data@openssh.com");
 
+        let (max_read_len, max_write_len) = match raw.limits().await {
+            Ok(limits) => (
+                max_read_len_or_default(limits.max_read_len),
+                max_write_len_or_default(limits.max_write_len),
+            ),
+            Err(e) => {
+                debug!("sftp limits extension unavailable: {e:?}");
+                (DEFAULT_MAX_READ_LEN, DEFAULT_MAX_WRITE_LEN)
+            }
+        };
+
         pool.touch(&key);
 
         Ok(Self {
@@ -108,6 +125,8 @@ impl SftpHandle {
             key,
             session: Arc::new(raw),
             supports_copy_data,
+            max_read_len,
+            max_write_len,
         })
     }
 
@@ -116,6 +135,14 @@ impl SftpHandle {
     /// request a server-side copy instead of a client-mediated transfer.
     pub fn supports_server_side_copy(&self) -> bool {
         self.supports_copy_data
+    }
+
+    fn max_read_chunk(&self) -> u32 {
+        max_read_chunk_for_limit(self.max_read_len)
+    }
+
+    fn max_write_chunk(&self) -> usize {
+        max_write_chunk_for_limit(self.max_write_len)
     }
 
     /// Resolve a server-side path to its absolute canonical form.
@@ -352,10 +379,10 @@ impl SftpHandle {
 
     /// Download a remote file to a local path.
     ///
-    /// Reads in 256 KiB chunks. Before each chunk read the `cancel` flag is
-    /// checked; if set, the function returns [`SshError::Cancelled`] and
-    /// leaves the (partial) destination file in place so the caller can
-    /// inspect what arrived.
+    /// Reads in chunks capped by the server's advertised SFTP limits. Before
+    /// each chunk read the `cancel` flag is checked; if set, the function
+    /// returns [`SshError::Cancelled`] and leaves the (partial) destination
+    /// file in place so the caller can inspect what arrived.
     ///
     /// `progress` is called after each successful chunk with the running
     /// byte total so a Swift actor can update a progress bar without
@@ -386,8 +413,8 @@ impl SftpHandle {
             .map_err(map_sftp_err)?
             .handle;
 
-        const CHUNK: u32 = 256 * 1024;
         const MAX_IN_FLIGHT: usize = 16;
+        let chunk = self.max_read_chunk();
 
         let mut in_flight: FuturesOrdered<_> = FuturesOrdered::new();
         let mut request_offset: u64 = 0;
@@ -408,9 +435,9 @@ impl SftpHandle {
                 let off = request_offset;
                 let session = Arc::clone(&self.session);
                 let handle_str = handle.clone();
-                let read_fut = async move { session.read(handle_str.as_str(), off, CHUNK).await };
+                let read_fut = async move { session.read(handle_str.as_str(), off, chunk).await };
                 in_flight.push_back(read_fut);
-                request_offset += CHUNK as u64;
+                request_offset += chunk as u64;
             }
 
             if in_flight.is_empty() {
@@ -454,9 +481,10 @@ impl SftpHandle {
 
     /// Upload a local file to a remote path.
     ///
-    /// Writes in 256 KiB chunks. Before each chunk write the `cancel` flag
-    /// is checked; if set, the function returns [`SshError::Cancelled`] and
-    /// leaves the (partial) remote file in place.
+    /// Writes in chunks capped by the server's advertised SFTP limits. Before
+    /// each chunk write the `cancel` flag is checked; if set, the function
+    /// returns [`SshError::Cancelled`] and leaves the (partial) remote file in
+    /// place.
     ///
     /// `progress` is called after each successful chunk with the running
     /// byte total.
@@ -486,8 +514,8 @@ impl SftpHandle {
             .map_err(map_sftp_err)?
             .handle;
 
-        const CHUNK: usize = 256 * 1024;
         const MAX_IN_FLIGHT: usize = 16;
+        let chunk = self.max_write_chunk();
 
         let mut in_flight: FuturesOrdered<_> = FuturesOrdered::new();
         let mut offset: u64 = 0;
@@ -501,7 +529,7 @@ impl SftpHandle {
             }
 
             while !eof_reached && in_flight.len() < MAX_IN_FLIGHT {
-                let mut buf = vec![0u8; CHUNK];
+                let mut buf = vec![0u8; chunk];
                 let n = src.read(&mut buf).await.map_err(SshError::Io)?;
                 if n == 0 {
                     eof_reached = true;
@@ -657,6 +685,32 @@ fn join_remote_path(dir: &str, name: &str) -> String {
     }
 }
 
+fn max_read_len_or_default(max_read_len: u64) -> u64 {
+    if max_read_len == 0 {
+        DEFAULT_MAX_READ_LEN
+    } else {
+        max_read_len
+    }
+}
+
+fn max_write_len_or_default(max_write_len: u64) -> u64 {
+    if max_write_len == 0 {
+        DEFAULT_MAX_WRITE_LEN
+    } else {
+        max_write_len
+    }
+}
+
+fn max_read_chunk_for_limit(max_read_len: u64) -> u32 {
+    max_read_len_or_default(max_read_len).min(u32::MAX as u64) as u32
+}
+
+fn max_write_chunk_for_limit(max_write_len: u64) -> usize {
+    max_write_len_or_default(max_write_len)
+        .min(u32::MAX as u64)
+        .min(usize::MAX as u64) as usize
+}
+
 // ---------------------------------------------------------------------------
 // Conversion helpers
 // ---------------------------------------------------------------------------
@@ -699,6 +753,23 @@ fn map_sftp_err(e: SftpError) -> SshError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn write_chunk_uses_default_limit_typical_limit_and_saturates() {
+        assert_eq!(max_write_chunk_for_limit(0), DEFAULT_MAX_WRITE_LEN as usize);
+        assert_eq!(max_write_chunk_for_limit(30 * 1024), 30 * 1024);
+        assert_eq!(
+            max_write_chunk_for_limit(4 * 1024 * 1024 * 1024),
+            u32::MAX as usize
+        );
+    }
+
+    #[test]
+    fn read_chunk_uses_default_limit_typical_limit_and_saturates() {
+        assert_eq!(max_read_chunk_for_limit(0), DEFAULT_MAX_READ_LEN as u32);
+        assert_eq!(max_read_chunk_for_limit(30 * 1024), 30 * 1024);
+        assert_eq!(max_read_chunk_for_limit(4 * 1024 * 1024 * 1024), u32::MAX);
+    }
 
     #[test]
     fn download_nonzero_short_read_is_not_eof() {
