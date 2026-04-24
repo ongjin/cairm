@@ -15,6 +15,9 @@ final class RemoteEditController {
 
     private let transfers: TransferController
     private let workRoot: URL
+    @ObservationIgnored private var pendingUploads: [UUID: Task<Void, Never>] = [:]
+
+    private static let debounceMs: UInt64 = 800
 
     init(transfers: TransferController,
          workRoot: URL = FileManager.default
@@ -83,6 +86,23 @@ final class RemoteEditController {
             let message = String(describing: error)
             session.state = .failed(message)
             return .failed(message)
+        }
+    }
+
+    func armWatching(for id: UUID, via provider: FileSystemProvider) {
+        guard let session = activeSessions[id] else { return }
+        session.onLocalChange = { [weak self] in
+            self?.scheduleUpload(id: id, via: provider)
+        }
+        session.startWatching()
+    }
+
+    private func scheduleUpload(id: UUID, via provider: FileSystemProvider) {
+        pendingUploads[id]?.cancel()
+        pendingUploads[id] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.debounceMs * 1_000_000)
+            if Task.isCancelled { return }
+            _ = try? await self?.uploadSession(id, via: provider)
         }
     }
 }

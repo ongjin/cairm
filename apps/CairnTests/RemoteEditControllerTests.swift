@@ -33,6 +33,22 @@ final class RemoteEditControllerTests: XCTestCase {
         XCTAssertEqual(outcome, .conflict)
         XCTAssertEqual(session.state, .conflict)
     }
+
+    func test_localWrite_schedulesDebouncedUpload() async throws {
+        let provider = InMemoryFSProvider(files: ["/tmp/f": Data("orig".utf8)])
+        let controller = RemoteEditController(transfers: TransferController())
+        let session = try await controller.beginSession(
+            remotePath: FSPath(provider: .ssh(stubTarget), path: "/tmp/f"),
+            via: provider
+        )
+        controller.armWatching(for: session.id, via: provider)
+        try "edited".write(to: session.tempURL, atomically: true, encoding: .utf8)
+
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+
+        XCTAssertEqual(provider.readSync("/tmp/f"), Data("edited".utf8))
+        XCTAssertEqual(session.state, .done)
+    }
 }
 
 final class InMemoryFSProvider: FileSystemProvider {
@@ -60,6 +76,10 @@ final class InMemoryFSProvider: FileSystemProvider {
 
     func setMtime(path: String, mtime: Date) {
         mtimes[path] = mtime
+    }
+
+    func readSync(_ path: String) -> Data {
+        files[path] ?? Data()
     }
 
     func exists(_ path: FSPath) async throws -> Bool {
