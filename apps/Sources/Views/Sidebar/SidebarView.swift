@@ -34,7 +34,10 @@ struct SidebarView: View {
                             label: fav.label,
                             url: fav.url,
                             isSelected: isCurrent(fav.url),
-                            onActivate: { activeScene.activeTab?.navigate(to: fav.url) }
+                            onActivate: {
+                                guard let tab = activeScene.activeTab else { return }
+                                app.openAutoFavorite(url: fav.url, in: tab)
+                            }
                         )
                     }
                     ForEach(app.bookmarks.pinned) { entry in
@@ -86,7 +89,10 @@ struct SidebarView: View {
                         label: NSUserName(),
                         url: home,
                         isSelected: isCurrent(home),
-                        onActivate: { activeScene.activeTab?.navigate(to: home) }
+                        onActivate: {
+                            guard let tab = activeScene.activeTab else { return }
+                            app.openAutoFavorite(url: home, in: tab)
+                        }
                     )
 
                     ForEach(app.sidebar.locations, id: \.self) { loc in

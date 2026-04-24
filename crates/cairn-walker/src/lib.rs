@@ -118,11 +118,18 @@ pub fn list_directory(path: &Path, config: &WalkerConfig) -> Result<Vec<FileEntr
         }
 
         let entry_path = entry.path();
-        let metadata = match entry.metadata() {
-            Ok(m) => m,
+
+        // Kind from readdir's `d_type` — no stat syscall, no TCC trigger.
+        // macOS TCC gates `stat("/Users/x/Desktop")`, `stat("…/Documents")`,
+        // etc. individually, so issuing stat while listing `~` produces a
+        // chain of blocking system prompts (one per gated folder).
+        // Using `file_type()` derives dir/file/symlink from the dirent buffer
+        // the parent read produced, which is already permitted once parent
+        // access was allowed. Stat is deferred until we've filtered for
+        // TCC-sensitive paths below.
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
             Err(_) => {
-                // Per spec: individual metadata failure is not fatal.
-                // Fall through with zeroed metadata.
                 out.push(FileEntry {
                     path: entry_path.clone(),
                     name: name.clone(),
@@ -136,9 +143,36 @@ pub fn list_directory(path: &Path, config: &WalkerConfig) -> Result<Vec<FileEntr
             }
         };
 
+        let raw_kind = if file_type.is_dir() {
+            FileKind::Directory
+        } else if file_type.is_symlink() {
+            FileKind::Symlink
+        } else {
+            FileKind::Regular
+        };
+
+        // Fetch size + mtime via stat, but skip the call for TCC-restricted
+        // paths (e.g. `~/Desktop`, `~/Documents`) — each of those is a
+        // synchronous user prompt under the macOS sandbox and listing `~`
+        // would fire one after another. Entries for those paths still appear
+        // in the listing with size=0 / mtime=0; when the user actually
+        // navigates into the folder, the resulting `read_dir(path)` is a
+        // single TCC check at the appropriate moment.
+        let skip_stat = is_tcc_restricted_path(&entry_path);
+        let metadata = if skip_stat {
+            None
+        } else {
+            fs::metadata(&entry_path).ok()
+        };
+
+        let resolved_kind = match (raw_kind, metadata.as_ref()) {
+            (FileKind::Symlink, Some(metadata)) if metadata.is_dir() => FileKind::Directory,
+            _ => raw_kind,
+        };
+
         // gitignore check (directories need trailing slash semantics for some matchers).
         if let Some(gi) = &gitignore {
-            let m = gi.matched(&entry_path, metadata.is_dir());
+            let m = gi.matched(&entry_path, matches!(resolved_kind, FileKind::Directory));
             if m.is_ignore() {
                 continue;
             }
@@ -149,35 +183,27 @@ pub fn list_directory(path: &Path, config: &WalkerConfig) -> Result<Vec<FileEntr
             continue;
         }
 
-        let kind = if metadata.is_dir() {
-            FileKind::Directory
-        } else if metadata.file_type().is_symlink() {
-            FileKind::Symlink
-        } else {
-            FileKind::Regular
-        };
-
-        let size = if matches!(kind, FileKind::Directory) {
+        let size = if matches!(resolved_kind, FileKind::Directory) {
             0
         } else {
-            metadata.len()
+            metadata.as_ref().map(|m| m.len()).unwrap_or(0)
         };
 
         let modified_unix = metadata
-            .modified()
-            .ok()
+            .as_ref()
+            .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
 
-        let icon_kind = classify_icon(&name, metadata.is_dir());
+        let icon_kind = classify_icon(&name, matches!(resolved_kind, FileKind::Directory));
 
         out.push(FileEntry {
             path: entry_path,
             name,
             size,
             modified_unix,
-            kind,
+            kind: resolved_kind,
             is_hidden,
             icon_kind,
         });
@@ -221,14 +247,74 @@ fn io_to_walker_error(e: std::io::Error) -> WalkerError {
     }
 }
 
+/// Returns true if `path` is a macOS TCC-gated absolute path that would
+/// fire a user consent prompt when `stat` is issued from a sandboxed app
+/// without the corresponding folder entitlement.
+///
+/// macOS enforces per-path TCC on Desktop / Documents / Downloads /
+/// Movies / Music / Pictures / Public (each has its own TCC domain).
+/// Listing `~` iterates these as children and would otherwise produce a
+/// cascade of blocking prompts — one per gated folder — before the user
+/// ever sees the home view. We skip stat for these to keep listing
+/// `~` itself prompt-free; access to their contents still goes through
+/// the standard single prompt when the user navigates in.
+fn is_tcc_restricted_path(path: &Path) -> bool {
+    const GATED: &[&str] = &[
+        "Desktop",
+        "Documents",
+        "Downloads",
+        "Movies",
+        "Music",
+        "Pictures",
+        "Public",
+    ];
+    let home = match std::env::var_os("HOME") {
+        Some(h) => PathBuf::from(h),
+        None => return false,
+    };
+    GATED.iter().any(|sub| path == home.join(sub))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::os::unix::fs::symlink;
 
     #[test]
     fn default_config_has_common_excludes() {
         let cfg = WalkerConfig::default();
         assert!(cfg.exclude_patterns.iter().any(|p| p == "node_modules"));
         assert!(cfg.exclude_patterns.iter().any(|p| p == ".git"));
+    }
+
+    #[test]
+    fn symlink_to_directory_is_resolved_to_directory_when_stat_is_allowed() {
+        let tempdir = tempfile::tempdir().expect("create tempdir");
+        let root = tempdir.path();
+
+        fs::create_dir(root.join("real_dir")).expect("create directory");
+        fs::write(root.join("real_file"), b"content").expect("create file");
+        symlink(root.join("real_dir"), root.join("dir_link")).expect("create dir symlink");
+        symlink(root.join("real_file"), root.join("file_link")).expect("create file symlink");
+
+        let entries = list_directory(
+            root,
+            &WalkerConfig {
+                show_hidden: true,
+                respect_gitignore: false,
+                exclude_patterns: Vec::new(),
+            },
+        )
+        .expect("list directory");
+        let kinds: HashMap<_, _> = entries
+            .into_iter()
+            .map(|entry| (entry.name, entry.kind))
+            .collect();
+
+        assert_eq!(kinds.get("real_dir"), Some(&FileKind::Directory));
+        assert_eq!(kinds.get("real_file"), Some(&FileKind::Regular));
+        assert_eq!(kinds.get("dir_link"), Some(&FileKind::Directory));
+        assert_eq!(kinds.get("file_link"), Some(&FileKind::Symlink));
     }
 }

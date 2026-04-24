@@ -120,6 +120,33 @@ final class AppModel {
         return try bookmarks.register(url, kind: isFirst ? .pinned : .recent)
     }
 
+    /// Finds an existing bookmark entry whose standardized path matches `url`.
+    /// Auto-favorite taps prefer a previously-granted scoped bookmark so the
+    /// ref-counted session in BookmarkStore keeps tracking correctly.
+    static func lookupExistingBookmark(for url: URL, in store: BookmarkStore) -> BookmarkEntry? {
+        let path = url.standardizedFileURL.path
+        return store.pinned.first { $0.lastKnownPath == path }
+            ?? store.recent.first { $0.lastKnownPath == path }
+    }
+
+    /// Sidebar auto-favorite tap handler. Downloads is covered by the
+    /// `files.downloads.read-write` entitlement — no prompt. Desktop and
+    /// Documents trigger a one-time macOS TCC prompt on first sandbox read
+    /// (answered via the `NSDesktop/DocumentsFolderUsageDescription` strings
+    /// in Info.plist); once approved the grant persists, so we just navigate
+    /// directly instead of piping through an NSOpenPanel that produces a
+    /// confusing double-dialog (TCC, then "Grant Access"). If a scoped
+    /// bookmark already exists (e.g. carried over from an older build that
+    /// did force the picker), reuse it so its ref-counting stays consistent.
+    @MainActor
+    func openAutoFavorite(url: URL, in tab: Tab) {
+        if let existing = Self.lookupExistingBookmark(for: url, in: bookmarks) {
+            tab.navigate(to: existing)
+            return
+        }
+        tab.navigate(to: url)
+    }
+
     // MARK: - Scene registry + SSH tab-usage view
 
     func register(scene: WindowSceneModel) {
