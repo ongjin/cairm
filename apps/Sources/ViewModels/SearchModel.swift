@@ -197,6 +197,12 @@ final class SearchModel {
     /// Abort any in-flight search and drop all results. Called on Escape /
     /// query-cleared / explicit teardown.
     func cancel() {
+        clear()
+    }
+
+    /// Abort any in-flight search, clear the query, and drop all results.
+    /// Called when navigation changes the folder underneath the search model.
+    func clear() {
         task?.cancel()
         task = nil
         remoteCancel?.cancel()
@@ -205,6 +211,7 @@ final class SearchModel {
             engine.cancelSearch(handle: h)
         }
         activeHandle = nil
+        query = ""
         results = []
         hitCount = 0
         phase = .idle

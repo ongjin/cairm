@@ -126,6 +126,7 @@ final class Tab: Identifiable {
         currentEntry = entry
         let path = FSPath(provider: .local, path: url.path)
         history.push(path)
+        search.clear()
         rebuildProviderServices(for: path)
 
         if entry.kind == .pinned {
@@ -149,6 +150,7 @@ final class Tab: Identifiable {
         self.provider = provider
         self.history = NavigationHistory()
         self.history.push(path)
+        search.clear()
         rebuildProviderServices(for: path)
         self.folder.clear()
         self.connectionPhase = .connecting(detail: "Loading remote directory…")
@@ -162,6 +164,7 @@ final class Tab: Identifiable {
             currentEntry = nil
         }
         history.push(path)
+        search.clear()
         rebuildProviderServices(for: path)
     }
 
@@ -184,6 +187,7 @@ final class Tab: Identifiable {
     @discardableResult
     func goBack() -> URL? {
         guard let path = history.goBack() else { return nil }
+        search.clear()
         resumeScopedAccessIfNeeded(for: path)
         rebuildProviderServices(for: path)
         guard case .local = path.provider else { return nil }
@@ -193,6 +197,7 @@ final class Tab: Identifiable {
     @discardableResult
     func goForward() -> URL? {
         guard let path = history.goForward() else { return nil }
+        search.clear()
         resumeScopedAccessIfNeeded(for: path)
         rebuildProviderServices(for: path)
         guard case .local = path.provider else { return nil }

@@ -24,6 +24,8 @@ final class SearchModelTests: XCTestCase {
         let supportsServerSideCopy = false
         var walkCalls: [WalkCall] = []
         var entries: [FileEntry] = []
+        var holdOpen = false
+        var lastCancel: CancelToken?
 
         init(target: SshTarget) {
             self.identifier = .ssh(target)
@@ -52,6 +54,7 @@ final class SearchModelTests: XCTestCase {
             includeHidden: Bool,
             cancel: CancelToken
         ) -> AsyncThrowingStream<FileEntry, Error> {
+            lastCancel = cancel
             walkCalls.append(.init(
                 root: root,
                 pattern: pattern,
@@ -60,9 +63,19 @@ final class SearchModelTests: XCTestCase {
                 includeHidden: includeHidden
             ))
             let entries = entries
+            let holdOpen = holdOpen
             return AsyncThrowingStream { continuation in
                 for entry in entries {
                     continuation.yield(entry)
+                }
+                if holdOpen {
+                    Task {
+                        while !cancel.isCancelled {
+                            try? await Task.sleep(nanoseconds: 10_000_000)
+                        }
+                        continuation.finish()
+                    }
+                    return
                 }
                 continuation.finish()
             }
@@ -232,5 +245,35 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(m.results.map { $0.name.toString() }, ["sshd_config"])
         XCTAssertEqual(m.hitCount, 1)
         XCTAssertEqual(m.phase, .done)
+    }
+
+    @MainActor
+    func test_clear_cancelsInflightRemoteWalk() async throws {
+        let target = SshTarget(user: "tester", hostname: "example.com", port: 22, configHashHex: "remote-clear")
+        let provider = RecordingWalkProvider(target: target)
+        provider.holdOpen = true
+        let m = SearchModel(engine: engine())
+        m.query = "conf"
+        m.scope = .subtree
+
+        m.refresh(
+            root: FSPath(provider: .ssh(target), path: "/etc"),
+            provider: provider,
+            showHidden: false,
+            sort: defaultSort(),
+            folderEntries: []
+        )
+
+        for _ in 0..<50 where provider.lastCancel == nil {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        m.clear()
+
+        XCTAssertTrue(provider.lastCancel?.isCancelled ?? false)
+        XCTAssertEqual(m.query, "")
+        XCTAssertTrue(m.results.isEmpty)
+        XCTAssertEqual(m.hitCount, 0)
+        XCTAssertEqual(m.phase, .idle)
     }
 }
