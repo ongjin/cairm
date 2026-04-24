@@ -105,4 +105,22 @@ final class RemoteEditController {
             _ = try? await self?.uploadSession(id, via: provider)
         }
     }
+
+    func endSession(_ id: UUID) {
+        guard let session = activeSessions[id] else { return }
+        session.stopWatching()
+        pendingUploads[id]?.cancel()
+        pendingUploads.removeValue(forKey: id)
+        let dir = session.tempURL.deletingLastPathComponent()
+        try? FileManager.default.removeItem(at: dir)
+        activeSessions.removeValue(forKey: id)
+    }
+
+    deinit {
+        MainActor.assumeIsolated {
+            for id in Array(activeSessions.keys) {
+                endSession(id)
+            }
+        }
+    }
 }

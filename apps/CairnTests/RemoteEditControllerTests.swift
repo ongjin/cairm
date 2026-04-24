@@ -49,6 +49,22 @@ final class RemoteEditControllerTests: XCTestCase {
         XCTAssertEqual(provider.readSync("/tmp/f"), Data("edited".utf8))
         XCTAssertEqual(session.state, .done)
     }
+
+    func test_endSession_removesTempDirAndStopsWatching() async throws {
+        let provider = InMemoryFSProvider(files: ["/tmp/f": Data("orig".utf8)])
+        let controller = RemoteEditController(transfers: TransferController())
+        let session = try await controller.beginSession(
+            remotePath: FSPath(provider: .ssh(stubTarget), path: "/tmp/f"),
+            via: provider
+        )
+        let sessionDir = session.tempURL.deletingLastPathComponent()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sessionDir.path))
+
+        controller.endSession(session.id)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sessionDir.path))
+        XCTAssertNil(controller.activeSessions[session.id])
+    }
 }
 
 final class InMemoryFSProvider: FileSystemProvider {
