@@ -18,6 +18,21 @@ final class RemoteEditControllerTests: XCTestCase {
         XCTAssertEqual(controller.activeSessions.count, 1)
         XCTAssertNotNil(controller.activeSessions[session.id])
     }
+
+    func test_upload_flagsConflictWhenRemoteMtimeAdvanced() async throws {
+        let provider = InMemoryFSProvider(files: ["/tmp/f": Data("remote".utf8)])
+        let controller = RemoteEditController(transfers: TransferController())
+
+        let session = try await controller.beginSession(
+            remotePath: FSPath(provider: .ssh(stubTarget), path: "/tmp/f"),
+            via: provider
+        )
+        provider.setMtime(path: "/tmp/f", mtime: Date().addingTimeInterval(60))
+
+        let outcome = try await controller.uploadSession(session.id, via: provider)
+        XCTAssertEqual(outcome, .conflict)
+        XCTAssertEqual(session.state, .conflict)
+    }
 }
 
 final class InMemoryFSProvider: FileSystemProvider {
@@ -26,6 +41,7 @@ final class InMemoryFSProvider: FileSystemProvider {
     var supportsServerSideCopy: Bool { false }
 
     private var files: [String: Data]
+    private var mtimes: [String: Date] = [:]
 
     init(files: [String: Data]) {
         self.files = files
@@ -36,10 +52,14 @@ final class InMemoryFSProvider: FileSystemProvider {
     func stat(_ path: FSPath) async throws -> FileStat {
         FileStat(
             size: Int64(files[path.path]?.count ?? 0),
-            mtime: Date(timeIntervalSince1970: 1_700_000_000),
+            mtime: mtimes[path.path] ?? Date(timeIntervalSince1970: 1_700_000_000),
             mode: 0o644,
             isDirectory: false
         )
+    }
+
+    func setMtime(path: String, mtime: Date) {
+        mtimes[path] = mtime
     }
 
     func exists(_ path: FSPath) async throws -> Bool {
