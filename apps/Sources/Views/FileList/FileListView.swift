@@ -54,6 +54,8 @@ struct FileListView: NSViewRepresentable {
     let provider: FileSystemProvider
     /// Transfer controller for cross-provider drag-drop (upload / download).
     let transfers: TransferController
+    /// App-global state needed for row-level actions such as remote edit.
+    let appModel: AppModel
     /// Resolves an SshTarget to an SSH provider so SSH→local drops can
     /// download via the source side's session. ContentView injects this from
     /// the shared pool.
@@ -200,6 +202,7 @@ struct FileListView: NSViewRepresentable {
             folder: folder,
             provider: provider,
             transfers: transfers,
+            appModel: appModel,
             remoteProviderResolver: remoteProviderResolver,
             onActivate: onActivate,
             onAddToPinned: onAddToPinned,
@@ -232,6 +235,7 @@ struct FileListView: NSViewRepresentable {
         FileListCoordinator(folder: folder,
                             provider: provider,
                             transfers: transfers,
+                            appModel: appModel,
                             remoteProviderResolver: remoteProviderResolver,
                             onActivate: onActivate,
                             onAddToPinned: onAddToPinned,

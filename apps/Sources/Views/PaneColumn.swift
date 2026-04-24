@@ -433,6 +433,7 @@ private struct PaneContentBody: View {
             undoManager: tab.undoManager,
             provider: tab.provider,
             transfers: app.transfers,
+            appModel: app,
             remoteProviderResolver: { [app] target in
                 SshFileSystemProvider(pool: app.ssh, target: target, supportsServerSideCopy: false)
             }

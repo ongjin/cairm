@@ -34,6 +34,7 @@ final class FileListCoordinator: NSObject,
     private var folder: FolderModel
     private var provider: FileSystemProvider
     private var onActivate: (FileEntry) -> Void
+    weak var appModel: AppModel?
 
     /// Row index currently being inline-renamed. -1 when no rename is active.
     /// Set in `renameSelected()` before `editColumn` runs and cleared in
@@ -100,6 +101,7 @@ final class FileListCoordinator: NSObject,
     init(folder: FolderModel,
          provider: FileSystemProvider,
          transfers: TransferController,
+         appModel: AppModel? = nil,
          remoteProviderResolver: @escaping (SshTarget) -> FileSystemProvider? = { _ in nil },
          onActivate: @escaping (FileEntry) -> Void,
          onAddToPinned: @escaping (FileEntry) -> Void,
@@ -109,6 +111,7 @@ final class FileListCoordinator: NSObject,
         self.folder = folder
         self.provider = provider
         self.transfers = transfers
+        self.appModel = appModel
         self.remoteProviderResolver = remoteProviderResolver
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
@@ -144,6 +147,7 @@ final class FileListCoordinator: NSObject,
     func updateBindings(folder: FolderModel,
                         provider: FileSystemProvider,
                         transfers: TransferController,
+                        appModel: AppModel? = nil,
                         remoteProviderResolver: @escaping (SshTarget) -> FileSystemProvider? = { _ in nil },
                         onActivate: @escaping (FileEntry) -> Void,
                         onAddToPinned: @escaping (FileEntry) -> Void,
@@ -154,6 +158,7 @@ final class FileListCoordinator: NSObject,
         self.folder = folder
         self.provider = provider
         self.transfers = transfers
+        self.appModel = appModel
         self.remoteProviderResolver = remoteProviderResolver
         self.onActivate = onActivate
         self.onAddToPinned = onAddToPinned
@@ -686,6 +691,16 @@ final class FileListCoordinator: NSObject,
                 menu.addItem(openItem)
             }
         }
+        if case .ssh = provider.identifier, entry.kind != .Directory {
+            let edit = NSMenuItem(
+                title: "Edit in External Editor",
+                action: #selector(editExternal(_:)),
+                keyEquivalent: ""
+            )
+            edit.target = self
+            edit.representedObject = MenuPayload(entry: entry)
+            menu.addItem(edit)
+        }
 
         menu.addItem(.separator())
 
@@ -828,6 +843,21 @@ final class FileListCoordinator: NSObject,
         guard let payload = sender.representedObject as? MenuPayload else { return }
         let url = URL(fileURLWithPath: payload.entry.path.toString())
         ClipboardPasteService.writeFileURLs([url], to: .general)
+    }
+
+    @objc private func editExternal(_ sender: NSMenuItem) {
+        guard let payload = sender.representedObject as? MenuPayload else { return }
+        let remotePath = FSPath(provider: provider.identifier, path: payload.entry.path.toString())
+        Task { @MainActor [weak self] in
+            guard let self, let appModel = self.appModel else { return }
+            do {
+                let session = try await appModel.remoteEdit.beginSession(remotePath: remotePath, via: self.provider)
+                appModel.remoteEdit.armWatching(for: session.id, via: self.provider)
+                NSWorkspace.shared.open(session.tempURL)
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
     }
 
     @objc private func menuMoveToTrash(_ sender: NSMenuItem) {
