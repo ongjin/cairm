@@ -31,6 +31,36 @@ pub struct RemoteStat {
     pub is_dir: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct WalkOptions {
+    pub max_depth: u32,
+    pub cap: usize,
+    pub include_hidden: bool,
+    /// Case-insensitive substring match against the entry basename. Empty
+    /// string matches everything.
+    pub pattern: String,
+}
+
+impl Default for WalkOptions {
+    fn default() -> Self {
+        Self {
+            max_depth: 10,
+            cap: 10_000,
+            include_hidden: false,
+            pattern: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WalkMatch {
+    pub path: String,
+    pub name: String,
+    pub size: i64,
+    pub is_directory: bool,
+    pub mtime: Option<i64>,
+}
+
 // ---------------------------------------------------------------------------
 // SftpHandle
 // ---------------------------------------------------------------------------

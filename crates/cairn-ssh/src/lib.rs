@@ -20,6 +20,6 @@ pub use hostkey::{
     sha256_fingerprint, HostKeyResolver, KnownHostsStore, KnownResult, TofuDecision,
 };
 pub use pool::SshPool;
-pub use sftp::{RemoteEntry, RemoteStat, SftpHandle};
+pub use sftp::{RemoteEntry, RemoteStat, SftpHandle, WalkMatch, WalkOptions};
 pub use transfer::{CancelFlag, ProgressSink};
 pub use types::{ConnKey, ConnectSpec, ResolvedConfig, StrictMode};
