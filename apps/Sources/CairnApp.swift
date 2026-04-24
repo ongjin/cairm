@@ -61,6 +61,18 @@ struct WindowScene: View {
     let app: AppModel
     @State private var scene: WindowSceneModel
     @State private var dualPane: WindowDualPaneModel
+    // Palette lives at WindowScene level — not inside ContentView — so
+    // `.focusedSceneValue(\.paletteModel, palette)` publishes at the same
+    // scope as `\.scene` / `\.appModel` / `\.dualPane`. Previously palette
+    // was owned by ContentView, and its focused value was published from
+    // inside NavigationSplitView's detail subtree; under certain transient
+    // focus states (notably after connecting to an SSH tab where the detail
+    // column re-parented between the ConnectSheet dismiss and the remote
+    // listing landing), SwiftUI's focused-value lookup returned nil for
+    // `\.paletteModel` even though `\.scene` resolved — disabling ⌘K / ⌘F
+    // on SSH tabs specifically. Hoisting to WindowScene level matches the
+    // scope of the other always-available window commands.
+    @State private var palette = CommandPaletteModel()
 
     init(app: AppModel) {
         self.app = app
@@ -76,7 +88,7 @@ struct WindowScene: View {
     }
 
     var body: some View {
-        ContentView()
+        ContentView(palette: palette)
             .environment(app)
             .environment(scene)
             .environment(dualPane)
@@ -89,6 +101,7 @@ struct WindowScene: View {
             .focusedSceneValue(\.scene, dualPane.activePane)
             .focusedSceneValue(\.appModel, app)
             .focusedSceneValue(\.dualPane, dualPane)
+            .focusedSceneValue(\.paletteModel, palette)
             .focusedSceneValue(\.tabUndoManager, dualPane.activePane.activeTab?.undoManager)
     }
 }
@@ -179,11 +192,18 @@ struct NavigateCommands: Commands {
     var body: some Commands {
         CommandMenu("Navigate") {
             // ⌘↓ — Finder parity: descend into a selected folder, or open a
-            // selected file in its default app. Companion to ⌘↑ (Go Up),
-            // which is wired on the toolbar's parent-folder button.
+            // selected file in its default app.
             Button("Open Selected") { Self.openSelected(scene: scene) }
                 .keyboardShortcut(.downArrow, modifiers: [.command])
                 .disabled(scene?.activeTab == nil)
+
+            // ⌘↑ — Finder parity: go to parent folder. Matches the palette
+            // command hint (Go to Parent Folder ⌘↑). The toolbar up button
+            // alone wasn't discoverable, and the palette hint was previously
+            // unbackable by a real shortcut.
+            Button("Go to Parent Folder") { scene?.activeTab?.goUp() }
+                .keyboardShortcut(.upArrow, modifiers: [.command])
+                .disabled(scene?.activeTab?.currentPath?.parent() == nil)
 
             // ⌘[ / ⌘] — Finder/Chrome parity for history navigation. Covers the
             // case where a mouse driver rewrites the side button into this key

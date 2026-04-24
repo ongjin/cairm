@@ -12,11 +12,17 @@ struct ContentView: View {
     /// `@FocusedValue(\.scene)` -> `dualPane.activePane` path.
     private var tab: Tab? { dualPane.activePane.activeTab }
 
-    @State private var palette = CommandPaletteModel()
+    /// Palette is owned by the parent `WindowScene` (see CairnApp.swift)
+    /// so its `.focusedSceneValue(\.paletteModel, palette)` publishes at the
+    /// same window-scope as `\.scene` — `@FocusedValue(\.paletteModel)`
+    /// otherwise went nil when focus slid under SSH tab's view tree,
+    /// disabling ⌘F / ⌘K on SSH tabs.
+    let palette: CommandPaletteModel
     /// Opaque token returned by `NSEvent.addLocalMonitorForEvents`. Held so we
     /// can remove the monitor on view teardown; losing it would leak the
     /// closure and keep dispatching events to a dead view.
-    @State private var mouseNavMonitor: Any?
+    @State private var historyInputMonitor: Any?
+    @State private var historyInputRouter = HistoryNavigationInputRouter()
 
     var body: some View {
         ZStack {
@@ -59,16 +65,14 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: palette.isOpen)
-        .focusedSceneValue(\.paletteModel, palette)
-        .focusedSceneValue(\.scene, dualPane.activePane)
         .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
             guard palette.isOpen else { return }
             if palette.mode == .content {
                 palette.pollContent()
             }
         }
-        .onAppear { installMouseNavMonitor() }
-        .onDisappear { removeMouseNavMonitor() }
+        .onAppear { installHistoryInputMonitor() }
+        .onDisappear { removeHistoryInputMonitor() }
     }
 
     /// Detail column contents: one `PaneColumn` when single, two side-by-side
@@ -98,38 +102,45 @@ struct ContentView: View {
         }
     }
 
-    /// Mouse button 3 / 4 (the "Back" / "Forward" side buttons found on most
-    /// external mice) route to the active pane's tab history. Wired via a
-    /// local NSEvent monitor because NSView overrides only fire when the
-    /// table is first responder — the user expects the side button to work
-    /// everywhere in the window (breadcrumb, sidebar, preview pane, empty
-    /// state).
-    ///
-    /// Button 3 is "back" on standard Mac mappings (Logitech, Razer, Apple's
-    /// own USB Overdrive defaults). Button 4 is "forward". Returning the
-    /// event unchanged for other buttons preserves middle-click and
-    /// horizontal-wheel behaviour elsewhere; returning nil for 3/4 swallows
-    /// it so it doesn't bubble to NSWindow as an unhandled click.
-    private func installMouseNavMonitor() {
-        guard mouseNavMonitor == nil else { return }
-        mouseNavMonitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { event in
-            switch event.buttonNumber {
-            case 3:
-                _ = tab?.goBack()
-                return nil
-            case 4:
-                _ = tab?.goForward()
-                return nil
+    /// History navigation from non-menu inputs. Some mice emit real side-button
+    /// events; others have drivers that rewrite those buttons to ⌘← / ⌘→.
+    private func installHistoryInputMonitor() {
+        guard historyInputMonitor == nil else { return }
+
+        let router = historyInputRouter
+        let panes = dualPane
+        historyInputMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .otherMouseUp, .keyDown]) { event in
+            let routing: HistoryNavigationRouting
+            switch event.type {
+            case .otherMouseDown:
+                routing = router.routeOtherMouseDown(buttonNumber: event.buttonNumber)
+            case .otherMouseUp:
+                routing = router.routeOtherMouseUp(buttonNumber: event.buttonNumber)
+            case .keyDown:
+                routing = HistoryNavigationInputRouter.routeKeyDown(keyCode: event.keyCode, modifiers: event.modifierFlags)
             default:
+                routing = .passThrough
+            }
+
+            switch routing {
+            case .passThrough:
                 return event
+            case .consume:
+                return nil
+            case .navigate(.back):
+                _ = panes.activePane.activeTab?.goBack()
+                return nil
+            case .navigate(.forward):
+                _ = panes.activePane.activeTab?.goForward()
+                return nil
             }
         }
     }
 
-    private func removeMouseNavMonitor() {
-        if let token = mouseNavMonitor {
+    private func removeHistoryInputMonitor() {
+        if let token = historyInputMonitor {
             NSEvent.removeMonitor(token)
-            mouseNavMonitor = nil
+            historyInputMonitor = nil
         }
     }
 
