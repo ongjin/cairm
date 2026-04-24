@@ -22,4 +22,31 @@ final class RemoteEditSessionTests: XCTestCase {
                        Date(timeIntervalSince1970: 1_700_000_000))
         XCTAssertEqual(session.state, .watching)
     }
+
+    func test_watcher_firesOnFileWrite() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RemoteEditSessionTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let fileURL = tempDir.appendingPathComponent("f.txt")
+        try "hello".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let session = RemoteEditSession(
+            remotePath: FSPath(
+                provider: .ssh(SshTarget(user: "u", hostname: "h", port: 22, configHashHex: "test")),
+                path: "/tmp/f.txt"
+            ),
+            tempURL: fileURL,
+            remoteMtimeAtDownload: Date()
+        )
+
+        let expect = expectation(description: "watcher fires")
+        session.onLocalChange = { expect.fulfill() }
+        session.startWatching()
+
+        try "world".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        wait(for: [expect], timeout: 2.0)
+        session.stopWatching()
+    }
 }

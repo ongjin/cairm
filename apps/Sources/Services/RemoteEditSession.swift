@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// Lifecycle phases of a single remote edit session.
 enum RemoteEditState: Equatable {
@@ -18,6 +19,9 @@ final class RemoteEditSession {
     let tempURL: URL
     let remoteMtimeAtDownload: Date
     var state: RemoteEditState
+    var onLocalChange: (() -> Void)?
+
+    private var source: DispatchSourceFileSystemObject?
 
     init(remotePath: FSPath,
          tempURL: URL,
@@ -27,5 +31,36 @@ final class RemoteEditSession {
         self.tempURL = tempURL
         self.remoteMtimeAtDownload = remoteMtimeAtDownload
         self.state = state
+    }
+
+    deinit {
+        stopWatching()
+    }
+
+    /// Arm a file-descriptor watcher for writes to the local temp file.
+    func startWatching() {
+        guard source == nil else { return }
+
+        let fd = open(tempURL.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+
+        let src = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .extend, .rename, .delete],
+            queue: .main
+        )
+        src.setEventHandler { [weak self] in
+            self?.onLocalChange?()
+        }
+        src.setCancelHandler {
+            close(fd)
+        }
+        source = src
+        src.resume()
+    }
+
+    func stopWatching() {
+        source?.cancel()
+        source = nil
     }
 }
