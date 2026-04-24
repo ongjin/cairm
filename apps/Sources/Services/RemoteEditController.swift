@@ -89,20 +89,32 @@ final class RemoteEditController {
         }
     }
 
-    func armWatching(for id: UUID, via provider: FileSystemProvider) {
+    func armWatching(for id: UUID,
+                     via provider: FileSystemProvider,
+                     onConflictResolve: ((RemoteEditSession) async -> Bool)? = nil) {
         guard let session = activeSessions[id] else { return }
         session.onLocalChange = { [weak self] in
-            self?.scheduleUpload(id: id, via: provider)
+            self?.scheduleUpload(
+                id: id,
+                via: provider,
+                onConflictResolve: onConflictResolve
+            )
         }
         session.startWatching()
     }
 
-    private func scheduleUpload(id: UUID, via provider: FileSystemProvider) {
+    private func scheduleUpload(id: UUID,
+                                via provider: FileSystemProvider,
+                                onConflictResolve: ((RemoteEditSession) async -> Bool)? = nil) {
         pendingUploads[id]?.cancel()
         pendingUploads[id] = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.debounceMs * 1_000_000)
             if Task.isCancelled { return }
-            _ = try? await self?.uploadSession(id, via: provider)
+            _ = try? await self?.uploadSession(
+                id,
+                via: provider,
+                onConflictResolve: onConflictResolve
+            )
         }
     }
 

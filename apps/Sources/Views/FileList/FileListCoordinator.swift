@@ -852,7 +852,23 @@ final class FileListCoordinator: NSObject,
             guard let self, let appModel = self.appModel else { return }
             do {
                 let session = try await appModel.remoteEdit.beginSession(remotePath: remotePath, via: self.provider)
-                appModel.remoteEdit.armWatching(for: session.id, via: self.provider)
+                appModel.remoteEdit.armWatching(
+                    for: session.id,
+                    via: self.provider,
+                    onConflictResolve: { session in
+                        await MainActor.run {
+                            let alert = NSAlert()
+                            alert.alertStyle = .warning
+                            alert.messageText = "\(session.remotePath.lastComponent) was modified remotely"
+                            alert.informativeText = "Choose how to proceed."
+                            alert.addButton(withTitle: "Overwrite Remote")
+                            alert.addButton(withTitle: "Keep Remote")
+                            alert.addButton(withTitle: "Cancel")
+                            let response = alert.runModal()
+                            return response == .alertFirstButtonReturn
+                        }
+                    }
+                )
                 NSWorkspace.shared.open(session.tempURL)
             } catch {
                 NSAlert(error: error).runModal()

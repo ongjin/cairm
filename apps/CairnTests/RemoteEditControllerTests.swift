@@ -50,6 +50,30 @@ final class RemoteEditControllerTests: XCTestCase {
         XCTAssertEqual(session.state, .done)
     }
 
+    func test_localWrite_conflictResolverCanOverwriteRemote() async throws {
+        let provider = InMemoryFSProvider(files: ["/tmp/f": Data("orig".utf8)])
+        let controller = RemoteEditController(transfers: TransferController())
+        let session = try await controller.beginSession(
+            remotePath: FSPath(provider: .ssh(stubTarget), path: "/tmp/f"),
+            via: provider
+        )
+        provider.setMtime(path: "/tmp/f", mtime: Date().addingTimeInterval(60))
+        var resolverCalled = false
+
+        controller.armWatching(for: session.id, via: provider) { conflictSession in
+            resolverCalled = true
+            XCTAssertEqual(conflictSession.id, session.id)
+            return true
+        }
+        try "edited".write(to: session.tempURL, atomically: true, encoding: .utf8)
+
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+
+        XCTAssertTrue(resolverCalled)
+        XCTAssertEqual(provider.readSync("/tmp/f"), Data("edited".utf8))
+        XCTAssertEqual(session.state, .done)
+    }
+
     func test_endSession_removesTempDirAndStopsWatching() async throws {
         let provider = InMemoryFSProvider(files: ["/tmp/f": Data("orig".utf8)])
         let controller = RemoteEditController(transfers: TransferController())
