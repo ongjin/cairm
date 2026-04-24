@@ -19,6 +19,11 @@ settings:
       - -liconv
     CLANG_CXX_LIBRARY: "libc++"
 
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
+
 targets:
   Cairn:
     type: application
@@ -29,6 +34,8 @@ targets:
           - "Cairn.entitlements"
       - path: Resources
         buildPhase: resources
+    dependencies:
+      - package: Sparkle
     info:
       path: Sources/Info.plist
       properties:
