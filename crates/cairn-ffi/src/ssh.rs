@@ -422,23 +422,6 @@ fn sftp_progress_poll(h: &SftpHandleBridge) -> u64 {
     h.progress.load(Ordering::Relaxed)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::Ordering;
-
-    #[test]
-    fn progress_sink_for_transfer_resets_stale_counter_before_use() {
-        let progress = Arc::new(AtomicU64::new(123));
-
-        let sink = progress_sink_for_transfer(&progress);
-
-        assert_eq!(progress.load(Ordering::Relaxed), 0);
-        sink(456);
-        assert_eq!(progress.load(Ordering::Relaxed), 456);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SftpListingBridge accessors (free functions exposed via extern "Rust")
 // ---------------------------------------------------------------------------
@@ -493,5 +476,22 @@ fn bridge_to_key(key: ConnKeyBridge) -> ssh::ConnKey {
         hostname: key.hostname,
         port: key.port,
         config_hash,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    #[test]
+    fn progress_sink_for_transfer_resets_stale_counter_before_use() {
+        let progress = Arc::new(AtomicU64::new(123));
+
+        let sink = progress_sink_for_transfer(&progress);
+
+        assert_eq!(progress.load(Ordering::Relaxed), 0);
+        sink(456);
+        assert_eq!(progress.load(Ordering::Relaxed), 456);
     }
 }
