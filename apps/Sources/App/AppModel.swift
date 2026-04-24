@@ -26,6 +26,7 @@ final class AppModel {
     let ssh: SshPoolService
     let sshConfig: SshConfigService
     let transfers: TransferController
+    let remoteEdit: RemoteEditController
 
     /// Weakly-held references to every live `WindowSceneModel` so that SSH
     /// session reconciliation (disconnect on last-tab-close) can see tabs
@@ -46,7 +47,9 @@ final class AppModel {
         self.ssh = SshPoolService()
         let metadataStore = HostMetadataStore()
         self.sshConfig = MainActor.assumeIsolated { SshConfigService(metadata: metadataStore) }
-        self.transfers = MainActor.assumeIsolated { TransferController() }
+        let transferController = MainActor.assumeIsolated { TransferController() }
+        self.transfers = transferController
+        self.remoteEdit = MainActor.assumeIsolated { RemoteEditController(transfers: transferController) }
         // Seed hidden-files default from settings; keeps Rust engine in sync.
         self.showHidden = settings.showHiddenByDefault
         engine.setShowHidden(settings.showHiddenByDefault)
