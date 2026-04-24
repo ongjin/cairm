@@ -32,4 +32,7 @@ generated/
 *.dmg
 .dmg-build/
 
+# Release secrets
+sparkle_signing_key.pem
+
 node_modules
