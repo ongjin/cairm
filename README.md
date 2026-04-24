@@ -24,6 +24,10 @@ open ~/Library/Developer/Xcode/DerivedData/Cairn-*/Build/Products/Debug/Cairn.ap
 
 Alpha DMG 는 `./scripts/make-dmg.sh` (서명 없음 — Gatekeeper 는 우클릭 → Open 으로 우회).
 
+## Integration tests (optional)
+
+Set `CAIRN_IT_SSH_HOST=<alias>` with a host in `~/.ssh/config` to enable remote-edit round-trip tests.
+
 ## 주요 키보드 단축키
 
 | 키 | 동작 |
