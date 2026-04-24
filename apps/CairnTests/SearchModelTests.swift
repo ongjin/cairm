@@ -3,6 +3,71 @@ import XCTest
 
 final class SearchModelTests: XCTestCase {
     private func engine() -> CairnEngine { CairnEngine() }
+    private func localRoot(_ path: String = "/") -> FSPath {
+        FSPath(provider: .local, path: path)
+    }
+    private func localProvider() -> FileSystemProvider {
+        LocalFileSystemProvider(engine: engine())
+    }
+
+    private final class RecordingWalkProvider: FileSystemProvider {
+        struct WalkCall {
+            let root: FSPath
+            let pattern: String
+            let maxDepth: Int
+            let cap: Int
+            let includeHidden: Bool
+        }
+
+        let identifier: ProviderID
+        let displayScheme: String? = "ssh://"
+        let supportsServerSideCopy = false
+        var walkCalls: [WalkCall] = []
+        var entries: [FileEntry] = []
+
+        init(target: SshTarget) {
+            self.identifier = .ssh(target)
+        }
+
+        func list(_ path: FSPath) async throws -> [FileEntry] { [] }
+        func stat(_ path: FSPath) async throws -> FileStat {
+            FileStat(size: 0, mtime: nil, mode: 0, isDirectory: false)
+        }
+        func exists(_ path: FSPath) async throws -> Bool { false }
+        func mkdir(_ path: FSPath) async throws {}
+        func rename(from: FSPath, to: FSPath) async throws {}
+        func delete(_ paths: [FSPath]) async throws {}
+        func copyInPlace(from: FSPath, to: FSPath) async throws {}
+        func readHead(_ path: FSPath, max: Int) async throws -> Data { Data() }
+        func downloadToCache(_ path: FSPath) async throws -> URL { URL(fileURLWithPath: "/tmp") }
+        func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws {}
+        func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws {}
+        func realpath(_ path: String) async throws -> String { path }
+
+        func walk(
+            root: FSPath,
+            pattern: String,
+            maxDepth: Int,
+            cap: Int,
+            includeHidden: Bool,
+            cancel: CancelToken
+        ) -> AsyncThrowingStream<FileEntry, Error> {
+            walkCalls.append(.init(
+                root: root,
+                pattern: pattern,
+                maxDepth: maxDepth,
+                cap: cap,
+                includeHidden: includeHidden
+            ))
+            let entries = entries
+            return AsyncThrowingStream { continuation in
+                for entry in entries {
+                    continuation.yield(entry)
+                }
+                continuation.finish()
+            }
+        }
+    }
 
     private func mkEntry(
         _ name: String,
@@ -37,7 +102,8 @@ final class SearchModelTests: XCTestCase {
         m.query = "readme"
         m.scope = .folder
         m.refresh(
-            root: URL(fileURLWithPath: "/"),
+            root: localRoot(),
+            provider: localProvider(),
             showHidden: false,
             sort: defaultSort(),
             folderEntries: [
@@ -57,7 +123,8 @@ final class SearchModelTests: XCTestCase {
         m.query = "x"
         m.scope = .folder
         m.refresh(
-            root: URL(fileURLWithPath: "/"),
+            root: localRoot(),
+            provider: localProvider(),
             showHidden: false,
             sort: defaultSort(),
             folderEntries: [mkEntry("xfoo")]
@@ -66,7 +133,8 @@ final class SearchModelTests: XCTestCase {
 
         m.query = ""
         m.refresh(
-            root: URL(fileURLWithPath: "/"),
+            root: localRoot(),
+            provider: localProvider(),
             showHidden: false,
             sort: defaultSort(),
             folderEntries: [mkEntry("xfoo")]
@@ -80,7 +148,8 @@ final class SearchModelTests: XCTestCase {
         m.query = "test"
         m.scope = .folder
         m.refresh(
-            root: URL(fileURLWithPath: "/"),
+            root: localRoot(),
+            provider: localProvider(),
             showHidden: false,
             sort: defaultSort(),
             folderEntries: [
@@ -99,7 +168,8 @@ final class SearchModelTests: XCTestCase {
         m.query = "x"
         m.scope = .subtree
         m.refresh(
-            root: URL(fileURLWithPath: "/tmp"),
+            root: localRoot("/tmp"),
+            provider: localProvider(),
             showHidden: false,
             sort: defaultSort(),
             folderEntries: []
@@ -115,18 +185,52 @@ final class SearchModelTests: XCTestCase {
         m.query = "x"
         m.scope = .folder
         m.refresh(
-            root: URL(fileURLWithPath: "/"),
+            root: localRoot(),
+            provider: localProvider(),
             showHidden: false,
             sort: defaultSort(),
             folderEntries: []
         )
         m.scope = .subtree
         m.refresh(
-            root: URL(fileURLWithPath: "/"),
+            root: localRoot(),
+            provider: localProvider(),
             showHidden: false,
             sort: defaultSort(),
             folderEntries: []
         )
         m.cancel()
+    }
+
+    @MainActor
+    func test_remote_subtree_routesToProviderWalk() async throws {
+        let target = SshTarget(user: "tester", hostname: "example.com", port: 22, configHashHex: "remote-search")
+        let provider = RecordingWalkProvider(target: target)
+        provider.entries = [mkEntry("sshd_config")]
+        let m = SearchModel(engine: engine())
+        m.query = "conf"
+        m.scope = .subtree
+
+        m.refresh(
+            root: FSPath(provider: .ssh(target), path: "/etc"),
+            provider: provider,
+            showHidden: false,
+            sort: defaultSort(),
+            folderEntries: []
+        )
+
+        for _ in 0..<50 where m.phase != .done {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        XCTAssertEqual(provider.walkCalls.count, 1)
+        XCTAssertEqual(provider.walkCalls.first?.root.path, "/etc")
+        XCTAssertEqual(provider.walkCalls.first?.pattern, "conf")
+        XCTAssertEqual(provider.walkCalls.first?.maxDepth, 10)
+        XCTAssertEqual(provider.walkCalls.first?.cap, 10_000)
+        XCTAssertEqual(provider.walkCalls.first?.includeHidden, false)
+        XCTAssertEqual(m.results.map { $0.name.toString() }, ["sshd_config"])
+        XCTAssertEqual(m.hitCount, 1)
+        XCTAssertEqual(m.phase, .done)
     }
 }

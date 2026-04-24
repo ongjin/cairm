@@ -33,6 +33,7 @@ final class SearchModel {
     private(set) var activeHandle: UInt64?
 
     private var task: Task<Void, Never>?
+    private var remoteCancel: CancelToken?
     private let engine: CairnEngine
 
     init(engine: CairnEngine) {
@@ -47,19 +48,22 @@ final class SearchModel {
     /// Called from `ContentView.onChange` triggers. Task 9 extends this to
     /// spawn the subtree async walker when `scope == .subtree`.
     func refresh(
-        root: URL?,
+        root: FSPath?,
+        provider: FileSystemProvider,
         showHidden: Bool,
         sort: FolderModel.SortDescriptor,
         folderEntries: [FileEntry]
     ) {
         task?.cancel()
         task = nil
+        remoteCancel?.cancel()
+        remoteCancel = nil
         if let h = activeHandle {
             engine.cancelSearch(handle: h)
             activeHandle = nil
         }
 
-        guard !query.isEmpty, root != nil else {
+        guard !query.isEmpty, let root else {
             results = []
             hitCount = 0
             phase = .idle
@@ -77,16 +81,17 @@ final class SearchModel {
             return
         }
 
+        if case .ssh = provider.identifier {
+            runRemoteSubtree(root: root, provider: provider, showHidden: showHidden, sort: sort)
+            return
+        }
+
         // Subtree mode — 200ms debounce, async walker, running-sort per batch.
         phase = .running
         hitCount = 0
         results = []
         let q = query
-        guard let rootURL = root else {
-            phase = .idle
-            return
-        }
-        let rootPath = rootURL.path
+        let rootPath = root.path
         let hidden = showHidden
         let cmp = FolderModel.comparator(for: sort)
         let eng = engine
@@ -131,11 +136,71 @@ final class SearchModel {
         }
     }
 
+    private func runRemoteSubtree(
+        root: FSPath,
+        provider: FileSystemProvider,
+        showHidden: Bool,
+        sort: FolderModel.SortDescriptor
+    ) {
+        phase = .running
+        hitCount = 0
+        results = []
+
+        let q = query
+        let token = CancelToken()
+        remoteCancel = token
+        let cmp = FolderModel.comparator(for: sort)
+
+        task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let stream = provider.walk(
+                    root: root,
+                    pattern: q,
+                    maxDepth: 10,
+                    cap: 10_000,
+                    includeHidden: showHidden,
+                    cancel: token
+                )
+                var next: [FileEntry] = []
+                for try await entry in stream {
+                    if Task.isCancelled || token.isCancelled { break }
+                    next.append(entry)
+                    if next.count >= 200 {
+                        self.results.append(contentsOf: next)
+                        self.hitCount = self.results.count
+                        next.removeAll(keepingCapacity: true)
+                    }
+                }
+
+                if !next.isEmpty {
+                    self.results.append(contentsOf: next)
+                    self.hitCount = self.results.count
+                }
+                self.results.sort(by: cmp)
+                if case .running = self.phase {
+                    self.phase = .done
+                }
+                if self.remoteCancel === token {
+                    self.remoteCancel = nil
+                }
+            } catch {
+                if Task.isCancelled || token.isCancelled { return }
+                self.phase = .failed(String(describing: error))
+                if self.remoteCancel === token {
+                    self.remoteCancel = nil
+                }
+            }
+        }
+    }
+
     /// Abort any in-flight search and drop all results. Called on Escape /
     /// query-cleared / explicit teardown.
     func cancel() {
         task?.cancel()
         task = nil
+        remoteCancel?.cancel()
+        remoteCancel = nil
         if let h = activeHandle {
             engine.cancelSearch(handle: h)
         }

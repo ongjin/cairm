@@ -221,7 +221,8 @@ struct ContentView: View {
     private func triggerSearchRefresh() {
         guard let tab else { return }
         tab.search.refresh(
-            root: tab.currentFolder,
+            root: tab.currentPath,
+            provider: tab.provider,
             showHidden: app.showHidden,
             sort: tab.folder.sortDescriptor,
             folderEntries: tab.folder.sortedEntries
