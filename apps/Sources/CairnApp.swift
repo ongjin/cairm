@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct CairnApp: App {
     @State private var app: AppModel
+    private let updater: UpdaterService
 
     init() {
         // T18: point the FFI content-search at the bundled ripgrep before any
@@ -11,6 +12,7 @@ struct CairnApp: App {
             setenv("CAIRN_RG_PATH", rgURL.path, 1)
         }
         _app = State(initialValue: AppModel())
+        updater = UpdaterService()
     }
 
     var body: some Scene {
@@ -48,6 +50,11 @@ struct CairnApp: App {
         // within [minSize, screen-max] now.
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates\u{2026}") {
+                    updater.checkForUpdates()
+                }
+            }
             // File > New Tab / Close Tab (slots after the default File > New).
             CommandGroup(after: .newItem) {
                 TabFileMenuItems()
