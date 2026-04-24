@@ -313,9 +313,7 @@ impl SftpHandle {
                 let off = request_offset;
                 let session = Arc::clone(&self.session);
                 let handle_str = handle.clone();
-                let read_fut = async move {
-                    session.read(handle_str.as_str(), off, CHUNK).await
-                };
+                let read_fut = async move { session.read(handle_str.as_str(), off, CHUNK).await };
                 in_flight.push_back(read_fut);
                 request_offset += CHUNK as u64;
             }

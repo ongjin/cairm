@@ -40,8 +40,7 @@ pub fn planned_methods(resolved: &ResolvedConfig) -> Vec<AuthMethod> {
 
 fn prefers_password_auth(resolved: &ResolvedConfig) -> bool {
     resolved.preferred_authentications.iter().any(|auth| {
-        auth.eq_ignore_ascii_case("password")
-            || auth.eq_ignore_ascii_case("keyboard-interactive")
+        auth.eq_ignore_ascii_case("password") || auth.eq_ignore_ascii_case("keyboard-interactive")
     })
 }
 
