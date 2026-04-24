@@ -60,4 +60,70 @@ enum FolderCompare {
             return a.size == b.size && abs(a.mtime.timeIntervalSince(b.mtime)) <= 2
         }
     }
+
+    static func compareRecursive(leftRoot: String,
+                                 leftProvider: FileSystemProvider,
+                                 rightRoot: String,
+                                 rightProvider: FileSystemProvider,
+                                 mode: CompareMode,
+                                 cancel: CancelToken,
+                                 onProgress: (Int) -> Void = { _ in }) async throws -> CompareResult {
+        async let leftEntries = walkFiles(
+            root: leftRoot,
+            provider: leftProvider,
+            cancel: cancel,
+            onProgress: onProgress
+        )
+        async let rightEntries = walkFiles(
+            root: rightRoot,
+            provider: rightProvider,
+            cancel: cancel,
+            onProgress: onProgress
+        )
+        return compare(left: try await leftEntries, right: try await rightEntries, mode: mode)
+    }
+
+    private static func walkFiles(root: String,
+                                  provider: FileSystemProvider,
+                                  cancel: CancelToken,
+                                  onProgress: (Int) -> Void) async throws -> [CompareEntry] {
+        var files: [CompareEntry] = []
+        var stack = [""]
+
+        while let relativeParent = stack.popLast() {
+            if cancel.isCancelled { return files }
+            let path = FSPath(
+                provider: provider.identifier,
+                path: root + (relativeParent.isEmpty ? "" : "/" + relativeParent)
+            )
+            let entries = try await provider.list(path)
+
+            for entry in entries {
+                if cancel.isCancelled { return files }
+                let relName = relativeName(for: entry, parent: relativeParent)
+                if entry.kind == .Directory {
+                    stack.append(relName)
+                } else {
+                    files.append(compareEntry(from: entry, relativeName: relName))
+                    onProgress(files.count)
+                }
+            }
+        }
+
+        return files
+    }
+
+    private static func relativeName(for entry: FileEntry, parent: String) -> String {
+        let name = entry.name.toString()
+        return parent.isEmpty ? name : parent + "/" + name
+    }
+
+    private static func compareEntry(from entry: FileEntry, relativeName: String) -> CompareEntry {
+        CompareEntry(
+            name: relativeName,
+            size: Int64(clamping: entry.size),
+            mtime: Date(timeIntervalSince1970: TimeInterval(entry.modified_unix)),
+            isDirectory: entry.kind == .Directory
+        )
+    }
 }
