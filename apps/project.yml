@@ -42,6 +42,9 @@ targets:
         NSPhotosUsageDescription: "Cairn lists files inside your Pictures folder as part of browsing your home directory. It does not read photo contents or metadata."
         NSRemovableVolumesUsageDescription: "Cairn lists and opens files on removable volumes as a Finder replacement."
         NSNetworkVolumesUsageDescription: "Cairn lists and opens files on network volumes as a Finder replacement."
+        CFBundleURLTypes:
+          - CFBundleURLName: com.ongjin.Cairn.open
+            CFBundleURLSchemes: [cairn]
     settings:
       base:
         CODE_SIGN_ENTITLEMENTS: Sources/Cairn.entitlements
