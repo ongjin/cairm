@@ -9,18 +9,8 @@ final class CairnServicesProvider: NSObject {
     weak var app: AppModel?
 
     @objc func openInCairn(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
-        let urls: [URL]
-        if let fileURLs = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
-            urls = fileURLs
-        } else if let fileURLs = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [NSURL] {
-            urls = fileURLs.map { $0 as URL }
-        } else if let names = pboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String] {
-            urls = names.map { URL(fileURLWithPath: $0) }
-        } else if let names = pboard.propertyList(forType: .fileURL) as? [String] {
-            urls = names.compactMap { URL(string: $0) }
-        } else if let text = pboard.string(forType: .string) {
-            urls = text.split(whereSeparator: \.isNewline).map { URL(fileURLWithPath: String($0)) }
-        } else {
+        let urls = Self.urls(from: pboard)
+        guard !urls.isEmpty else {
             error.pointee = "No file URLs on pasteboard" as NSString
             return
         }
@@ -31,5 +21,37 @@ final class CairnServicesProvider: NSObject {
         for url in urls {
             CairnURLRouter.dispatch(.openLocal(url), in: app, activeScene: scene)
         }
+    }
+
+    private static func urls(from pboard: NSPasteboard) -> [URL] {
+        if let fileURLs = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !fileURLs.isEmpty {
+            return fileURLs
+        }
+        if let fileURLs = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [NSURL], !fileURLs.isEmpty {
+            return fileURLs.map { $0 as URL }
+        }
+        if let names = pboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String], !names.isEmpty {
+            return names.map { URL(fileURLWithPath: $0) }
+        }
+        if let names = pboard.propertyList(forType: .fileURL) as? [String], !names.isEmpty {
+            return names.compactMap(fileURL(fromPasteboardString:))
+        }
+        if let name = pboard.string(forType: .fileURL), let url = fileURL(fromPasteboardString: name) {
+            return [url]
+        }
+        if let text = pboard.string(forType: .string) {
+            return text.split(whereSeparator: \.isNewline)
+                .compactMap { fileURL(fromPasteboardString: String($0)) }
+        }
+        return []
+    }
+
+    private static func fileURL(fromPasteboardString value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let url = URL(string: trimmed), url.isFileURL {
+            return url
+        }
+        return URL(fileURLWithPath: trimmed)
     }
 }
