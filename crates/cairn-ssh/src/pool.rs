@@ -557,8 +557,9 @@ async fn try_key_auth(
 
 /// Attempts `authenticate_password` first, then falls back to
 /// `keyboard-interactive` using the same password for the first server prompt
-/// (OpenSSH's `password` stub answer pattern). On rejection, retries via the
-/// resolver up to `MAX_PASSPHRASE_ATTEMPTS` total including the preset.
+/// (OpenSSH's `password` stub answer pattern). If no preset password was
+/// supplied, prompts before the first network auth attempt. On rejection,
+/// retries via the resolver up to `MAX_PASSPHRASE_ATTEMPTS` total.
 async fn try_password_auth(
     handle: &mut client::Handle<CairnHandler>,
     host: &str,
@@ -566,11 +567,14 @@ async fn try_password_auth(
     preset: &str,
     resolver: &dyn PasswordResolver,
 ) -> Result<bool> {
-    let mut current = preset.to_string();
+    let mut current = initial_password_for_attempt(preset, host, user, resolver).await?;
     for attempt in 0..MAX_PASSPHRASE_ATTEMPTS {
         match attempt_password_once(handle, user, &current).await {
             Ok(true) => return Ok(true),
             Ok(false) => {
+                if attempt + 1 == MAX_PASSPHRASE_ATTEMPTS {
+                    return Ok(false);
+                }
                 // Rejected — prompt for a new one.
                 let Some(next) = resolver.resolve(host, user).await else {
                     return Err(SshError::Cancelled);
@@ -584,6 +588,21 @@ async fn try_password_auth(
         }
     }
     Ok(false)
+}
+
+async fn initial_password_for_attempt(
+    preset: &str,
+    host: &str,
+    user: &str,
+    resolver: &dyn PasswordResolver,
+) -> Result<String> {
+    if !preset.is_empty() {
+        return Ok(preset.to_string());
+    }
+    resolver
+        .resolve(host, user)
+        .await
+        .ok_or(SshError::Cancelled)
 }
 
 /// One round-trip of `password` → `keyboard-interactive` fallback. Returns
@@ -621,5 +640,62 @@ async fn attempt_password_once(
                 _ => Ok(false),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use parking_lot::Mutex;
+
+    struct FakePasswordResolver {
+        responses: Mutex<Vec<Option<String>>>,
+    }
+
+    #[async_trait]
+    impl PasswordResolver for FakePasswordResolver {
+        async fn resolve(&self, _host: &str, _user: &str) -> Option<String> {
+            self.responses.lock().remove(0)
+        }
+    }
+
+    #[tokio::test]
+    async fn initial_password_uses_preset_without_prompting() {
+        let resolver = FakePasswordResolver {
+            responses: Mutex::new(vec![]),
+        };
+
+        let password = initial_password_for_attempt("preset", "host", "user", &resolver)
+            .await
+            .unwrap();
+
+        assert_eq!(password, "preset");
+    }
+
+    #[tokio::test]
+    async fn initial_password_prompts_when_preset_is_empty() {
+        let resolver = FakePasswordResolver {
+            responses: Mutex::new(vec![Some("typed".into())]),
+        };
+
+        let password = initial_password_for_attempt("", "host", "user", &resolver)
+            .await
+            .unwrap();
+
+        assert_eq!(password, "typed");
+    }
+
+    #[tokio::test]
+    async fn initial_password_cancel_when_empty_preset_prompt_is_cancelled() {
+        let resolver = FakePasswordResolver {
+            responses: Mutex::new(vec![None]),
+        };
+
+        let err = initial_password_for_attempt("", "host", "user", &resolver)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, SshError::Cancelled));
     }
 }

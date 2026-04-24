@@ -22,6 +22,7 @@ pub trait PasswordResolver: Send + Sync {
 /// so the user's explicit choice wins over Agent/Key defaults.
 pub fn planned_methods(resolved: &ResolvedConfig) -> Vec<AuthMethod> {
     let mut out = Vec::new();
+    let has_explicit_password = resolved.password.is_some();
     if let Some(pw) = &resolved.password {
         out.push(AuthMethod::Password(pw.clone()));
     }
@@ -31,7 +32,17 @@ pub fn planned_methods(resolved: &ResolvedConfig) -> Vec<AuthMethod> {
     for id in &resolved.identity_files {
         out.push(AuthMethod::KeyFile(id.clone()));
     }
+    if !has_explicit_password && prefers_password_auth(resolved) {
+        out.push(AuthMethod::Password(String::new()));
+    }
     out
+}
+
+fn prefers_password_auth(resolved: &ResolvedConfig) -> bool {
+    resolved.preferred_authentications.iter().any(|auth| {
+        auth.eq_ignore_ascii_case("password")
+            || auth.eq_ignore_ascii_case("keyboard-interactive")
+    })
 }
 
 #[derive(Clone)]
@@ -73,4 +84,71 @@ pub fn format_tried(methods: &[AuthMethod]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{ResolvedConfig, StrictMode};
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    fn base_config() -> ResolvedConfig {
+        ResolvedConfig {
+            hostname: "example.com".into(),
+            port: 22,
+            user: "alice".into(),
+            identity_files: Vec::new(),
+            identity_agent: None,
+            proxy_command: None,
+            proxy_jump: None,
+            server_alive_interval: Duration::from_secs(30),
+            server_alive_count_max: 3,
+            strict_host_key_checking: StrictMode::Ask,
+            user_known_hosts_file: Vec::new(),
+            global_known_hosts_file: Vec::new(),
+            host_key_algorithms: Vec::new(),
+            preferred_authentications: Vec::new(),
+            compression: false,
+            hash_known_hosts: false,
+            password: None,
+        }
+    }
+
+    #[test]
+    fn planned_methods_prompts_for_password_when_preferred_without_preset() {
+        let mut cfg = base_config();
+        cfg.preferred_authentications = vec!["publickey".into(), "password".into()];
+
+        let methods = planned_methods(&cfg);
+
+        assert!(methods
+            .iter()
+            .any(|m| matches!(m, AuthMethod::Password(p) if p.is_empty())));
+    }
+
+    #[test]
+    fn planned_methods_prompts_for_keyboard_interactive_when_preferred_without_preset() {
+        let mut cfg = base_config();
+        cfg.preferred_authentications = vec!["keyboard-interactive".into()];
+
+        let methods = planned_methods(&cfg);
+
+        assert!(methods
+            .iter()
+            .any(|m| matches!(m, AuthMethod::Password(p) if p.is_empty())));
+    }
+
+    #[test]
+    fn planned_methods_keeps_explicit_password_first() {
+        let mut cfg = base_config();
+        cfg.password = Some("secret".into());
+        cfg.identity_agent = Some(PathBuf::from("/tmp/agent.sock"));
+        cfg.preferred_authentications = vec!["password".into()];
+
+        let methods = planned_methods(&cfg);
+
+        assert!(matches!(methods.first(), Some(AuthMethod::Password(p)) if p == "secret"));
+        assert_eq!(format_tried(&methods), "password, agent");
+    }
 }
