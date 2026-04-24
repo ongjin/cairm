@@ -8,7 +8,7 @@ import Observation
 /// in-memory folder-mode filter + the shared state surface.
 @Observable
 final class SearchModel {
-    private static let remoteSubtreeResultCap = 10_000
+    private static let defaultRemoteSubtreeResultCap = 10_000
 
     enum Scope: String, CaseIterable, Hashable {
         case folder
@@ -37,9 +37,11 @@ final class SearchModel {
     private var task: Task<Void, Never>?
     private var remoteCancel: CancelToken?
     private let engine: CairnEngine
+    private let remoteSubtreeResultCap: Int
 
-    init(engine: CairnEngine) {
+    init(engine: CairnEngine, remoteSubtreeResultCap: Int = SearchModel.defaultRemoteSubtreeResultCap) {
         self.engine = engine
+        self.remoteSubtreeResultCap = remoteSubtreeResultCap
     }
 
     /// True when a query is active and the caller should display results
@@ -160,7 +162,7 @@ final class SearchModel {
                     root: root,
                     pattern: q,
                     maxDepth: 10,
-                    cap: Self.remoteSubtreeResultCap,
+                    cap: remoteSubtreeResultCap,
                     includeHidden: showHidden,
                     cancel: token
                 )
@@ -181,7 +183,7 @@ final class SearchModel {
                 }
                 self.results.sort(by: cmp)
                 if case .running = self.phase {
-                    self.phase = self.results.count >= Self.remoteSubtreeResultCap ? .capped : .done
+                    self.phase = self.results.count >= self.remoteSubtreeResultCap ? .capped : .done
                 }
                 if self.remoteCancel === token {
                     self.remoteCancel = nil
