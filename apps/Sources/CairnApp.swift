@@ -19,7 +19,7 @@ struct CairnApp: App {
                 .onAppear {
                     NSApp.servicesProvider = CairnServicesProvider.shared
                     CairnServicesProvider.shared.app = app
-                    NSUpdateDynamicServices()
+                    refreshServicesIfNeeded()
                 }
                 .onOpenURL { url in
                     Task { @MainActor in
@@ -64,6 +64,16 @@ struct CairnApp: App {
                 .environment(app)
                 .environment(\.cairnTheme, .glass)
         }
+    }
+}
+
+private func refreshServicesIfNeeded() {
+    let defaults = UserDefaults.standard
+    let key = "Cairn.ServicesRegisteredAtPath"
+    let current = Bundle.main.bundleURL.path
+    if defaults.string(forKey: key) != current {
+        NSUpdateDynamicServices()
+        defaults.set(current, forKey: key)
     }
 }
 
