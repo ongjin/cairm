@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Finder-parity sidebar: Favorites (auto + pinned) / Cloud / Remote Hosts / Locations (Home + AirDrop + Network + Trash).
+/// Finder-parity sidebar: Favorites (auto + pinned) / Cloud / Remote Hosts / Locations (Home + AirDrop).
 /// Footer shows active tab's git branch + dirty count when in a repo.
 struct SidebarView: View {
     @Bindable var app: AppModel
@@ -113,24 +113,6 @@ struct SidebarView: View {
                                 NSSound.beep()
                             } else {
                                 NSSharingService(named: .sendViaAirDrop)?.perform(withItems: urls)
-                            }
-                        }
-
-                    // Network
-                    let network = URL(fileURLWithPath: "/Network")
-                    row(url: network, icon: "network", label: "Network", tint: nil, canPin: false)
-
-                    // Trash
-                    let trash = home.appendingPathComponent(".Trash")
-                    SidebarItemRow(icon: "trash", label: "Trash", tint: nil, isSelected: isCurrent(trash))
-                        .contentShape(Rectangle())
-                        .onTapGesture { activeScene.activeTab?.navigate(to: trash) }
-                        .contextMenu {
-                            Button("Empty Trash") {
-                                let fm = FileManager.default
-                                if let items = try? fm.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil) {
-                                    for u in items { try? fm.trashItem(at: u, resultingItemURL: nil) }
-                                }
                             }
                         }
                 }

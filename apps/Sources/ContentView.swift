@@ -214,7 +214,7 @@ struct ContentView: View {
         return [
             PaletteCommand(id: "newTab", label: "New Tab", iconSF: "plus.square", shortcutHint: "⌘T") { scene.newTab() },
             PaletteCommand(id: "closeTab", label: "Close Tab", iconSF: "xmark.square", shortcutHint: "⌘W") {
-                if let id = scene.activeTabID { scene.closeTab(id) }
+                if let id = scene.activeTabID { scene.closeTabOrWindow(id) }
             },
             PaletteCommand(id: "reload", label: "Reload", iconSF: "arrow.clockwise", shortcutHint: "⌘R") {
                 if let p = tab.currentPath { Task { await tab.folder.load(p, via: tab.provider) } }

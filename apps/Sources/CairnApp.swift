@@ -193,7 +193,7 @@ struct TabFileMenuItems: View {
 
         Button("Close Tab") {
             guard let scene, let id = scene.activeTabID else { return }
-            scene.closeTab(id)
+            scene.closeTabOrWindow(id)
         }
         .keyboardShortcut("w", modifiers: [.command])
         .disabled(scene == nil)

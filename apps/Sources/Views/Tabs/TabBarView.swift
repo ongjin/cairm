@@ -20,7 +20,7 @@ struct TabBarView: View {
                             isActive: tab.id == scene.activeTabID,
                             badge: tab.protocolBadge,
                             onActivate: { scene.activeTabID = tab.id },
-                            onClose: { scene.closeTab(tab.id) }
+                            onClose: { scene.closeTabOrWindow(tab.id) }
                         )
                     }
                 }

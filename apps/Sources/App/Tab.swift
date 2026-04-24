@@ -170,8 +170,8 @@ final class Tab: Identifiable {
 
     /// Navigate to an arbitrary URL that we don't (yet) have a bookmark for.
     /// Drops any current scope. Used by breadcrumb parent segments and
-    /// Locations items (volume roots, Trash, Network) — callers that KNOW
-    /// the URL may lie outside the user-selected scope should prefer
+    /// Locations items (volume roots) — callers that KNOW the URL may lie
+    /// outside the user-selected scope should prefer
     /// `AppModel.openAutoFavorite(url:in:)` which prompts on first use and
     /// reuses the registered bookmark afterwards.
     func navigate(to url: URL) {

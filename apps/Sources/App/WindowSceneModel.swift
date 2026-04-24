@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import AppKit
 
 /// Per-window state container. Owns the list of Tabs and the currently active
 /// one. Views in a window read state via `WindowSceneModel` from the
@@ -107,6 +108,19 @@ final class WindowSceneModel {
         // force a fresh handshake (and slow ProxyCommand boot) on the next
         // reconnect. Rust's 5-min idle reaper handles true cleanup.
         app?.noteTabsChanged()
+    }
+
+    /// UI-facing close path (⌘W, palette, × on tab chip). Runs per-tab
+    /// cleanup then closes the containing window if no tabs remain, matching
+    /// Finder/Safari behavior. Programmatic placeholder cleanup (e.g. failed
+    /// SSH connect) should keep calling `closeTab` directly so a connect
+    /// sheet can surface without the window vanishing.
+    @MainActor
+    func closeTabOrWindow(_ id: Tab.ID) {
+        closeTab(id)
+        if tabs.isEmpty {
+            NSApp.keyWindow?.performClose(nil)
+        }
     }
 
     func activateTab(at index: Int) {
