@@ -82,7 +82,13 @@ final class WindowSceneModel {
     /// window should close in that case — T11).
     func closeTab(_ id: Tab.ID) {
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let closedProvider = tabs[idx].currentPath?.provider
         tabs.remove(at: idx)
+        if case .ssh(let target) = closedProvider {
+            MainActor.assumeIsolated {
+                app?.remoteEdit.endSessionsForHost(target)
+            }
+        }
         if activeTabID == id {
             activeTabID = tabs.last?.id
         }

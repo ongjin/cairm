@@ -18,6 +18,7 @@ final class RemoteEditController {
     @ObservationIgnored private var pendingUploads: [UUID: Task<Void, Never>] = [:]
 
     private static let debounceMs: UInt64 = 800
+    private static let maxEditableBytes: Int64 = 50 * 1024 * 1024
 
     init(transfers: TransferController,
          workRoot: URL = FileManager.default
@@ -30,6 +31,16 @@ final class RemoteEditController {
 
     func beginSession(remotePath: FSPath, via provider: FileSystemProvider) async throws -> RemoteEditSession {
         let stat = try await provider.stat(remotePath)
+        if stat.size > Self.maxEditableBytes {
+            throw NSError(
+                domain: "Cairn.RemoteEdit",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "File is too large for edit-in-place (>50 MiB). Download manually instead."
+                ]
+            )
+        }
+
         let sessionDir = workRoot.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
         let tempURL = sessionDir.appendingPathComponent(remotePath.lastComponent)
@@ -126,6 +137,15 @@ final class RemoteEditController {
         let dir = session.tempURL.deletingLastPathComponent()
         try? FileManager.default.removeItem(at: dir)
         activeSessions.removeValue(forKey: id)
+    }
+
+    func endSessionsForHost(_ target: SshTarget) {
+        let ids = activeSessions.compactMap { id, session in
+            session.remotePath.provider == .ssh(target) ? id : nil
+        }
+        for id in ids {
+            endSession(id)
+        }
     }
 
     deinit {

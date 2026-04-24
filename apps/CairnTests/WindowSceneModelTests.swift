@@ -61,6 +61,28 @@ final class WindowSceneModelTests: XCTestCase {
         XCTAssertNotEqual(m.activeTabID, closedID)
     }
 
+    @MainActor
+    func test_closeRemoteTab_endsRemoteEditSessionsForHost() async throws {
+        let m = makeScene()
+        let app = AppModel()
+        m.app = app
+        let target = SshTarget(user: "tester", hostname: "example.com", port: 22, configHashHex: "remote-edit")
+        let provider = TestRemoteProvider(target: target, files: ["/workspace/f": Data("remote".utf8)])
+        m.newRemoteTab(
+            initialPath: FSPath(provider: .ssh(target), path: "/workspace"),
+            provider: provider
+        )
+        let closedID = m.tabs[1].id
+        let session = try await app.remoteEdit.beginSession(
+            remotePath: FSPath(provider: .ssh(target), path: "/workspace/f"),
+            via: provider
+        )
+
+        m.closeTab(closedID)
+
+        XCTAssertNil(app.remoteEdit.activeSessions[session.id])
+    }
+
     func test_activatePrevious_wraps() {
         let m = makeScene()
         let target = SshTarget(user: "tester", hostname: "example.com", port: 22, configHashHex: "prev")
@@ -96,14 +118,17 @@ private final class TestRemoteProvider: FileSystemProvider {
     let identifier: ProviderID
     let displayScheme: String? = "ssh"
     let supportsServerSideCopy: Bool = false
+    private var files: [String: Data]
 
-    init(target: SshTarget) {
+    init(target: SshTarget, files: [String: Data] = [:]) {
         self.identifier = .ssh(target)
+        self.files = files
     }
 
     func list(_ path: FSPath) async throws -> [FileEntry] { [] }
     func stat(_ path: FSPath) async throws -> FileStat {
-        FileStat(size: 0, mtime: nil, mode: 0, isDirectory: true)
+        let data = files[path.path]
+        return FileStat(size: Int64(data?.count ?? 0), mtime: nil, mode: 0, isDirectory: data == nil)
     }
     func exists(_ path: FSPath) async throws -> Bool { true }
     func mkdir(_ path: FSPath) async throws {}
@@ -112,7 +137,11 @@ private final class TestRemoteProvider: FileSystemProvider {
     func copyInPlace(from: FSPath, to: FSPath) async throws {}
     func readHead(_ path: FSPath, max: Int) async throws -> Data { Data() }
     func downloadToCache(_ path: FSPath) async throws -> URL { URL(fileURLWithPath: "/tmp") }
-    func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws {}
-    func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws {}
+    func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws {
+        files[remotePath.path] = try Data(contentsOf: localURL)
+    }
+    func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws {
+        try files[remotePath.path, default: Data()].write(to: toLocalURL)
+    }
     func realpath(_ path: String) async throws -> String { path }
 }

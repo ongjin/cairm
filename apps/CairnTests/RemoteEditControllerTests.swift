@@ -19,6 +19,23 @@ final class RemoteEditControllerTests: XCTestCase {
         XCTAssertNotNil(controller.activeSessions[session.id])
     }
 
+    func test_beginSession_rejectsFilesOver50MiB() async throws {
+        let provider = InMemoryFSProvider(files: ["/tmp/huge": Data("x".utf8)])
+        provider.setSize(path: "/tmp/huge", size: 50 * 1024 * 1024 + 1)
+        let controller = RemoteEditController(transfers: TransferController())
+
+        do {
+            _ = try await controller.beginSession(
+                remotePath: FSPath(provider: .ssh(stubTarget), path: "/tmp/huge"),
+                via: provider
+            )
+            XCTFail("Expected beginSession to reject huge files")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("too large"))
+            XCTAssertTrue(controller.activeSessions.isEmpty)
+        }
+    }
+
     func test_upload_flagsConflictWhenRemoteMtimeAdvanced() async throws {
         let provider = InMemoryFSProvider(files: ["/tmp/f": Data("remote".utf8)])
         let controller = RemoteEditController(transfers: TransferController())
@@ -89,6 +106,28 @@ final class RemoteEditControllerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: sessionDir.path))
         XCTAssertNil(controller.activeSessions[session.id])
     }
+
+    func test_endSessionsForHost_removesOnlyMatchingHostSessions() async throws {
+        let otherTarget = SshTarget(user: "u", hostname: "other", port: 22, configHashHex: "other")
+        let provider = InMemoryFSProvider(files: [
+            "/tmp/a": Data("a".utf8),
+            "/tmp/b": Data("b".utf8),
+        ])
+        let controller = RemoteEditController(transfers: TransferController())
+        let matching = try await controller.beginSession(
+            remotePath: FSPath(provider: .ssh(stubTarget), path: "/tmp/a"),
+            via: provider
+        )
+        let other = try await controller.beginSession(
+            remotePath: FSPath(provider: .ssh(otherTarget), path: "/tmp/b"),
+            via: provider
+        )
+
+        controller.endSessionsForHost(stubTarget)
+
+        XCTAssertNil(controller.activeSessions[matching.id])
+        XCTAssertNotNil(controller.activeSessions[other.id])
+    }
 }
 
 final class InMemoryFSProvider: FileSystemProvider {
@@ -98,6 +137,7 @@ final class InMemoryFSProvider: FileSystemProvider {
 
     private var files: [String: Data]
     private var mtimes: [String: Date] = [:]
+    private var sizes: [String: Int64] = [:]
 
     init(files: [String: Data]) {
         self.files = files
@@ -107,7 +147,7 @@ final class InMemoryFSProvider: FileSystemProvider {
 
     func stat(_ path: FSPath) async throws -> FileStat {
         FileStat(
-            size: Int64(files[path.path]?.count ?? 0),
+            size: sizes[path.path] ?? Int64(files[path.path]?.count ?? 0),
             mtime: mtimes[path.path] ?? Date(timeIntervalSince1970: 1_700_000_000),
             mode: 0o644,
             isDirectory: false
@@ -116,6 +156,10 @@ final class InMemoryFSProvider: FileSystemProvider {
 
     func setMtime(path: String, mtime: Date) {
         mtimes[path] = mtime
+    }
+
+    func setSize(path: String, size: Int64) {
+        sizes[path] = size
     }
 
     func readSync(_ path: String) -> Data {
