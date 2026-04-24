@@ -276,4 +276,29 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(m.hitCount, 0)
         XCTAssertEqual(m.phase, .idle)
     }
+
+    @MainActor
+    func test_remote_subtree_marksPhaseCappedAtResultCap() async throws {
+        let target = SshTarget(user: "tester", hostname: "example.com", port: 22, configHashHex: "remote-cap")
+        let provider = RecordingWalkProvider(target: target)
+        provider.entries = (0..<10_000).map { mkEntry("conf_\($0).txt") }
+        let m = SearchModel(engine: engine())
+        m.query = "conf"
+        m.scope = .subtree
+
+        m.refresh(
+            root: FSPath(provider: .ssh(target), path: "/etc"),
+            provider: provider,
+            showHidden: false,
+            sort: defaultSort(),
+            folderEntries: []
+        )
+
+        for _ in 0..<50 where m.phase == .running {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        XCTAssertEqual(m.hitCount, 10_000)
+        XCTAssertEqual(m.phase, .capped)
+    }
 }

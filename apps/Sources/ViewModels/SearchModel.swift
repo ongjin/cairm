@@ -8,6 +8,8 @@ import Observation
 /// in-memory folder-mode filter + the shared state surface.
 @Observable
 final class SearchModel {
+    private static let remoteSubtreeResultCap = 10_000
+
     enum Scope: String, CaseIterable, Hashable {
         case folder
         case subtree
@@ -158,7 +160,7 @@ final class SearchModel {
                     root: root,
                     pattern: q,
                     maxDepth: 10,
-                    cap: 10_000,
+                    cap: Self.remoteSubtreeResultCap,
                     includeHidden: showHidden,
                     cancel: token
                 )
@@ -179,7 +181,7 @@ final class SearchModel {
                 }
                 self.results.sort(by: cmp)
                 if case .running = self.phase {
-                    self.phase = .done
+                    self.phase = self.results.count >= Self.remoteSubtreeResultCap ? .capped : .done
                 }
                 if self.remoteCancel === token {
                     self.remoteCancel = nil

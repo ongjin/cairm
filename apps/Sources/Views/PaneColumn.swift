@@ -188,7 +188,7 @@ struct PaneColumn: View {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
-                        Text("Showing first 5,000 results — refine your query")
+                        Text("\(tab.search.hitCount.formatted())+ results (capped, narrow your query)")
                             .font(.caption)
                         Spacer()
                     }
