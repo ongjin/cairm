@@ -197,6 +197,12 @@ final class AppModel {
         sceneRefs.removeAll { $0.ref == nil }
     }
 
+    @MainActor
+    var activeScene: WindowSceneModel? {
+        sceneRefs.removeAll { $0.ref == nil }
+        return sceneRefs.last?.ref
+    }
+
     /// Bumps a dummy observable so SwiftUI views that read `usedSshTargets`
     /// redraw. Called from WindowSceneModel after tab list changes — cheaper
     /// and safer than racing a pool disconnect, which we deliberately DO NOT

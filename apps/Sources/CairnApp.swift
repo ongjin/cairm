@@ -16,7 +16,19 @@ struct CairnApp: App {
     var body: some Scene {
         WindowGroup {
             WindowScene(app: app)
+                .onOpenURL { url in
+                    Task { @MainActor in
+                        guard let scene = app.activeScene else { return }
+                        do {
+                            let request = try CairnURLRouter.parse(url)
+                            CairnURLRouter.dispatch(request, in: app, activeScene: scene)
+                        } catch {
+                            NSAlert(error: error).runModal()
+                        }
+                    }
+                }
         }
+        .handlesExternalEvents(matching: ["*"])
         .windowStyle(.hiddenTitleBar)
         // Unified toolbar spans the full window width instead of docking into
         // the NavigationSplitView's detail column, so back/forward/up and the
