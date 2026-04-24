@@ -1,6 +1,14 @@
 import SwiftUI
 import AppKit
 
+private struct CompareSheetConfig: Identifiable {
+    let id = UUID()
+    let leftRoot: FSPath
+    let rightRoot: FSPath
+    let leftProvider: FileSystemProvider
+    let rightProvider: FileSystemProvider
+}
+
 struct ContentView: View {
     @Environment(AppModel.self) private var app
     @Environment(WindowSceneModel.self) private var leftScene
@@ -23,6 +31,8 @@ struct ContentView: View {
     /// closure and keep dispatching events to a dead view.
     @State private var historyInputMonitor: Any?
     @State private var historyInputRouter = HistoryNavigationInputRouter()
+    @State private var compareSheet: CompareSheetConfig?
+    @State private var compareModel = FolderCompareModel()
 
     var body: some View {
         ZStack {
@@ -65,6 +75,17 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: palette.isOpen)
+        .sheet(item: $compareSheet) { config in
+            FolderCompareSheet(
+                model: compareModel,
+                transfers: app.transfers,
+                leftRoot: config.leftRoot,
+                rightRoot: config.rightRoot,
+                leftProvider: config.leftProvider,
+                rightProvider: config.rightProvider,
+                onDismiss: { compareSheet = nil }
+            )
+        }
         .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
             guard palette.isOpen else { return }
             if palette.mode == .content {
@@ -158,6 +179,13 @@ struct ContentView: View {
             TransferHudChip(controller: app.transfers)
         }
         ToolbarItem(placement: .primaryAction) {
+            Button(action: openCompareSheet) {
+                Image(systemName: "rectangle.split.2x1.slash")
+            }
+            .disabled(dualPane.bothFolders() == nil)
+            .help("Compare left and right folders")
+        }
+        ToolbarItem(placement: .primaryAction) {
             Button(action: toggleSplit) {
                 Image(systemName: dualPane.isSplit ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
             }
@@ -168,6 +196,16 @@ struct ContentView: View {
 
     private func toggleSplit() {
         dualPane.toggleSplit(engine: app.engine, bookmarks: app.bookmarks, app: app)
+    }
+
+    private func openCompareSheet() {
+        guard let folders = dualPane.bothFolders() else { return }
+        compareSheet = CompareSheetConfig(
+            leftRoot: folders.left.path,
+            rightRoot: folders.right.path,
+            leftProvider: folders.left.provider,
+            rightProvider: folders.right.provider
+        )
     }
 
     private func builtinCommands() -> [PaletteCommand] {

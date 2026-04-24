@@ -36,6 +36,19 @@ final class WindowDualPaneModel {
         activeSide = side
     }
 
+    func bothFolders() -> (left: (path: FSPath, provider: FileSystemProvider),
+                           right: (path: FSPath, provider: FileSystemProvider))? {
+        guard isSplit,
+              let right,
+              let leftTab = left.activeTab,
+              let rightTab = right.activeTab,
+              let leftPath = leftTab.currentPath,
+              let rightPath = rightTab.currentPath else {
+            return nil
+        }
+        return ((leftPath, leftTab.provider), (rightPath, rightTab.provider))
+    }
+
     /// Toggle split on/off. On enable, seeds the right pane with a single tab
     /// mirroring the left pane's current folder. On disable, drops the right
     /// pane reference — AppModel's weak scene registry cleans up.
