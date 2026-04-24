@@ -84,7 +84,7 @@ final class FolderCompareTests: XCTestCase {
     }
 }
 
-private final class InMemoryProvider: FileSystemProvider {
+final class InMemoryProvider: FileSystemProvider {
     let identifier: ProviderID = .local
     let displayScheme: String? = nil
     let supportsServerSideCopy = false
