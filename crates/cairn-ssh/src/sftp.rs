@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures::stream::{FuturesOrdered, StreamExt};
@@ -170,6 +172,68 @@ impl SftpHandle {
 
         self.pool.touch(&self.key);
         Ok(entries)
+    }
+
+    // -----------------------------------------------------------------------
+    // Walk
+    // -----------------------------------------------------------------------
+
+    /// Recursively walk remote directories breadth-first and emit filename
+    /// substring matches. Unreadable directories are skipped.
+    pub async fn walk<F>(
+        &self,
+        root: &str,
+        opts: WalkOptions,
+        cancel: Arc<AtomicBool>,
+        mut emit: F,
+    ) -> Result<()>
+    where
+        F: FnMut(WalkMatch),
+    {
+        let mut queue = VecDeque::from([(root.to_string(), 0_u32)]);
+        let mut emitted = 0_usize;
+        let pattern = opts.pattern.to_lowercase();
+
+        while let Some((dir, depth)) = queue.pop_front() {
+            if cancel.load(Ordering::Relaxed) || emitted >= opts.cap {
+                return Ok(());
+            }
+
+            let entries = match self.list(&dir).await {
+                Ok(entries) => entries,
+                Err(_) => continue,
+            };
+
+            for entry in entries {
+                if cancel.load(Ordering::Relaxed) || emitted >= opts.cap {
+                    return Ok(());
+                }
+                if !opts.include_hidden && entry.name.starts_with('.') {
+                    continue;
+                }
+
+                let full_path = join_remote_path(&dir, &entry.name);
+                let name_matches =
+                    pattern.is_empty() || entry.name.to_lowercase().contains(&pattern);
+
+                if name_matches {
+                    emit(WalkMatch {
+                        path: full_path.clone(),
+                        name: entry.name,
+                        size: entry.size.min(i64::MAX as u64) as i64,
+                        is_directory: entry.is_dir,
+                        mtime: (entry.mtime != 0).then_some(entry.mtime),
+                    });
+                    emitted += 1;
+                }
+
+                if entry.is_dir && depth + 1 < opts.max_depth {
+                    queue.push_back((full_path, depth + 1));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -582,6 +646,14 @@ fn push_sftp_string(buf: &mut Vec<u8>, s: &[u8]) {
 
 fn download_read_is_eof(bytes_read: u64) -> bool {
     bytes_read == 0
+}
+
+fn join_remote_path(dir: &str, name: &str) -> String {
+    if dir.ends_with('/') {
+        format!("{dir}{name}")
+    } else {
+        format!("{dir}/{name}")
+    }
 }
 
 // ---------------------------------------------------------------------------
