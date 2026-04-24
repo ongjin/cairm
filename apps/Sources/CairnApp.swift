@@ -16,6 +16,11 @@ struct CairnApp: App {
     var body: some Scene {
         WindowGroup {
             WindowScene(app: app)
+                .onAppear {
+                    NSApp.servicesProvider = CairnServicesProvider.shared
+                    CairnServicesProvider.shared.app = app
+                    NSUpdateDynamicServices()
+                }
                 .onOpenURL { url in
                     Task { @MainActor in
                         guard let scene = app.activeScene else { return }

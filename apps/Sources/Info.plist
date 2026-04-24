@@ -49,5 +49,37 @@
 	<string>Cairn lists files inside your Pictures folder as part of browsing your home directory. It does not read photo contents or metadata.</string>
 	<key>NSRemovableVolumesUsageDescription</key>
 	<string>Cairn lists and opens files on removable volumes as a Finder replacement.</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Open in Cairn</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>openInCairn</string>
+			<key>NSPortName</key>
+			<string>Cairn</string>
+			<key>NSRequiredContext</key>
+			<dict>
+				<key>NSTextContent</key>
+				<string>FilePath</string>
+			</dict>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.directory</string>
+				<string>com.apple.resolvable</string>
+			</array>
+			<key>NSSendTypes</key>
+			<array>
+				<string>NSFilenamesPboardType</string>
+				<string>public.file-url</string>
+				<string>public.plain-text</string>
+			</array>
+			<key>NSUserData</key>
+			<string></string>
+		</dict>
+	</array>
 </dict>
 </plist>

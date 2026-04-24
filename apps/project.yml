@@ -45,6 +45,16 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.ongjin.Cairn.open
             CFBundleURLSchemes: [cairn]
+        NSServices:
+          - NSMenuItem:
+              default: "Open in Cairn"
+            NSMessage: openInCairn
+            NSPortName: Cairn
+            NSRequiredContext:
+              NSTextContent: FilePath
+            NSSendFileTypes: [public.directory, com.apple.resolvable]
+            NSSendTypes: [NSFilenamesPboardType, public.file-url, public.plain-text]
+            NSUserData: ""
     settings:
       base:
         CODE_SIGN_ENTITLEMENTS: Sources/Cairn.entitlements
