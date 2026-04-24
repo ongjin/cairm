@@ -373,17 +373,23 @@ fn cancel_flag_cancel(f: &CancelFlagBridge) {
     f.inner.cancel();
 }
 
+fn progress_sink_for_transfer(progress: &Arc<AtomicU64>) -> ssh::ProgressSink {
+    use std::sync::atomic::Ordering;
+
+    progress.store(0, Ordering::Relaxed);
+    let progress = Arc::clone(progress);
+    Arc::new(move |n| {
+        progress.store(n, Ordering::Relaxed);
+    })
+}
+
 fn sftp_download_sync(
     h: &SftpHandleBridge,
     remote: String,
     local: String,
     cancel: &CancelFlagBridge,
 ) -> Result<(), String> {
-    use std::sync::atomic::Ordering;
-    let prog = h.progress.clone();
-    let sink: ssh::ProgressSink = Arc::new(move |n| {
-        prog.store(n, Ordering::Relaxed);
-    });
+    let sink = progress_sink_for_transfer(&h.progress);
     runtime()
         .block_on(h.inner.download(
             &remote,
@@ -400,11 +406,7 @@ fn sftp_upload_sync(
     remote: String,
     cancel: &CancelFlagBridge,
 ) -> Result<(), String> {
-    use std::sync::atomic::Ordering;
-    let prog = h.progress.clone();
-    let sink: ssh::ProgressSink = Arc::new(move |n| {
-        prog.store(n, Ordering::Relaxed);
-    });
+    let sink = progress_sink_for_transfer(&h.progress);
     runtime()
         .block_on(h.inner.upload(
             std::path::Path::new(&local),
@@ -418,6 +420,23 @@ fn sftp_upload_sync(
 fn sftp_progress_poll(h: &SftpHandleBridge) -> u64 {
     use std::sync::atomic::Ordering;
     h.progress.load(Ordering::Relaxed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    #[test]
+    fn progress_sink_for_transfer_resets_stale_counter_before_use() {
+        let progress = Arc::new(AtomicU64::new(123));
+
+        let sink = progress_sink_for_transfer(&progress);
+
+        assert_eq!(progress.load(Ordering::Relaxed), 0);
+        sink(456);
+        assert_eq!(progress.load(Ordering::Relaxed), 456);
+    }
 }
 
 // ---------------------------------------------------------------------------

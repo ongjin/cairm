@@ -14,12 +14,22 @@ final class TransferController {
 
     private var runningPerHost: [String?: UUID] = [:]
     private var pendingExecutors: [UUID: (TransferJob, @escaping (Int64) -> Void) async throws -> Void] = [:]
+    private var pendingCompletions: [UUID: @MainActor () -> Void] = [:]
 
+    /// Enqueue a transfer. `onComplete` fires on MainActor once the job
+    /// reaches `.completed` state — remote-targeted transfers wire this to
+    /// `onMoved()` so the destination listing refreshes automatically
+    /// (FolderWatcher doesn't observe remote paths). Not called on failure
+    /// or cancellation.
     func enqueue(source: FSPath, destination: FSPath, sizeHint: Int64?,
+                 onComplete: (@MainActor () -> Void)? = nil,
                  execute: @escaping (_ job: TransferJob, _ progress: @escaping (Int64) -> Void) async throws -> Void) {
         let job = TransferJob(source: source, destination: destination, sizeHint: sizeHint, cancel: CancelToken())
         jobs.append(job)
         pendingExecutors[job.id] = execute
+        if let onComplete {
+            pendingCompletions[job.id] = onComplete
+        }
         maybeStartNext()
     }
 
@@ -29,6 +39,7 @@ final class TransferController {
         if jobs[idx].state == .queued {
             jobs[idx].state = .cancelled
             jobs[idx].finishedAt = Date()
+            pendingCompletions.removeValue(forKey: id)
         }
     }
 
@@ -39,7 +50,9 @@ final class TransferController {
         default: return
         }
         let old = jobs[idx]
+        let completion = pendingCompletions.removeValue(forKey: id)
         enqueue(source: old.source, destination: old.destination, sizeHint: old.sizeHint,
+                onComplete: completion,
                 execute: pendingExecutors[id] ?? { _, _ in })
     }
 
@@ -77,7 +90,9 @@ final class TransferController {
                         self.jobs[i].finishedAt = Date()
                     }
                     self.runningPerHost[host] = nil
+                    let completion = self.pendingCompletions.removeValue(forKey: id)
                     self.maybeStartNext()
+                    completion?()
                 }
             } catch is CancellationError {
                 await MainActor.run {
@@ -86,6 +101,7 @@ final class TransferController {
                         self.jobs[i].finishedAt = Date()
                     }
                     self.runningPerHost[host] = nil
+                    self.pendingCompletions.removeValue(forKey: id)
                     self.maybeStartNext()
                 }
             } catch {
@@ -95,6 +111,7 @@ final class TransferController {
                         self.jobs[i].finishedAt = Date()
                     }
                     self.runningPerHost[host] = nil
+                    self.pendingCompletions.removeValue(forKey: id)
                     self.maybeStartNext()
                 }
             }

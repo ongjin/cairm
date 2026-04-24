@@ -6,16 +6,32 @@ struct TransferHudChip: View {
     @Bindable var controller: TransferController
     @State private var popoverOpen: Bool = false
     @State private var pulseToken: UUID = UUID()
+    @State private var userDidNotInteract: Bool = true
 
     var body: some View {
         if controller.hasActive {
             chip
-                .onTapGesture { popoverOpen.toggle() }
+                .onTapGesture {
+                    userDidNotInteract = false
+                    popoverOpen.toggle()
+                }
                 .popover(isPresented: $popoverOpen, arrowEdge: .top) {
                     TransferPopoverView(controller: controller)
                 }
                 .onChange(of: controller.activeCount) { oldValue, newValue in
-                    if newValue > oldValue { pulseToken = UUID() }
+                    if newValue > oldValue {
+                        pulseToken = UUID()
+                        if oldValue == 0 {
+                            popoverOpen = true
+                            userDidNotInteract = true
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .seconds(2.5))
+                                if popoverOpen && userDidNotInteract {
+                                    popoverOpen = false
+                                }
+                            }
+                        }
+                    }
                 }
                 .modifier(PulseOnToken(token: pulseToken))
         }

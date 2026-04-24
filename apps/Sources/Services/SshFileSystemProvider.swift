@@ -107,7 +107,7 @@ final class SshFileSystemProvider: FileSystemProvider {
         try await RemoteCacheStore.shared.fetch(remotePath: path, via: self)
     }
 
-    func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: (Int64) -> Void, cancel: CancelToken) async throws {
+    func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws {
         let h = try await handle()
         let flag = cancel_flag_new()
         let cancelTask = Task {
@@ -120,10 +120,14 @@ final class SshFileSystemProvider: FileSystemProvider {
             }
         }
         defer { cancelTask.cancel() }
-        try sftp_upload_sync(h, localURL.path, remotePath.path, flag)
+        try await runWithProgressPolling(
+            poll: { Int64(sftp_progress_poll(h)) },
+            sink: progress,
+            work: { try sftp_upload_sync(h, localURL.path, remotePath.path, flag) }
+        )
     }
 
-    func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: (Int64) -> Void, cancel: CancelToken) async throws {
+    func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws {
         let h = try await handle()
         let flag = cancel_flag_new()
         let cancelTask = Task {
@@ -136,7 +140,11 @@ final class SshFileSystemProvider: FileSystemProvider {
             }
         }
         defer { cancelTask.cancel() }
-        try sftp_download_sync(h, remotePath.path, toLocalURL.path, flag)
+        try await runWithProgressPolling(
+            poll: { Int64(sftp_progress_poll(h)) },
+            sink: progress,
+            work: { try sftp_download_sync(h, remotePath.path, toLocalURL.path, flag) }
+        )
     }
 
     func realpath(_ path: String) async throws -> String {
@@ -162,4 +170,37 @@ private extension FileEntryBridge {
             icon_kind: iconKind
         )
     }
+}
+
+// MARK: - Progress polling
+
+/// Run `work` on a detached task while concurrently polling `poll` every
+/// `interval` seconds and forwarding the returned value to `sink`.
+/// Stops polling as soon as `work` completes (throws or returns). One extra
+/// `sink` call at the end delivers the final byte count so a post-completion
+/// UI read sees 100%.
+@MainActor
+func runWithProgressPolling(
+    interval: Duration = .milliseconds(150),
+    poll: @escaping () -> Int64,
+    sink: @escaping (Int64) -> Void,
+    work: @escaping @Sendable () async throws -> Void
+) async throws {
+    let workTask = Task.detached(priority: .userInitiated) {
+        try await work()
+    }
+
+    let pollTask = Task { @MainActor in
+        while !Task.isCancelled {
+            sink(poll())
+            try? await Task.sleep(for: interval)
+        }
+    }
+
+    defer {
+        pollTask.cancel()
+        sink(poll())
+    }
+
+    _ = try await workTask.value
 }

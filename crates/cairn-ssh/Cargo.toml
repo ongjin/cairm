@@ -12,6 +12,7 @@ russh       = { workspace = true }
 russh-sftp  = { workspace = true }
 russh-keys  = { workspace = true }
 tokio       = { workspace = true }
+futures     = { workspace = true }
 sha2        = { workspace = true }
 parking_lot = { workspace = true }
 tracing     = { workspace = true }

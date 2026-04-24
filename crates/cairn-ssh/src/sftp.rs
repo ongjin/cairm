@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use futures::stream::{FuturesOrdered, StreamExt};
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::rawsession::RawSftpSession;
 use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
@@ -291,8 +292,12 @@ impl SftpHandle {
             .handle;
 
         const CHUNK: u32 = 256 * 1024;
-        let mut offset: u64 = 0;
+        const MAX_IN_FLIGHT: usize = 16;
+
+        let mut in_flight: FuturesOrdered<_> = FuturesOrdered::new();
+        let mut request_offset: u64 = 0;
         let mut total: u64 = 0;
+        let mut eof_reached = false;
 
         loop {
             if cancel.is_cancelled() {
@@ -300,28 +305,46 @@ impl SftpHandle {
                 return Err(SshError::Cancelled);
             }
 
-            match self.session.read(handle.as_str(), offset, CHUNK).await {
-                Ok(data) => {
+            // Keep the pipeline full until the server signals EOF via an
+            // empty read or an Eof status. Requests beyond EOF drain
+            // harmlessly — FuturesOrdered preserves request order so any
+            // trailing Eof responses arrive after the last real data chunk.
+            while !eof_reached && in_flight.len() < MAX_IN_FLIGHT {
+                let off = request_offset;
+                let session = Arc::clone(&self.session);
+                let handle_str = handle.clone();
+                let read_fut = async move {
+                    session.read(handle_str.as_str(), off, CHUNK).await
+                };
+                in_flight.push_back(read_fut);
+                request_offset += CHUNK as u64;
+            }
+
+            if in_flight.is_empty() {
+                break;
+            }
+
+            match in_flight.next().await {
+                Some(Ok(data)) => {
                     let n = data.data.len() as u64;
-                    dest.write_all(&data.data).await.map_err(SshError::Io)?;
-                    offset += n;
-                    total += n;
-                    progress(total);
-                    // If server returned fewer bytes than requested and the
-                    // next read would be at the same offset it's actually EOF;
-                    // but in SFTP the server will send an EOF status on the
-                    // following read, so just keep looping.
-                    if n == 0 {
-                        break;
+                    if download_read_is_eof(n) {
+                        eof_reached = true;
+                    } else {
+                        dest.write_all(&data.data).await.map_err(SshError::Io)?;
+                        total += n;
+                        progress(total);
                     }
                 }
-                Err(SftpError::Status(ref status)) if status.status_code == StatusCode::Eof => {
-                    break;
+                Some(Err(SftpError::Status(ref status)))
+                    if status.status_code == StatusCode::Eof =>
+                {
+                    eof_reached = true;
                 }
-                Err(e) => {
+                Some(Err(e)) => {
                     let _ = self.session.close(handle.as_str()).await;
                     return Err(map_sftp_err(e));
                 }
+                None => break,
             }
         }
 
@@ -371,9 +394,12 @@ impl SftpHandle {
             .handle;
 
         const CHUNK: usize = 256 * 1024;
-        let mut buf = vec![0u8; CHUNK];
+        const MAX_IN_FLIGHT: usize = 16;
+
+        let mut in_flight: FuturesOrdered<_> = FuturesOrdered::new();
         let mut offset: u64 = 0;
         let mut total: u64 = 0;
+        let mut eof_reached = false;
 
         loop {
             if cancel.is_cancelled() {
@@ -381,19 +407,48 @@ impl SftpHandle {
                 return Err(SshError::Cancelled);
             }
 
-            let n = src.read(&mut buf).await.map_err(SshError::Io)?;
-            if n == 0 {
+            while !eof_reached && in_flight.len() < MAX_IN_FLIGHT {
+                let mut buf = vec![0u8; CHUNK];
+                let n = src.read(&mut buf).await.map_err(SshError::Io)?;
+                if n == 0 {
+                    eof_reached = true;
+                    break;
+                }
+
+                buf.truncate(n);
+                let chunk_offset = offset;
+                let n_u64 = n as u64;
+                offset += n_u64;
+
+                let write_fut = {
+                    let handle = handle.clone();
+                    let session = Arc::clone(&self.session);
+                    async move {
+                        session
+                            .write(handle.as_str(), chunk_offset, buf)
+                            .await
+                            .map(|_| n_u64)
+                    }
+                };
+
+                in_flight.push_back(write_fut);
+            }
+
+            if in_flight.is_empty() {
                 break;
             }
 
-            self.session
-                .write(handle.as_str(), offset, buf[..n].to_vec())
-                .await
-                .map_err(map_sftp_err)?;
-
-            offset += n as u64;
-            total += n as u64;
-            progress(total);
+            match in_flight.next().await {
+                Some(Ok(n)) => {
+                    total += n;
+                    progress(total);
+                }
+                Some(Err(e)) => {
+                    let _ = self.session.close(handle.as_str()).await;
+                    return Err(map_sftp_err(e));
+                }
+                None => break,
+            }
         }
 
         let _ = self.session.close(handle.as_str()).await;
@@ -497,6 +552,10 @@ fn push_sftp_string(buf: &mut Vec<u8>, s: &[u8]) {
     buf.extend_from_slice(s);
 }
 
+fn download_read_is_eof(bytes_read: u64) -> bool {
+    bytes_read == 0
+}
+
 // ---------------------------------------------------------------------------
 // Conversion helpers
 // ---------------------------------------------------------------------------
@@ -533,5 +592,20 @@ fn map_sftp_err(e: SftpError) -> SshError {
         },
         SftpError::Timeout => SshError::SftpProtocol("sftp timeout".into()),
         other => SshError::SftpProtocol(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn download_nonzero_short_read_is_not_eof() {
+        assert!(!download_read_is_eof(256 * 1024 - 1));
+    }
+
+    #[test]
+    fn download_zero_read_is_eof() {
+        assert!(download_read_is_eof(0));
     }
 }

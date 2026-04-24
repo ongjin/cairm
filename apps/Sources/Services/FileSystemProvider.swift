@@ -33,8 +33,8 @@ protocol FileSystemProvider: AnyObject {
     func downloadToCache(_ path: FSPath) async throws -> URL
 
     /// Upload a local URL to remote path (cross-provider transfer entry).
-    func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: (Int64) -> Void, cancel: CancelToken) async throws
-    func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: (Int64) -> Void, cancel: CancelToken) async throws
+    func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws
+    func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws
 
     /// Resolve a path to its absolute canonical form on the provider. For SSH,
     /// this is a server-side call used to expand "~" / "." to the real home dir.

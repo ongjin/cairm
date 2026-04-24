@@ -1169,7 +1169,10 @@ final class FileListCoordinator: NSObject,
                     .appendingPathComponent(src.lastComponent)
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.transfers.enqueue(source: src, destination: dst, sizeHint: nil) { job, progress in
+                    self.transfers.enqueue(
+                        source: src, destination: dst, sizeHint: nil,
+                        onComplete: { [weak self] in self?.onMoved() }
+                    ) { job, progress in
                         try await srcProvider.downloadToLocal(src, toLocalURL: localDst, progress: progress, cancel: job.cancel)
                     }
                 }
@@ -1178,7 +1181,10 @@ final class FileListCoordinator: NSObject,
                 let size = (try? FileManager.default.attributesOfItem(atPath: localSrc.path))?[.size] as? Int64
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.transfers.enqueue(source: src, destination: dst, sizeHint: size) { [weak self] job, progress in
+                    self.transfers.enqueue(
+                        source: src, destination: dst, sizeHint: size,
+                        onComplete: { [weak self] in self?.onMoved() }
+                    ) { [weak self] job, progress in
                         guard let self else { return }
                         try await self.provider.uploadFromLocal(localSrc, to: dst, progress: progress, cancel: job.cancel)
                     }
@@ -1255,7 +1261,8 @@ final class FileListCoordinator: NSObject,
             self.transfers.enqueue(
                 source: FSPath(provider: .local, path: tmpURL.path),
                 destination: dstPath,
-                sizeHint: size
+                sizeHint: size,
+                onComplete: { [weak self] in self?.onMoved() }
             ) { [weak self] job, progress in
                 guard let self else {
                     try? FileManager.default.removeItem(at: tmpURL)
@@ -1357,8 +1364,11 @@ final class FileListCoordinator: NSObject,
             for src in urls {
                 let dst = target.appending(src.lastPathComponent)
                 let size = (try? FileManager.default.attributesOfItem(atPath: src.path))?[.size] as? Int64
-                self.transfers.enqueue(source: FSPath(provider: .local, path: src.path),
-                                       destination: dst, sizeHint: size) { [weak self] job, progress in
+                self.transfers.enqueue(
+                    source: FSPath(provider: .local, path: src.path),
+                    destination: dst, sizeHint: size,
+                    onComplete: { [weak self] in self?.onMoved() }
+                ) { [weak self] job, progress in
                     guard let self else { return }
                     try await self.provider.uploadFromLocal(src, to: dst, progress: progress, cancel: job.cancel)
                 }
@@ -1653,7 +1663,10 @@ extension FileListCoordinator {
                 let dstPath = FSPath(provider: .local, path: localDst.path)
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.transfers.enqueue(source: sourcePath, destination: dstPath, sizeHint: nil) { job, progress in
+                    self.transfers.enqueue(
+                        source: sourcePath, destination: dstPath, sizeHint: nil,
+                        onComplete: { [weak self] in self?.onMoved() }
+                    ) { job, progress in
                         try await srcProvider.downloadToLocal(sourcePath, toLocalURL: localDst, progress: progress, cancel: job.cancel)
                     }
                 }
@@ -1695,9 +1708,12 @@ extension FileListCoordinator {
                 for src in urls {
                     let dstPath = targetPath.appending(src.lastPathComponent)
                     let size = (try? FileManager.default.attributesOfItem(atPath: src.path))?[.size] as? Int64
-                    self.transfers.enqueue(source: FSPath(provider: .local, path: src.path),
-                                          destination: dstPath,
-                                          sizeHint: size) { [weak self] job, progress in
+                    self.transfers.enqueue(
+                        source: FSPath(provider: .local, path: src.path),
+                        destination: dstPath,
+                        sizeHint: size,
+                        onComplete: { [weak self] in self?.onMoved() }
+                    ) { [weak self] job, progress in
                         guard let self else { return }
                         try await self.provider.uploadFromLocal(src, to: dstPath, progress: progress, cancel: job.cancel)
                     }

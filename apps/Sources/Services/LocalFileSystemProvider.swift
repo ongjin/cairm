@@ -59,12 +59,12 @@ final class LocalFileSystemProvider: FileSystemProvider {
         URL(fileURLWithPath: path.path)    // local: already accessible
     }
 
-    func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: (Int64) -> Void, cancel: CancelToken) async throws {
+    func uploadFromLocal(_ localURL: URL, to remotePath: FSPath, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws {
         // Local → local "upload" = copy
         try FileManager.default.copyItem(at: localURL, to: URL(fileURLWithPath: remotePath.path))
     }
 
-    func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: (Int64) -> Void, cancel: CancelToken) async throws {
+    func downloadToLocal(_ remotePath: FSPath, toLocalURL: URL, progress: @escaping (Int64) -> Void, cancel: CancelToken) async throws {
         try FileManager.default.copyItem(at: URL(fileURLWithPath: remotePath.path), to: toLocalURL)
     }
 
