@@ -54,7 +54,7 @@ XCBUILD_RELEASE := xcodebuild \
               -derivedDataPath $(CURDIR)/$(DERIVED) \
               $(SIGNING)
 
-.PHONY: help rust swift swift-release build run dev test install-cli uninstall-cli clean
+.PHONY: help rust swift swift-release build release run dev test install-cli uninstall-cli clean
 
 help: ## 사용 가능한 타겟 목록
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -77,6 +77,10 @@ swift-release: rust ## Release build (requires DEV_IDENTITY set for a signed art
 
 build: swift ## 풀 빌드 (Rust + Swift)
 	@echo "built: $(APP)"
+
+release: ## End-to-end signed + notarized DMG. Usage: make release VERSION=1.0.0
+	@[ -n "$(VERSION)" ] || (echo "VERSION=X.Y.Z required" >&2; exit 1)
+	@./scripts/release.sh $(VERSION)
 
 run: build ## 빌드 후 기존 인스턴스 종료, 인덱스 캐시 청소, 앱 실행
 	@pkill -f "Cairn.app/Contents/MacOS/Cairn" 2>/dev/null || true
