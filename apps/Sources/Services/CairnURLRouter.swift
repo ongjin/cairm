@@ -47,3 +47,37 @@ enum CairnURLRouter {
         }
     }
 }
+
+extension CairnURLRouter {
+    @MainActor
+    static func dispatch(_ request: CairnOpenRequest, in app: AppModel, activeScene scene: WindowSceneModel) {
+        switch request {
+        case .openLocal(let url):
+            scene.newTab(initialURL: url)
+        case .openRemote(let alias, let path):
+            guard app.sshConfig.configuredHosts.contains(alias) else {
+                let model = ConnectSheetModel()
+                model.server = alias
+                scene.connectSheetModel = model
+                return
+            }
+            let placeholder = scene.newEstablishingTab(alias: alias)
+            Task { @MainActor in
+                do {
+                    let target = try await app.ssh.connect(hostAlias: alias, overrides: ConnectSpecOverrides())
+                    let provider = SshFileSystemProvider(pool: app.ssh, target: target, supportsServerSideCopy: false)
+                    let initial = FSPath(provider: .ssh(target), path: path)
+                    placeholder.upgradeToRemote(path: initial, provider: provider)
+                    await placeholder.folder.load(initial, via: provider)
+                    placeholder.connectionPhase = .connected
+                } catch {
+                    scene.closeTab(placeholder.id)
+                    let model = ConnectSheetModel()
+                    model.server = alias
+                    model.error = ErrorMessage.userFacing(error)
+                    scene.connectSheetModel = model
+                }
+            }
+        }
+    }
+}

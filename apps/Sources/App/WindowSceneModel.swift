@@ -53,6 +53,15 @@ final class WindowSceneModel {
         reconcileActiveFlags()
     }
 
+    /// Create a new local tab at a specific URL. Used by external entry points
+    /// that should not clone the currently-active folder.
+    func newTab(initialURL: URL) {
+        let t = Tab(engine: engine, bookmarks: bookmarks, initialURL: initialURL)
+        tabs.append(t)
+        activeTabID = t.id
+        reconcileActiveFlags()
+    }
+
     /// Open a new tab pointing at an SSH remote path using the given provider.
     func newRemoteTab(initialPath: FSPath, provider: FileSystemProvider) {
         let t = Tab(engine: engine, bookmarks: bookmarks, initialPath: initialPath, provider: provider)
