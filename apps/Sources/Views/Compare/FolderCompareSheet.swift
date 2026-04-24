@@ -17,10 +17,21 @@ struct FolderCompareSheet: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if model.phase == .running {
-                ProgressView("Scanning... (\(model.scannedCount))")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+            switch model.phase {
+            case .running:
+                VStack(spacing: 8) {
+                    ProgressView("Scanning... (\(model.scannedCount))")
+                    Button("Cancel") { model.cancelRunning() }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .cancelled:
+                VStack(spacing: 8) {
+                    Text("Scan cancelled")
+                        .foregroundStyle(.secondary)
+                    Button("Retry") { Task { await runScan() } }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            default:
                 results
             }
             Divider()

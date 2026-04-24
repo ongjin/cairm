@@ -23,6 +23,7 @@ final class FolderCompareModel {
 
     private var task: Task<Void, Never>?
     private var cancel: CancelToken?
+    private var runGeneration = 0
 
     func run(leftRoot: FSPath,
              rightRoot: FSPath,
@@ -31,6 +32,8 @@ final class FolderCompareModel {
              mode: CompareMode,
              recursive: Bool) async {
         cancelRunning()
+        runGeneration += 1
+        let generation = runGeneration
         phase = .running
         result = CompareResult()
         scannedCount = 0
@@ -65,9 +68,11 @@ final class FolderCompareModel {
                 )
             }
 
+            guard generation == runGeneration else { return }
             result = nextResult
             phase = token.isCancelled ? .cancelled : .done
         } catch {
+            guard generation == runGeneration else { return }
             phase = .failed(String(describing: error))
         }
     }
